@@ -40,6 +40,8 @@
 #   G. Interrupted after the payload moved into place, before the commit
 #      -> the next boot only finishes ("finish"): no reformat, MAC and pre-seed
 #         written, flag spent.
+#   T. Interrupted right after the free-space trim, before the commit
+#      -> the next boot only commits ("finish"); the trim cost no re-flash.
 #   H. Interrupted between the commit (flag block wiped) and removing MBR entry 3
 #      -> the probe says "spent"; the next boot is a normal one.
 #   I. A payload-shaped FAT32 card WITHOUT the flag, and
@@ -97,7 +99,8 @@
 # Env knobs: INSTALLER_CPIO, CROSS_COMPILE, TEST_SDCARD_KBUILD (shared with
 #   test-sdcard-install.sh, so running one makes the other cheap),
 #   TEST_SDCARD_KERNEL_TARBALL, SDCARD_TEST_SIZE (default 2G),
-#   INSTALL_TIMEOUT (default 600), HALT_TIMEOUT (default 120), QEMU_MEM (default 512).
+#   INSTALL_TIMEOUT (default 600), HALT_TIMEOUT (default 120), QEMU_MEM (default 512),
+#   TEST_DISCARD (unmap or off, default unmap).
 
 set -o errexit
 set -o nounset
@@ -126,6 +129,14 @@ SDCARD_TEST_SIZE="${SDCARD_TEST_SIZE:-2G}"
 INSTALL_TIMEOUT="${INSTALL_TIMEOUT:-600}"
 HALT_TIMEOUT="${HALT_TIMEOUT:-120}"     # backstop only; boot() stops on its marker (see boot())
 QEMU_MEM="${QEMU_MEM:-512}"
+# TEST_DISCARD=unmap (default): guest discards punch holes in the image; off: the
+# virtio disk advertises no discard, so the installer's trim takes its "skipped" path.
+TEST_DISCARD="${TEST_DISCARD:-unmap}"
+case "$TEST_DISCARD" in
+unmap) QEMU_DRIVE_DISCARD=unmap;  QEMU_DEV_DISCARD=on ;;
+off)   QEMU_DRIVE_DISCARD=ignore; QEMU_DEV_DISCARD=off ;;
+*) echo "TEST_DISCARD must be unmap or off" >&2; exit 2 ;;
+esac
 
 # Must match the installer (initramfs-overlay/usr/libexec/mister-installer/install) and genimage-sdcard.cfg.
 RESERVED_SECTORS=8192
@@ -292,8 +303,8 @@ boot() {
 	: > "$logf"
 	qemu-system-arm -M virt -m "$QEMU_MEM" -nographic -no-reboot \
 		-kernel "$IQK_ZIMAGE" \
-		-drive file="$DISK",format=raw,if=none,id=sd0 \
-		-device virtio-blk-device,drive=sd0 \
+		-drive file="$DISK",format=raw,if=none,id=sd0,discard="$QEMU_DRIVE_DISCARD" \
+		-device virtio-blk-device,drive=sd0,discard="$QEMU_DEV_DISCARD" \
 		-append "console=ttyAMA0,115200 loglevel=4 root=/dev/vda1 loop=linux/linux.img ro rootwait $extra" \
 		>"$logf" 2>&1 &
 	qpid=$!
@@ -325,8 +336,8 @@ assert_bootloader_present() {
 	p2_start=$(printf '%s\n' "$dump" | sed -n '/img2 /s/.*start=[[:space:]]*\([0-9]*\).*/\1/p')
 	if [ -z "$p2_start" ]; then fail "$1 (no second partition in the table)"; return; fi
 	ubsz=$(stat -c %s "$UBOOT_REF")
-	dd if="$DISK" bs=512 skip="$p2_start" count=$(( ubsz / 512 + 1 )) 2>/dev/null |
-		head -c "$ubsz" > "$WORK/p2head.bin"
+	# Exact length: a `| head -c` here SIGPIPEd dd and killed the run under pipefail.
+	dd if="$DISK" of="$WORK/p2head.bin" bs=512 skip="$p2_start" count="$ubsz" iflag=count_bytes 2>/dev/null
 	if cmp -s "$WORK/p2head.bin" "$UBOOT_REF"; then pass "$1"; else fail "$1 (0xA2 head != uboot.img)"; fi
 }
 
@@ -338,6 +349,23 @@ assert_exfat_p1() {
 	eq "$p1_type" "7" "$1: p1 is type 7 (exFAT)"
 	sig=$(dd if="$DISK" bs=1 skip=$(( p1_start * 512 + 3 )) count=8 2>/dev/null | tr -d '\0 ')
 	eq "$sig" "EXFAT" "$1: p1 carries the exFAT signature"
+}
+
+# assert_exfat_geometry TAG -- the boot sector of p1 as the installer's mkfs flags promise
+# (docs/installer-init.md#exfat-geometry): virtio has no AU, so the 4 MiB fallback applies.
+assert_exfat_geometry() {
+	local base fat heap count bps spc cs bitmap_clu first_data au=8192
+	base=$(( P1_START_SECTORS * 512 ))
+	u32() { od -An -tu4 -j $(( base + $1 )) -N4 "$DISK" | tr -d ' '; }
+	u8()  { od -An -tu1 -j $(( base + $1 )) -N1 "$DISK" | tr -d ' '; }
+	fat=$(u32 80); heap=$(u32 88); count=$(u32 92); bps=$(u8 108); spc=$(u8 109)
+	eq "$bps" 9 "$1: exFAT sectors are 512 bytes"
+	eq "$spc" 6 "$1: 32 KiB clusters on a card of 32 GiB or less (the 32-bit default-size fix)"
+	eq $(( (P1_START_SECTORS + fat) % au )) 0 "$1: the FAT starts on a 4 MiB boundary"
+	cs=$(( 1 << (bps + spc) ))
+	bitmap_clu=$(( ( (count + 7) / 8 + cs - 1 ) / cs ))
+	first_data=$(( P1_START_SECTORS + heap + (bitmap_clu << spc) ))
+	eq $(( first_data % au )) 0 "$1: the bitmap is packed below a 4 MiB boundary and data starts on it"
 }
 
 # order_ok A B DESC -- assert byte offset A comes before byte offset B.
@@ -417,6 +445,13 @@ scenario_clean_install() {
 	hasnt "$WORK/z1.log" 'TEST-STOP'                "0: and it did not stop"
 	has   "$WORK/z1.log" 'source mounted (vfat)'  "0: the shipped FAT32 partition mounted as vfat"
 	has   "$WORK/z1.log" 'INSTALL COMPLETE'       "0: the install finished"
+	if [ "$TEST_DISCARD" = unmap ]; then
+		has "$WORK/z1.log" 'trim: done -- walked \([0-9]*\) of \1 MiB, [1-9][0-9]* MiB discarded' \
+			"0: the free-space trim walked the whole heap and discarded free space"
+	else
+		has "$WORK/z1.log" 'trim: skipped -- .* does not support discard' "0: the trim was skipped on a disk without discard"
+	fi
+	hasnt "$WORK/z1.log" 'probably counterfeit' "0: nothing outside p1 changed during the trim"
 	hasnt "$WORK/z1.log" 'INSTALLER: FAILED'      "0: no failure banner"
 	hasnt "$WORK/z1.log" 'not found'              "0: no missing-applet noise on the console"
 	has   "$WORK/z1.log" 'removed linux/linux.img.gz'  "0: the compressed image was deleted, not truncated"
@@ -434,11 +469,14 @@ scenario_clean_install() {
 	o_recov=$(at   "$WORK/z1.log" 'from here a power cut re-runs the installer')
 	o_payload=$(at "$WORK/z1.log" 'this card can now finish on its own')
 	o_commit=$(at  "$WORK/z1.log" 'this card is a MiSTer now')
+	o_trim=$(at    "$WORK/z1.log" 'trim: ')
 	order_ok "$o_staged"  "$o_part"    "0: uboot.img is staged BEFORE the MBR points p2 at it"
 	order_ok "$o_part"    "$o_uboot"   "0: uboot.img is verified in p2 right after the repartition"
 	order_ok "$o_uboot"   "$o_mkfs"    "0: the bootloader is written BEFORE the filesystem is made"
 	order_ok "$o_mkfs"    "$o_recov"   "0: the kernel is restored right after the format"
 	order_ok "$o_recov"   "$o_payload" "0: the card is self-recovering before the payload copy-back"
+	order_ok "$o_payload" "$o_trim"    "0: the trim runs only once the payload is safe on the card"
+	order_ok "$o_trim"    "$o_commit"  "0: and before the commit point"
 	order_ok "$o_payload" "$o_commit"  "0: spending the flag is the LAST thing done (the commit point)"
 
 	# And the finished geometry, host-side.
@@ -457,6 +495,7 @@ scenario_clean_install() {
 		fail "0: partitions do not fill the card ($p1_start+$p1_size+$p2_size != $dev_sectors)"
 	fi
 	assert_exfat_p1 "0"
+	assert_exfat_geometry "0"
 	assert_bootloader_present "0: the finished card has uboot.img in its 0xA2 partition"
 	assert_flag_gone "0"
 }
@@ -586,6 +625,23 @@ scenario_interrupted_after_moves() {
 	has   "$WORK/g2.log" 'INSTALL COMPLETE'          "G: and finished"
 	assert_flag_gone "G"
 	assert_normal_boot "G" "$WORK/g3.log"
+}
+
+scenario_interrupted_after_trim() {
+	log "--- T. interrupted right after the free-space trim, before the commit --"
+	flash_fresh_card
+	boot "$WORK/t1.log" "$INSTALL_TIMEOUT" "mister_installer_stop_after=trimmed"
+	has   "$WORK/t1.log" 'TEST-STOP after "trimmed"' "T: the run stopped after the trim"
+	hasnt "$WORK/t1.log" 'this card is a MiSTer now' "T: it stopped BEFORE the commit"
+
+	log "    re-booting (the flag is still armed: it must only commit) ..."
+	boot "$WORK/t2.log" "$INSTALL_TIMEOUT"
+	has   "$WORK/t2.log" 'card state: finish'        "T: recognised as finished-but-uncommitted"
+	hasnt "$WORK/t2.log" 'repartitioning the card'   "T: it did NOT reformat"
+	has   "$WORK/t2.log" 'this card is a MiSTer now' "T: it committed"
+	has   "$WORK/t2.log" 'INSTALL COMPLETE'          "T: and finished"
+	assert_flag_gone "T"
+	assert_normal_boot "T" "$WORK/t3.log"
 }
 
 scenario_interrupted_after_commit() {
@@ -722,6 +778,7 @@ main() {
 	scenario_interrupted_mid_copy
 	scenario_interrupted_at_recoverable
 	scenario_interrupted_after_moves
+	scenario_interrupted_after_trim
 	scenario_interrupted_after_commit
 	scenario_no_flag
 	scenario_forged_flag

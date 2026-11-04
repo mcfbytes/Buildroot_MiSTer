@@ -16,6 +16,9 @@ MBR_MAX_SECTORS=4294967295             # an MBR entry holds a 32-bit LBA and len
 RAM_RESERVE_KB=98304                   # 96 MiB of RAM kept free for the kernel + our own
                                        # working set; the payload tmpfs may use the rest.
 DEV_WAIT=30                            # seconds to wait for a block device to enumerate
+TRIM_CHUNK_MIN=33554432                # FITRIM chunk, 32 MiB to 256 MiB, adapted to the card:
+TRIM_CHUNK_MAX=268435456               # the kernel cannot interrupt a discard once issued
+TRIM_BUDGET=60                         # seconds the whole free-space trim may take
 
 # --- the installer flag (docs/installer-init.md#the-flag) --------------------
 # FLAG_* and partdev() come from FLAG_CONF, sourced once rescue() exists.
@@ -648,6 +651,84 @@ flag_remove_entry() {
 	mbr_commit /run/mbr.new
 }
 
+# outside_p1 OUT -- every sector of the card that is not p1 (LBA 0-2047 and all of p2),
+# read past the buffer cache. trim_free compares it before and after.
+outside_p1() {
+	_s="/sys/block/$disk_name/${P2#/dev/}"
+	[ -r "$_s/start" ] && [ -r "$_s/size" ] || return 1
+	read -r _p2s < "$_s/start"; read -r _p2n < "$_s/size"
+	case "$_p2s" in ''|*[!0-9]*) return 1 ;; esac
+	case "$_p2n" in ''|*[!0-9]*) return 1 ;; esac
+	blockdev --flushbufs "$DISK" 2>/dev/null || return 1
+	{ dd if="$DISK" bs=512 count="$P1_START_SECTORS" &&
+		dd if="$DISK" bs=512 skip="$_p2s" count="$_p2n"; } > "$1" 2>/dev/null || return 1
+	[ "$(wc -c < "$1")" -eq $(( (P1_START_SECTORS + _p2n) * 512 )) ]
+}
+
+# trim_free -- discard p1's free clusters in chunks under a time budget. Advisory and
+# never fatal, except when a sector outside p1 changed (docs/installer-init.md#free-space-trim).
+trim_free() {
+	_max="$(cat "/sys/block/$disk_name/queue/discard_max_bytes" 2>/dev/null)" || _max=""
+	if [ "$_max" = 0 ]; then
+		log "trim: skipped -- $DISK does not support discard"
+		return 0
+	fi
+	# Boot sector: ClusterCount @92, BytesPerSectorShift @108, SectorsPerClusterShift @109.
+	_count="$(hexdump -s 92 -n 4 -e '1/4 "%u"' "$P1" 2>/dev/null)"
+	_bps="$(hexdump -s 108 -n 1 -e '1/1 "%u"' "$P1" 2>/dev/null)"
+	_shift="$(hexdump -s 109 -n 1 -e '1/1 "%u"' "$P1" 2>/dev/null)"
+	for _v in "$_bps" "$_shift"; do case "$_v" in ''|*[!0-9]*) _count="" ;; esac; done
+	case "$_count" in ''|*[!0-9]*) _count="" ;; esac
+	if [ -z "$_count" ] || [ "$_bps" -lt 9 ] || [ "$_bps" -gt 12 ] || [ $((_bps + _shift)) -gt 25 ]; then
+		log "trim: skipped -- cannot read the exFAT geometry of $P1"
+		return 0
+	fi
+	# FITRIM's byte range counts from cluster 0; the heap is clusters 2..count+1.
+	_clu=$(( 1 << (_bps + _shift) ))
+	_end=$(( (_count + 2) * _clu ))
+	outside_p1 /run/trim.before || { log "trim: skipped -- cannot snapshot the sectors outside $P1"; return 0; }
+
+	_t0="$(splash_uptime)"; _off=0; _chunk="$TRIM_CHUNK_MIN"; _trimmed=0; _why="done"
+	splash_pulse_start
+	while [ "$_off" -lt "$_end" ]; do
+		_c0="$(splash_uptime)"
+		if ! _out="$(fstrim -v -o "$_off" -l "$_chunk" /mnt/dst 2>&1)"; then
+			_why="stopped by an error: $_out"
+			break
+		fi
+		_n="${_out##*: }"; _n="${_n%% *}"   # "/mnt/dst: N bytes trimmed"
+		case "$_n" in ''|*[!0-9]*) _n=0 ;; esac
+		_trimmed=$((_trimmed + _n))
+		_off=$((_off + _chunk))
+		# More than the range asked for: the bitmap search wrapped, so nothing past _off is free.
+		if [ "$_n" -gt $((_chunk + 2 * _clu)) ]; then
+			_why="done (no free space past $((_off >> 20)) MiB)"
+			_off="$_end"
+			break
+		fi
+		_dt=$(( $(splash_uptime) - _c0 ))
+		if [ "$_dt" -le 1 ] && [ "$_chunk" -lt "$TRIM_CHUNK_MAX" ]; then _chunk=$((_chunk * 2)); fi
+		if [ "$_dt" -ge 4 ] && [ "$_chunk" -gt "$TRIM_CHUNK_MIN" ]; then _chunk=$((_chunk / 2)); fi
+		if [ $(( $(splash_uptime) - _t0 )) -ge "$TRIM_BUDGET" ] && [ "$_off" -lt "$_end" ]; then
+			_why="stopped at the ${TRIM_BUDGET}s budget"
+			break
+		fi
+	done
+	splash_pulse_stop
+	[ "$_off" -le "$_end" ] || _off="$_end"
+	log "trim: $_why -- walked $((_off >> 20)) of $((_end >> 20)) MiB, $((_trimmed >> 20)) MiB discarded, in $(( $(splash_uptime) - _t0 ))s"
+
+	# One retry: a card that has just timed out an erase can be busy for a moment.
+	if ! outside_p1 /run/trim.after; then
+		sleep 2
+		outside_p1 /run/trim.after ||
+			rescue "cannot re-read the sectors outside $P1 after discarding it -- power the board off and on to retry"
+	fi
+	cmp -s /run/trim.before /run/trim.after ||
+		rescue "the card changed sectors outside $P1 while discarding it -- it is probably counterfeit (fake capacity); use another card"
+	rm -f /run/trim.before /run/trim.after
+}
+
 finish_install() {
 	splash_step 10 "finishing the install"
 	DST_PAYLOAD="/mnt/dst/$PAYLOAD_DIR"
@@ -711,6 +792,12 @@ finish_install() {
 	else
 		log "no $INSTALL_TOKEN on $P1 -- nothing to move; only the flag is left to remove"
 	fi
+
+	# Here a cut lands in "finish", so the slow, optional trim costs no re-flash.
+	stage="discarding the free space on $P1"
+	sync
+	trim_free
+	stop_after trimmed
 
 	stage="flushing the data partition"
 	sync
@@ -961,8 +1048,16 @@ stop_after bootloader
 # --------------------------------------------------- mkfs.exfat on new p1 (6)
 splash_step 6 "formatting (exFAT)"
 stage="formatting $P1 as exFAT"
+# FAT and cluster heap on the card's AU boundaries (docs/installer-init.md#exfat-geometry).
+card_au="$(cat "/sys/block/$disk_name/device/preferred_erase_size" 2>/dev/null)" || card_au=""
+case "$card_au" in
+1048576|2097152|4194304|8388608|16777216|33554432|67108864) au="$card_au" ;;
+25165824) au=8388608 ;;   # SDXC's 24 MiB AU: its largest power-of-two divisor (12 MiB -> 4 MiB)
+*) au=4194304 ;;
+esac
+log "exFAT aligned to $((au / 1048576)) MiB (preferred_erase_size '${card_au:-none}')"
 require_armed "format $P1"
-"$MKFS_EXFAT" -n "$DATA_LABEL" "$P1" || rescue "mkfs.exfat on $P1 failed"
+"$MKFS_EXFAT" -n "$DATA_LABEL" -b "$au" --pack-bitmap "$P1" || rescue "mkfs.exfat on $P1 failed"
 sync
 
 stage="mounting the new data partition"

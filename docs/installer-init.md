@@ -107,8 +107,9 @@ keep `SPLASH_TOTAL` equal to the highest `splash_step` call
    the flag, unchanged ([layout](#partition-layout)); re-read it, check the kernel sees
    exactly that, and compare `p2`'s head with `uboot.img` again through the new node.
    There is no instant at which the MBR points the BootROM at an empty `p2`.
-6. `mkfs.exfat -n MiSTer_Data` the new `p1` and mount it `-t exfat` (in-kernel driver,
-   ADR 0019 — no FUSE, unlike mr-fusion).
+6. `mkfs.exfat -n MiSTer_Data -b <AU> --pack-bitmap` the new `p1`
+   ([geometry](#exfat-geometry)) and mount it `-t exfat` (in-kernel driver, ADR 0019 —
+   no FUSE, unlike mr-fusion).
 7. Write the [install token](#card-states), the kernel and `menu.rbf` onto the fresh `p1`
    before any payload byte — from this instant a power cut boots straight back into the
    installer (the flag is still armed) rather than into nothing.
@@ -122,7 +123,7 @@ keep `SPLASH_TOTAL` equal to the highest `splash_step` call
 10. [Commit](#commit-phase): drop the redundant `.gz`, move the payload's entries into
     their final places, apply the pre-seed, write a unique per-board [MAC](#per-board-mac)
     into `linux/u-boot.txt`, remove the payload directory, the pre-seed copy and the
-    token, unmount, and **spend** the flag (wipe the magic block) as the very last act;
+    token, [trim](#free-space-trim) the free space, unmount, and **spend** the flag (wipe the magic block) as the very last act;
     then remove entry 3 from the MBR as cleanup and `reboot -f`.
 
 Because step 10 spends the flag, the next boot is stage 1's normal one. Nothing about
@@ -258,6 +259,88 @@ All three numbers are computed explicitly. mr-fusion's empty-field form
 (`; size; 07` / `; ; a2`) let `sfdisk` auto-place `p1` at LBA 2048 and gave `p2` "the
 rest" — `RESERVED_SECTORS` *minus* the 2048-sector start offset (6144 sectors), so the
 boot partition came out 3 MiB instead of 4 and drifted with `p1`'s alignment.
+
+### exFAT geometry
+
+An SD card erases and rewrites flash in allocation units (AUs, 4 MiB on most cards, up
+to 64 MiB on large SDXC), which it reports in its SD Status register; Linux exposes that
+as `/sys/block/<disk>/device/preferred_erase_size`. A card whose register states no AU
+gets a guess from its capacity there instead (512 KiB to 4 MiB, `mmc_init_erase`), which
+the installer cannot tell apart. exfatprogs' `mkfs.exfat` reads `p1`'s start from sysfs
+and aligns the FAT and the cluster heap to *absolute* multiples of `-b` (default 1 MiB).
+The installer passes the card's AU as `-b`, so the FAT starts on an AU boundary and the
+cluster heap on the next one after it. `--pack-bitmap` moves the allocation bitmap into
+the slack at the end of the FAT's last AU. The FAT and bitmap, which every small write
+updates, then never share an AU with file data (the upcase table and root directory do
+open the first data AU). On the test rig's 256 GB card (AU 4 MiB) that puts the FAT at
+4–11.5 MiB, the bitmap at 11.75 MiB and the rest of the heap at 12 MiB; the 1 MiB
+default had the FAT at 2 MiB and the heap at 10 MiB, half-way through an AU.
+
+The value is used only if it is a power of two from 1 MiB to 64 MiB (the SD spec's
+largest AU); alignment costs at most about two AUs of space, ~128 MiB on a card large
+enough to report 64 MiB. `mkfs.exfat -b` takes only powers of two, so SDXC's 12 and
+24 MiB AUs get their largest power-of-two divisor (4 and 8 MiB) and are not fully
+aligned. Anything else (no such file, as on QEMU's virtio disk, a 512 KiB capacity guess,
+or a nonsense value) falls back to 4 MiB, the common SDHC/SDXC AU. `p1` itself stays at LBA 2048:
+`mkfs.exfat` aligns absolute offsets, so moving the partition start would gain
+nothing, and LBA 2048 is fixed by the [flag](#the-flag) gap and `genimage-sdcard.cfg`.
+The cluster size is left at exfatprogs' default (128 KiB above 32 GiB, 32 KiB up to
+it), which is what the SD Association's file-system spec prescribes for SDXC; measured on
+the rig's 42,788 files that costs 3.9 GiB of slack against 0.9 GiB at 32 KiB. exfatprogs
+1.2.9 computes `32 * GB` in a 32-bit `unsigned long` on ARM, which wraps to 0, so it gave
+*every* card over 256 MiB 128 KiB clusters; `board/mister/de10nano/patches/{exfatprogs,mister-initramfs-exfatprogs}/0001-*`
+backport the upstream fix (3dcda41f774a, first released after 1.2.9) until the pin moves past it.
+
+### Free-space trim
+
+An SD card's controller keeps every sector it has ever been written as live data until
+it is told otherwise, so a reused card (and every card after Etcher has written the
+shipped image) starts the install with flash it believes is full. Just before the
+commit point, `finish_install` discards the new exFAT's free clusters with BusyBox
+`fstrim`, the exFAT driver's `FITRIM`. The kernel turns that into SD DISCARD on cards
+that support it (SD 5.1+; the kernel allows each command 250 ms of busy time) and ERASE
+on the rest, timed from the card's SD Status register; `mmc_core`'s quirk table sends
+ERASE to the SanDisk cards with OEM ID `0x5344`, which claim DISCARD and lack it. What a
+discarded sector reads back as is undefined, which nothing cares about: it is free space.
+
+**Where it runs.** Not before `mkfs`: a cut between the MBR write and `mkfs` re-runs
+from the intact shipped FAT32 under the enlarged `p1` ([recoverability](#recoverability)),
+and a raw discard there would destroy it, stretching the one window that costs a
+re-flash by however long the card takes. After the staged payload and the token are gone,
+a cut lands in `finish`, which only commits (`scripts/test-installer-recovery.sh` scenario
+T), so the trim is outside every window. A `finish` boot trims again; that is harmless.
+
+**Chunked, adaptive, budgeted.** `exfat_trim_fs` issues a discard only at the end of a
+free run, and `blkdev_issue_discard` waits for all of it without checking for signals. A
+fresh volume is one free run, so a single `fstrim` could not be interrupted, and PID 1
+cannot afford an unbounded wait: with no `max_busy_timeout` from the host, `mmc_core`
+sizes each erase command for up to 60 s. The installer walks the cluster heap
+(`ClusterCount` and both shifts from the boot sector) in calls of 32 MiB, doubling to
+256 MiB while a call takes a second or less and halving when one takes 4 s or more, and
+stops between calls once `TRIM_BUDGET` (60 s) has passed. The heartbeat runs throughout.
+A device without discard (`queue/discard_max_bytes` = 0), an unreadable boot sector or an
+`fstrim` error each end the trim with a log line and the install carries on: a partial
+trim is still a valid card.
+
+When no cluster at or after a call's start is free, `exfat_find_free_bitmap` wraps to the
+start of the heap and the call re-discards the free space below. `fstrim -v` then reports
+more than the range asked for, and the walk stops there. A wrap that re-discards less
+than one chunk is not detected; it repeats per remaining call, each one bounded by the
+free space below and all of them by the budget. It needs the heap's tail full, which a
+fresh install leaves only on a card barely larger than the payload.
+
+**Nothing outside `p1` may change.** A counterfeit "fake capacity" card maps high
+addresses back onto low ones, so a discard near its end could wipe the MBR, the flag or
+the bootloader. The installer reads LBA 0–2047 and all of `p2` past the buffer cache
+(`blockdev --flushbufs` on the whole disk) before the trim and again after it, retrying
+the second read once after 2 s. A byte that differs is a `rescue` naming the card as
+probably counterfeit; a second read that still fails is a `rescue` asking for a power
+cycle (the next boot is `finish` and tries again). On a genuine card the block layer
+bounds the discard to `p1`, so neither fires. The check does not cover `p1` itself: a
+fake card whose aliasing lands inside the installed files is not caught here.
+
+The trim never runs on the live system: an erase holds the card's one command queue
+for up to seconds, which would land in the middle of a core load or a save.
 
 ### RAM budget
 
@@ -491,7 +574,7 @@ though `CONFIG_TRUE` is off — that symbol governs only `/bin/true`.
 The budget is real but not fixed. ADR 0033 added `dd` (with `CONFIG_FEATURE_DD_IBS_OBS`
 for `conv=notrunc,fsync`), `cmp`, `wc`, `hexdump`, `blockdev`, `blkid`, `cp`, `mv`, `du`,
 `cut`, `reboot` and 64-bit shell maths — every one of them a few KB, and now on every
-board's cpio. If a future revision needs another, turn its `CONFIG_` symbol on in that
+board's cpio; `fstrim` (4.6 KB) followed for the [free-space trim](#free-space-trim). If a future revision needs another, turn its `CONFIG_` symbol on in that
 file, list it in its header, and add it to `package/mister-initramfs/verify.sh`'s
 installer applet list; do not contort the shell around its absence. Check the symbol
 exists in the BusyBox being built: kconfig silently discards unknown symbols, so a typo
@@ -628,6 +711,7 @@ chooses **which** point to stop at; without the marker it is logged and ignored.
 | `payload-copied` | the copy-back is renamed to `mister-payload/` | `resume` (A) |
 | `expanded` | `linux/linux.img` exists, payload still complete | `resume` (E) |
 | `moved` | the payload moved into place, before the commit | `finish` (G) |
+| `trimmed` | the free-space trim, before the commit | `finish` (T) |
 | `committed` | flag block wiped, entry 3 not yet removed | normal boot, probe says `spent` (H) |
 
 All eight are exercised by that harness; keep it that way — a tag nothing stops at is a

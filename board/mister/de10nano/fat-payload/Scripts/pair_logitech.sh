@@ -25,13 +25,13 @@
 # ---------------------------------------------------------------------------
 # HOW IT GETS ONTO A CARD
 # ---------------------------------------------------------------------------
-# By exactly the same route as the other two Scripts this project ships. They
+# By exactly the same route as the other Scripts this project ships. They
 # are ONE SET and every path treats them as one (ADR 0026):
 #
-#   * install.sh                        -- onboarding, fetches all three
+#   * install.sh                        -- onboarding, fetches all of them
 #   * update_linux_modernization.sh     -- replaces any that went missing
-#   * scripts/fetch-sdcard-payload.sh   -- stages all three into sdcard.img
-#   * uninstall.sh --remove-script      -- removes all three
+#   * scripts/fetch-sdcard-payload.sh   -- stages all of them into sdcard.img
+#   * uninstall.sh --remove-script      -- removes all of them
 #
 # ---------------------------------------------------------------------------
 # WHY IT PASSES NO ARGUMENTS

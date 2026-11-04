@@ -286,7 +286,7 @@ EOF
 # ---------------------------------------------------------------------------
 # Companion Scripts
 # ---------------------------------------------------------------------------
-# This project ships six Scripts/ entries and they arrive by ONE route:
+# This project's Scripts/ entries all arrive by ONE route:
 # install.sh puts them all on the card, and this function replaces any that
 # later go missing (ADR 0026). It is the same shape as ensure_kill_switch
 # above -- repair the card's configuration on every run, so a user who only ever
@@ -319,7 +319,8 @@ ensure_companion_scripts() {
 		"pair_logitech.sh|MLM_PAIR_LOGITECH_URL|mister-pair-logitech" \
 		"usb_full_speed_mode.sh|MLM_USB_FULL_SPEED_URL|mister-usb-full-speed" \
 		"cpu_isolation.sh|MLM_CPU_ISOLATION_URL|mister-cpu-isolation" \
-		"security.sh|MLM_SECURITY_URL|mister-security"
+		"security.sh|MLM_SECURITY_URL|mister-security" \
+		"sinden_lightgun.sh|MLM_SINDEN_URL|mister-sinden-lightgun"
 	do
 		name="${entry%%|*}"
 		override="${entry#*|}"; override="${override%%|*}"

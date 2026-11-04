@@ -1,0 +1,4 @@
+# Sinden Lightgun: run Sinden's driver while a gun's camera is present.
+# Any v4l removal triggers a recount (the parent USB attributes are gone by then).
+ACTION=="add", SUBSYSTEM=="video4linux", ATTRS{idVendor}=="16c0|16d0", ATTRS{idProduct}=="0f01|0f02|0f38|0f39", RUN+="/usr/sbin/mister-sinden-lightgun hotplug"
+ACTION=="remove", SUBSYSTEM=="video4linux", RUN+="/usr/sbin/mister-sinden-lightgun hotplug"

@@ -1,0 +1,44 @@
+config BR2_PACKAGE_SINDEN_LIGHTGUN
+	bool "sinden-lightgun"
+	depends on BR2_PACKAGE_MONO_ARCH_SUPPORTS
+	depends on BR2_INSTALL_LIBSTDCPP # mono
+	depends on BR2_TOOLCHAIN_HAS_THREADS_NPTL # mono
+	depends on !BR2_STATIC_LIBS # mono, libjpeg62
+	depends on BR2_arm # installs the armhf (Raspberry Pi) build
+	select BR2_PACKAGE_MONO
+	select BR2_PACKAGE_SDL
+	select BR2_PACKAGE_SDL_IMAGE
+	select BR2_PACKAGE_LIBJPEG62
+	help
+	  Runtime and glue for Sinden Technology's Linux Lightgun driver
+	  (the Raspberry Pi build). Sinden's licence forbids anyone else
+	  distributing it, so the image carries none of it:
+	  Scripts/sinden_lightgun.sh downloads it from sindenlightgun.com
+	  onto the card, and a udev rule runs it, pinned to CPU0, while a
+	  gun is plugged in. Main_MiSTer already recognises the guns.
+
+	  Everything the driver links against comes from Buildroot: mono,
+	  SDL 1.2, SDL_image 1.2 and libjpeg.so.62. The kernel needs the
+	  USB video class driver (uvcvideo). See docs/sinden-lightgun.md.
+
+	  https://www.sindenlightgun.com/
+
+if BR2_PACKAGE_SINDEN_LIGHTGUN
+
+config BR2_PACKAGE_SINDEN_LIGHTGUN_TRIM_MONO
+	bool "trim mono to what the Sinden driver needs"
+	default y
+	help
+	  Buildroot's mono installs every profile, reference assembly
+	  and tool (~200 MB). This keeps only the runtime and the
+	  assemblies LightgunMono.exe references (~20 MB).
+
+	  Say n if anything else on the image runs mono: it would fail
+	  at run time with "Could not load file or assembly".
+
+endif
+
+comment "sinden-lightgun needs a 32-bit ARM toolchain w/ C++, NPTL, dynamic library"
+	depends on BR2_PACKAGE_MONO_ARCH_SUPPORTS
+	depends on !BR2_arm || !BR2_INSTALL_LIBSTDCPP || \
+		!BR2_TOOLCHAIN_HAS_THREADS_NPTL || BR2_STATIC_LIBS

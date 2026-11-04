@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Tue, 3 Nov 2026 12:30:00 -0600
+Subject: [PATCH] zaparoo_scanout: accept any 6.18 point release
+
+validate_platform() refuses to load unless utsname()->release equals the
+literal "6.18.38-MiSTer", so the module returns -ENODEV on every other
+kernel, including the one it was built for. Narrow the check to the 6.18
+series instead of dropping it: vermagic already binds the .ko to the
+kernel it was compiled against, and a series move (where the mmap
+callback's VMA-insertion ordering could change) still fails closed until
+the patch is revisited. The machine-compatible and MiSTer_fb device-tree
+checks are unchanged.
+
+Upstream: not submitted (upstream qualifies one stock kernel build)
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ kernel/scanout-slots/zaparoo_scanout.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+--- a/kernel/scanout-slots/zaparoo_scanout.c
++++ b/kernel/scanout-slots/zaparoo_scanout.c
+@@ -69,7 +69,8 @@
+ 	const __be32 *cells;
+ 	int len, ret = -ENODEV;
+ 
+-	if (strcmp(utsname()->release, ZAPAROO_SCANOUT_KERNEL_RELEASE) ||
++	/* Any 6.18.y: vermagic pins the build; the series bounds the VMA contract. */
++	if (strncmp(utsname()->release, "6.18.", 5) ||
+ 	    !of_machine_is_compatible(ZAPAROO_SCANOUT_MACHINE))
+ 		return -ENODEV;
+ 	cells = of_get_property(of_root, "#address-cells", &len);
+-- 
+2.53.0
+

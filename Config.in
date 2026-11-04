@@ -69,6 +69,10 @@ menu "USB controller drivers (out-of-tree, P3.2)"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/xow-firmware/Config.in"
 endmenu
 
+menu "Display drivers (out-of-tree)"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/zaparoo-scanout/Config.in"
+endmenu
+
 menu "Input-device userspace tooling"
 	# Deliberately NOT folded into the "USB controller drivers" menu above:
 	# everything there is an out-of-tree KERNEL MODULE, and these are plain

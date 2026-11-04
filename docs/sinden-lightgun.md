@@ -7,7 +7,19 @@ screen in that video by looking for a white border. The driver then sends the
 aim point back to the gun over a USB serial port, and the gun reports it as a
 mouse or joystick.
 
-This image supplies everything the driver needs except the driver itself.
+An image built with `BR2_PACKAGE_SINDEN_LIGHTGUN` supplies everything the driver
+needs except the driver itself.
+
+**Not built by default (2026-11-04).** The package pulls in mono, whose host build
+alone is about 20 minutes and a 2.8 GB build tree, and nobody on the project can test
+it with a gun. So `configs/mister_de10nano_defconfig` leaves it off, and the shipped
+image, release and SD card carry none of it: no mono, no `Scripts/sinden_lightgun.sh`.
+The `uvcvideo` modules (§2) stay in the kernel, since they cost little and serve any
+UVC webcam.
+
+To build it, add `BR2_PACKAGE_SINDEN_LIGHTGUN=y` to the DE10 defconfig, build the
+image, and copy `board/mister/de10nano/fat-payload/Scripts/sinden_lightgun.sh` to
+`/media/fat/Scripts/` (or run `/usr/sbin/mister-sinden-lightgun install` over SSH).
 
 ## 1. What a gun looks like to the board
 
@@ -70,8 +82,9 @@ forbids that. Everything *they* link against comes from Buildroot instead.
 
 ## 4. What the image adds
 
-`BR2_PACKAGE_SINDEN_LIGHTGUN` (DE10 defconfig only: it installs the armhf Pi
-build; Sinden's Pi5 aarch64 build could serve the DE25 later) selects:
+`BR2_PACKAGE_SINDEN_LIGHTGUN` (DE10 only, and off by default, see the top: it
+installs the armhf Pi build; Sinden's Pi5 aarch64 build could serve the DE25 later)
+selects:
 
 | Package | Why | Target cost |
 |---|---|---|

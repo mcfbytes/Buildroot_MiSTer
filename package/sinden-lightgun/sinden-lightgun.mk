@@ -8,13 +8,15 @@
 SINDEN_LIGHTGUN_VERSION = 1
 SINDEN_LIGHTGUN_SOURCE =
 SINDEN_LIGHTGUN_LICENSE = GPL-3.0
-SINDEN_LIGHTGUN_DEPENDENCIES = mono sdl sdl_image libjpeg62
+SINDEN_LIGHTGUN_DEPENDENCIES = mono sdl sdl_image libjpeg62 minijail
 
 define SINDEN_LIGHTGUN_INSTALL_TARGET_CMDS
 	$(INSTALL) -D -m 0755 $(SINDEN_LIGHTGUN_PKGDIR)/mister-sinden-lightgun \
 		$(TARGET_DIR)/usr/sbin/mister-sinden-lightgun
 	$(INSTALL) -D -m 0644 $(SINDEN_LIGHTGUN_PKGDIR)/61-sinden-lightgun.rules \
 		$(TARGET_DIR)/etc/udev/rules.d/61-sinden-lightgun.rules
+	$(INSTALL) -D -m 0644 $(SINDEN_LIGHTGUN_PKGDIR)/sinden-lightgun.conf \
+		$(TARGET_DIR)/etc/minijail/sinden-lightgun.conf
 endef
 
 # Mono ships ~200 MB; keep the runtime and LightgunMono.exe's closure, in the GAC

@@ -370,11 +370,6 @@ stage_stock_payload() {
 #       Shows and changes SSH and FTP security settings (ADR 0031). Same shim
 #       shape: the tool is /usr/sbin/mister-security.
 #
-#   Scripts/sinden_lightgun.sh
-#       Downloads Sinden's Lightgun driver onto this partition and enables it
-#       (docs/sinden-lightgun.md). Same shim shape: the tool is
-#       /usr/sbin/mister-sinden-lightgun in the rootfs.
-#
 #   linux/security.conf
 #       The hardened state a NEW card starts in (ADR 0031). The sdcard image is
 #       the only thing that ships it: on an updated card the file is absent,
@@ -405,7 +400,7 @@ stage_update_channel() {
 
 	# Every Script, one loop. install.sh, uninstall.sh and the updater treat them
 	# as one set too -- see install_scripts() in install.sh (ADR 0026).
-	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh Scripts/usb_full_speed_mode.sh Scripts/cpu_isolation.sh Scripts/security.sh Scripts/sinden_lightgun.sh"
+	local scripts="Scripts/update_linux_modernization.sh Scripts/check_storage.sh Scripts/pair_logitech.sh Scripts/usb_full_speed_mode.sh Scripts/cpu_isolation.sh Scripts/security.sh"
 	local f
 	for f in downloader.ini $scripts; do
 		[ -f "$src/$f" ] || die "missing update-channel payload file: $src/$f"
@@ -467,6 +462,19 @@ fetch_wifi_sh() {
 # 3. _Console cores (SDCARD_CORES=1 only) -- no hash pin, commit-pin only
 # ============================================================================
 
+# Removes every entry of $1 that is not named in manifest $2's first column, so a core
+# dropped or renamed at a newer pin does not survive from an earlier run.
+prune_stale_cores() {
+	local dir=$1 manifest=$2 f
+	for f in "$dir"/* "$dir"/.[!.]*; do
+		[ -e "$f" ] || [ -L "$f" ] || continue
+		if ! cut -f1 "$manifest" | grep -qxF -- "${f##*/}"; then
+			rm -rf -- "$f"
+			log "_Console: removed ${f##*/}, not in the pinned listing"
+		fi
+	done
+}
+
 fetch_cores() {
 	need_cmd jq
 
@@ -515,6 +523,7 @@ fetch_cores() {
 		fi
 		total_bytes=$((total_bytes + got_size))
 	done <"$manifest"
+	prune_stale_cores "$dest_dir" "$manifest"
 
 	# Traceability record goes to WORK_DIR (build scratch), NOT inside
 	# dest_dir: docs/verification/sdcard-payload.md §2 asserts every entry
@@ -536,6 +545,9 @@ main() {
 	need_cmd stat
 
 	mkdir -p "$STAGE_DIR" "$WORK_DIR" "$PAYLOAD_DIR"
+	# A STAGE_DIR is reused across runs: start the payload empty, so a file dropped from it
+	# cannot linger. _Console/ is kept for its per-core reuse; prune_stale_cores reconciles it.
+	find "$PAYLOAD_DIR" -mindepth 1 -maxdepth 1 ! -name _Console -exec rm -rf {} +
 
 	log "staging into $PAYLOAD_DIR (SDCARD_CORES=$SDCARD_CORES)"
 

@@ -14,7 +14,9 @@
 # Decisions that leave no line because they are Buildroot's default, recorded
 # here so they are not "missing": passwordless root (BR2_TARGET_GENERIC_ROOT_PASSWD
 # is "", matching stock, ADR 0015); azcopy is packaged but NOT enabled
-# (docs/azcopy.md); zImage is the arm default image.
+# (docs/azcopy.md); sinden-lightgun is packaged but NOT enabled (mono is a
+# heavy build and untested with a gun, docs/sinden-lightgun.md); zImage is the
+# arm default image.
 #
 # Pins Renovate manages in THIS file: the 6.18.y kernel
 # (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE, hash in board/mister/de10nano/patches/
@@ -69,7 +71,6 @@ BR2_PACKAGE_HOST_KMOD_XZ=y
 BR2_PACKAGE_MISTER_FIRMWARE=y
 BR2_PACKAGE_MISTER_DRIVERS=y
 BR2_PACKAGE_MISTER_USERSPACE=y
-BR2_PACKAGE_SINDEN_LIGHTGUN=y
 BR2_PACKAGE_ZAPAROO_SCANOUT=y
 BR2_PACKAGE_LINUX_RT=y
 BR2_PACKAGE_LINUX_RT_VERSION="7.3.1"

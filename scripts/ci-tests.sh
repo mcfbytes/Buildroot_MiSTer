@@ -1599,6 +1599,25 @@ else
 	fail "inittab starts gpm through gpm-jail as uid 8427, CAP_SYS_ADMIN only, TIOCSTI refused" \
 		"etc/inittab, usr/libexec/mister/gpm-jail, etc/minijail/gpm.conf or etc/passwd changed, or usr/sbin/gpm lacks patches/gpm/0001 (no GPM_FOREGROUND)"
 fi
+# Sinden's driver runs jailed as uid 8428, no capabilities, no network (docs/minijail.md).
+if tar tf "$ROOTFS_TAR" ./usr/sbin/mister-sinden-lightgun >/dev/null 2>&1; then
+	sl_body=$(tar xOf "$ROOTFS_TAR" ./usr/sbin/mister-sinden-lightgun 2>/dev/null || true)
+	sl_conf=$(tar xOf "$ROOTFS_TAR" ./etc/minijail/sinden-lightgun.conf 2>/dev/null || true)
+	# shellcheck disable=SC2016 # matched literally in the script text
+	if printf '%s' "$sl_body" | grep -qxF '. /usr/lib/mister/jail.sh' &&
+		printf '%s' "$sl_body" | grep -qF 'elif jail_prepare && jail_launch "$@"; then' &&
+		printf '%s' "$sl_body" | grep -qF 'launch_unjailed "$@"' &&
+		printf '%s' "$sl_body" | grep -qF 'JAIL_SECCOMP_RULES="socket: arg0 == 1 || arg0 == 16 && arg2 == 15; return 97"' &&
+		printf '%s' "$sl_conf" | grep -qxF 'u = 8428' &&
+		printf '%s' "$sl_conf" | grep -qxF 'c = 0x0' &&
+		printf '%s' "$sl_conf" | grep -qxF 'e' &&
+		tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep -q '^sinden:x:8428:'; then
+		pass "mister-sinden-lightgun runs Sinden's driver jailed as uid 8428, no capabilities, no network"
+	else
+		fail "mister-sinden-lightgun runs Sinden's driver jailed as uid 8428, no capabilities, no network" \
+			"usr/sbin/mister-sinden-lightgun, etc/minijail/sinden-lightgun.conf or etc/passwd changed"
+	fi
+fi
 bt_passwd=$(tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep '^bluetooth:' || true)
 if [ "$(printf '%s' "$bt_passwd" | cut -d: -f3)" = 8423 ]; then
 	pass "the bluetooth user is pinned to uid 8423 (board/mister/de10nano/users.table)"

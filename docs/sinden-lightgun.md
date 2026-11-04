@@ -7,7 +7,19 @@ screen in that video by looking for a white border. The driver then sends the
 aim point back to the gun over a USB serial port, and the gun reports it as a
 mouse or joystick.
 
-This image supplies everything the driver needs except the driver itself.
+An image built with `BR2_PACKAGE_SINDEN_LIGHTGUN` supplies everything the driver
+needs except the driver itself.
+
+**Not built by default (2026-11-04).** The package pulls in mono, whose host build
+alone is about 20 minutes and a 2.8 GB build tree, and nobody on the project can test
+it with a gun. So `configs/mister_de10nano_defconfig` leaves it off, and the shipped
+image, release and SD card carry none of it: no mono, no `Scripts/sinden_lightgun.sh`.
+The `uvcvideo` modules (§2) stay in the kernel, since they cost little and serve any
+UVC webcam.
+
+To build it, add `BR2_PACKAGE_SINDEN_LIGHTGUN=y` to the DE10 defconfig, build the
+image, and copy `board/mister/de10nano/fat-payload/Scripts/sinden_lightgun.sh` to
+`/media/fat/Scripts/` (or run `/usr/sbin/mister-sinden-lightgun install` over SSH).
 
 ## 1. What a gun looks like to the board
 
@@ -70,8 +82,9 @@ forbids that. Everything *they* link against comes from Buildroot instead.
 
 ## 4. What the image adds
 
-`BR2_PACKAGE_SINDEN_LIGHTGUN` (DE10 defconfig only: it installs the armhf Pi
-build; Sinden's Pi5 aarch64 build could serve the DE25 later) selects:
+`BR2_PACKAGE_SINDEN_LIGHTGUN` (DE10 only, and off by default, see the top: it
+installs the armhf Pi build; Sinden's Pi5 aarch64 build could serve the DE25 later)
+selects:
 
 | Package | Why | Target cost |
 |---|---|---|
@@ -128,27 +141,31 @@ if something else ever needs mono.
   `mister-sinden-lightgun hotplug` when a gun's camera appears and on any v4l
   removal. That detaches at once (udev waits on `RUN`'s stdio) and, 2 s
   later, *reconciles*. The driver runs while at least one gun is present, and
-  restarts when the gun count changes, because it enumerates guns only at
-  startup. One instance handles two guns. Guns present at boot are covered by
+  restarts when the guns' device nodes change (a gun added, removed or
+  replugged), because it enumerates guns only at startup. One instance handles two guns. Guns present at boot are covered by
   the coldplug `add` events; `/media/fat` is mounted by the initramfs before
   udev starts.
-- **CPU0:** the driver runs under `taskset -c 0`. Main_MiSTer pins itself to
-  CPU1 (`main.cpp:42-48`, [abi-contract](abi-contract.md)), and the driver must
-  not compete with it.
+- **Jail:** the driver runs in a minijail as uid 8428 with no capabilities, no network
+  and only its own directory of the card in view, read-only. Its `/dev` holds just the
+  guns' camera and serial nodes. The design and the fallback are in
+  [docs/minijail.md](minijail.md) "Sinden Lightgun driver". If the jail cannot be built,
+  or `/media/fat/linux/sinden.nojail` exists, it starts unjailed, as root, and says so in
+  syslog and its log.
+- **CPU0:** the starting shell is pinned to CPU0 and the driver inherits it.
+  Main_MiSTer pins itself to CPU1 (`main.cpp:42-48`, [abi-contract](abi-contract.md)),
+  and the driver must not compete with it.
 - **Logs:** `/var/log/sinden-lightgun.log`, replaced on each start because
-  `/var/log` is RAM. `mister-sinden-lightgun status`
-  shows the install, gun count, PID and affinity.
-
+  `/var/log` is RAM. `mister-sinden-lightgun status` shows the install, gun count,
+  PID, whether it is jailed, and affinity.
 - **Uninstall:** `mister-sinden-lightgun uninstall` removes
   `/media/fat/linux/sinden/`. `uninstall.sh --remove-script` does the same
   when going back to stock.
-- **Locking:** every state change runs under `flock` on
-  `/run/sinden-lightgun.lock`. The driver is started with that fd closed. If
-  it inherited the lock, the next udev event would block until the driver
-  exited.
+- **Locking:** every state change runs under the jail helper's lock,
+  `/run/sinden-lightgun.lock`, which the driver never inherits. If it did, the next
+  udev event would block until the driver exited.
 
-The driver shells out to `sh -c "udevadm info ... | grep ..."` and `ls` to find
-guns. All of those are on the image.
+At startup the driver runs `lsusb` (twice) and `cat /proc/cpuinfo` to find guns
+(traced in qemu, 2026-11-04). All of those are on the image and in the jail's view.
 
 ## 6. What is verified, and what is not
 
@@ -169,7 +186,8 @@ Verified on the build host (qemu-arm, `unshare -r chroot` into `rootfs.tar`):
 
 **Not verified:** anything with a real gun. That includes the hotplug rule
 firing, `uvcvideo` streaming the gun's MJPEG, whether `mediumresource` keeps up
-on the Cortex-A9, and aim accuracy. No one on the project owns a gun.
+on the Cortex-A9, aim accuracy, and whether the jail gives the driver
+everything it needs once a camera is streaming. No one on the project owns a gun.
 
 ## 7. The border is a separate problem
 

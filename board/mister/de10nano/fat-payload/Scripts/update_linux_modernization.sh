@@ -319,8 +319,7 @@ ensure_companion_scripts() {
 		"pair_logitech.sh|MLM_PAIR_LOGITECH_URL|mister-pair-logitech" \
 		"usb_full_speed_mode.sh|MLM_USB_FULL_SPEED_URL|mister-usb-full-speed" \
 		"cpu_isolation.sh|MLM_CPU_ISOLATION_URL|mister-cpu-isolation" \
-		"security.sh|MLM_SECURITY_URL|mister-security" \
-		"sinden_lightgun.sh|MLM_SINDEN_URL|mister-sinden-lightgun"
+		"security.sh|MLM_SECURITY_URL|mister-security"
 	do
 		name="${entry%%|*}"
 		override="${entry#*|}"; override="${override%%|*}"

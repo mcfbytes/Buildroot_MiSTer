@@ -5,7 +5,7 @@
 #   https://github.com/ip7z/7zip/releases/download/26.03/7z2603-src.tar.xz
 #
 #   sha256sum 7z2603-src.tar.xz
-sha256  0b6080b8c3e7a579161d2d495224c0e51c467576cb4c7048b0ab485ef44cc22e  7z2605-src.tar.xz
+sha256  a4e374c8f864f51df48c2cfd0e1413ec3b2ea030deae852d6a655402ebb61ac4  7z2606-src.tar.xz
 # DOC/License.txt -- see LZMA_SDK_LICENSE_FILES comment in the .mk; its
 # LGPL/unRAR terms scope only the CPP/ code this package never ships.
 # Byte-identical across 26.02 -> 26.03.
@@ -23,4 +23,4 @@ sha256  9ac2b4a97ab5d523965534d8b2d5868e511b39096d51fff458ab72c38b80fccc  DOC/Li
 # still on line 43. The whole 26.02 -> 26.03 diff is the version banner plus
 # three typo fixes ("infomation" -> "information", "Assembeler" -> "Assembler"
 # x2, "optimzing" -> "optimizing") -- no change of terms.
-sha256  14868b2827a77f9d5ee493cc2b7d40cf1c68273bc0399726a7e0f4ee0f09a1a0  DOC/readme.txt
+sha256  20ad51b9e8c2bc859baf9c65d3d0fe04efc9cf52da97985991959c0fc6ae64ae  DOC/readme.txt

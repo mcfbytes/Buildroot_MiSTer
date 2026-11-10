@@ -1,6 +1,6 @@
 # Device-ID inventory
 
-Generated 2026-10-19 21:06 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
+Generated 2026-11-10 18:09 UTC. VID:PID → commits and dispositions (how each device's support is covered in the 6.18 build).
 
 | Device | Commits (disposition) |
 |---|---|

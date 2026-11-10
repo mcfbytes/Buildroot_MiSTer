@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-10-19 21:06 UTC by `reduce.py` from 150 records (110 MiSTer-v5.15 + 24 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/150.
+Generated 2026-11-10 18:09 UTC by `reduce.py` from 151 records (110 MiSTer-v5.15 + 25 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/151.
 
 ## How to read this table
 
@@ -65,7 +65,7 @@ lives in `records/<full-sha>.json`.
   independently re-derived result (`N` rows are the errors this exercise found; all are
   corrected in that doc's §11).
 - **T2** — `✓` means the record survived a second, independent verification pass
-  (a stronger reviewer re-derived every claim from the actual source trees; 126/150
+  (a stronger reviewer re-derived every claim from the actual source trees; 126/151
   rows have this).
 - **Why / replacement** — the short answer to "where did it go?": the mainline commit that
   provides it (`dropped-upstream`), or what replaces it (`→ package/...`, a mainline driver,
@@ -122,7 +122,7 @@ directory is not capped at one.
 
 ### Present-day limitations — the complete list
 
-Of 150 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
+Of 151 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
 
 - `43c52e9ef` Update lg4ff to latest version. Fix broken 32bit rumble/ff (#54) — see its record for the decision and affected hardware.
 - `aec7dc3aa` config: enable CONFIG_TUN for tap device support (#76) — see its record for the decision and affected hardware.
@@ -169,6 +169,7 @@ Of 150 rows, **3** describe a real difference a user could notice on this build 
 | `912aa5608` | v6.18 | **carried** | 0022-hid-playstation-ds4-mac-fix.patch | — | none (carried) | cosmetic/loud | — | ? |  | hid-playstation: fix warning. |
 | `9854075c8` | v6.18 | **carried** | 0050-exfat-dir-readahead-plug.patch | — | none (carried) | cosmetic/silent | — | ? |  | exfat: speed-up dir read-ahead. |
 | `9b9aebfac` | v5.15 | **carried** | 0011-hid-guncon3.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | hid-guncon3: fix warnings. |
+| `9fcb1cb21` | v6.18 | **carried** | 0069-dwc2-host-drop-partial-int-in-on-cs-timeout.patch | — | none (carried) | feature-loss/silent | — | ? |  | usb: dwc2: drop partial interrupt IN data when a split runs… |
 | `a14b5e8e1` | refs/pull/92/head | **carried** | 0049-hid-nintendo-8bitdo-adapter-skip-baudrate.patch | — | none (carried) | feature-loss/loud-in-dmesg-silent-to-user -- kernel log fills with repeated 'Failed to set baudrate', 'Failed handshake', and USB disconnect/reconnect messages (loud, but only visible over a serial console or `dmesg`, which a MiSTer user at the OSD never sees), while the user-facing symptom is simply 'the gamepad does not work' with no on-screen diagnostic -- Main_MiSTer has no code path that surfaces a failed HID bind. Graded 'loud' per the schema's two-value axis because the failure is not silent at the kernel level (errors are logged, the device visibly re-enumerates) -- picking 'silent' would hide the fact that `dmesg` already contains the exact signature (13x -EPROTO/-71, 18x 'probe - fail') needed to diagnose this without re-deriving anything, which is the operationally relevant distinction for this schema field. | Y | ? |  | HID: nintendo: skip baudrate setup for 8BitDo adapters |
 | `a2242dd85` | v5.15 | **carried** | 0017-xpad-mister-deltas.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | xpad: exclude GIP-capable controllers. |
 | `aa8afe109` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | boot-critical/silent | Y | Y | ✓ | Add de10-nano DT. |

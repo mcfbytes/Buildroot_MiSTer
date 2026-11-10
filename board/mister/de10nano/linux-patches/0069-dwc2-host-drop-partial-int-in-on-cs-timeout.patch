@@ -1,0 +1,40 @@
+From 9fcb1cb21313ec1b5b601d3945ffa6f604ccaf49 Mon Sep 17 00:00:00 2001
+From: synrais <78070154+synrais@users.noreply.github.com>
+Date: Mon, 2 Nov 2026 20:28:13 +1100
+Subject: [PATCH] usb: dwc2: drop partial interrupt IN data when a split runs
+ out of time (#115)
+
+When the complete split of an interrupt transfer still gets a NYET after
+its scheduled microframes have passed, dwc2_hc_nyet_intr() gives up and
+halts the channel as a transaction error. The hub may already have
+taken that packet from the device, so it is lost, but for an interrupt
+IN transfer urb->actual_length still counts the packets received before
+it. The device's next packet is then appended to them, and the URB
+completes with the start of one report joined to part of another.
+
+Drop what the interrupt IN transfer has received so far in that case,
+so the next packet starts a new transfer.
+---
+[Carried from MiSTer-devel/Linux-Kernel_MiSTer 9fcb1cb21 (#115) with its
+context moved past 0061's cs_miss counter; the added lines are unchanged.]
+
+ drivers/usb/dwc2/hcd_intr.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/usb/dwc2/hcd_intr.c b/drivers/usb/dwc2/hcd_intr.c
+index 61de804..f0630d4 100644
+--- a/drivers/usb/dwc2/hcd_intr.c
++++ b/drivers/usb/dwc2/hcd_intr.c
+@@ -1548,6 +1548,9 @@ static void dwc2_hc_nyet_intr(struct dwc2_hsotg *hsotg,
+ #endif
+ 				qtd->complete_split = 0;
+ 				hsotg->hcd_stats.cs_miss++;
++				if (chan->ep_type == USB_ENDPOINT_XFER_INT &&
++				    chan->ep_is_in && qtd->urb)
++					qtd->urb->actual_length = 0;
+ 				dwc2_halt_channel(hsotg, chan, qtd,
+ 						  DWC2_HC_XFER_XACT_ERR);
+ 				/* Todo: add support for isoc release */
+-- 
+2.53.0
+

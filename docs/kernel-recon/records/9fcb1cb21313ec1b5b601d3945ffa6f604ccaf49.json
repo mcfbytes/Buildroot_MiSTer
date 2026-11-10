@@ -1,0 +1,60 @@
+{
+  "sha": "9fcb1cb21313ec1b5b601d3945ffa6f604ccaf49",
+  "subject": "usb: dwc2: drop partial interrupt IN data when a split runs out of time (#115)",
+  "author": "synrais",
+  "author_is_pr_contributor": true,
+  "date": "2026-11-02",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "usb",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/usb/dwc2/hcd_intr.c"
+  ],
+  "added": 3,
+  "removed": 0,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0069-dwc2-host-drop-partial-int-in-on-cs-timeout.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": "drivers/usb/dwc2/hcd_intr.c:1537-1554 (linux-6.18.62), the past_end branch of dwc2_hc_nyet_intr(); same code in linux-7.3.3",
+    "vanilla_quote": "\t\t\t\tqtd->complete_split = 0;\n\t\t\t\tdwc2_halt_channel(hsotg, chan, qtd,\n\t\t\t\t\t\t  DWC2_HC_XFER_XACT_ERR);",
+    "equivalence": "absent"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "Not a provenance-doc row: new fork work (PR #115, head 4f098573e, same patch-id ce7e3233... as the squash-merge 9fcb1cb21).",
+  "impact": {
+    "effect_if_absent": "Per the PR's DE10 measurement: under bulk USB load the complete split of a low-speed interrupt IN packet sometimes runs past its scheduled microframes; dwc2 gives up on it, but the bytes already received stay in the URB and the device's next packet is appended, so the URB completes as two reports joined together (a phantom d-pad Up on the tested pad). 10-11 per 30 s drive read, 32-67 per 3 min drive read + Wi-Fi; 0 with the fix. Nothing in dmesg.",
+    "affected_hardware": [
+      "full/low-speed USB devices with multi-packet interrupt IN transfers behind a high-speed hub (split transactions), during bulk transfers -- the PR's case is a 14-byte-report (8 + 6) low-speed pad behind a Terminus FE2.1 hub (1a40:0201)"
+    ],
+    "device_ids": [],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "evdev reports Main_MiSTer reads; no interface change",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": "The fork commit does not apply at -F0 on our series: 0061 (dwc2 debugfs hcd_stats) puts `hsotg->hcd_stats.cs_miss++;` on the hunk's trailing context line. 0069 carries the same three added lines one line later, after the counter.",
+    "effort": "trivial -- context-only rebase. Measured with each full series in order at patch -p1 -F0 on pristine tarballs, hash-checked against linux.hash / linux-rt.hash: de10nano 55/55 on linux-6.18.62, beta 57/57 and de25nano 40/40 on linux-7.3.3; offsets only, zero fuzz, zero rejects. drivers/usb/dwc2/ builds W=1 on all three configs (arm, arm RT, arm64) with 0 warnings, with and without 0069."
+  },
+  "dependencies": {
+    "depends_on": [
+      "0061-dwc2-host-debugfs-hcd-stats.patch (context only)"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0 (the file's SPDX tag). Author synrais <78070154+synrais@users.noreply.github.com>, who opened PR #115. The commit carries NO Signed-off-by; 0069 reproduces it as committed and does not add one on the author's behalf. Fine for this repo and the fork; a mainline submission would need the author's own sign-off.",
+  "notes": "NOT A BACKPORT, and not in mainline: linux-6.18.62 and linux-7.3.3 have the unchanged past_end branch, and the linux-next log for drivers/usb/dwc2/hcd_intr.c (git.kernel.org, 2026-11-10) still ends at 'usb: dwc2: remove WARN in dwc2_hcd_save_data_toggle'. No dwc2 file changes in 6.18.60->62 or 7.3.1->3.\n\nCOMPANION TO 0068 (same author, same symptom class). 0068 stopped stale HCINT bits being read as the next transaction's result; this one handles a split that genuinely ran out of time. PR #115 is based directly on 3726e2eba, so its measurements include 0068.\n\nWHAT IT DOES TO THE PATH. past_end halts the channel with DWC2_HC_XFER_XACT_ERR without bumping qtd->error_count (that line is under #if 0 upstream), so dwc2_release_channel() keeps the qtd and the transfer restarts at its next interval with complete_split = 0. Before the patch it restarted at buf + actual_length; now an interrupt IN restarts at buf + 0, the same offset dwc2_hc_init_xfer() and dwc2_update_urb_state() (including 0028's aligned-buffer copy) use for a fresh URB. Only an int is written: no allocation, free, list or lock change, so no leak or lifetime change. Bulk, control, isochronous and OUT are untouched. The qtd->urb check is defensive; other handlers on this path dereference qtd->urb unconditionally.\n\nDMA MODES. Reached in buffer-DMA mode (fs_ddma=0, both boards' default) via dwc2_hc_chhltd_intr_dma(). With fs_ddma=1 a channel halt goes to dwc2_hcd_complete_xfer_ddma() first, so this branch never runs.\n\nKNOWN LIMIT (the PR's own): a lost FIRST packet still leaves a short tail report, which hid-core zero-pads; dwc2 cannot tell it from a whole one-packet report. Packets are still lost under load -- 116 in the PR's 3-minute run with the fix -- they are skipped instead of joined. 0061's hcd_stats cs_miss counter (debugfs) counts exactly this branch, so the loss rate is observable on our image.\n\nDE25 INCLUDED, the same reasoning as 0056/0060/0068: generic dwc2 host logic on the buffer-DMA path that board runs.\n\nNOT TESTED on this project's rig or on a DE25. Author's hardware: DE10-Nano on the fork's 6.18, which lacks our 0054-0066.\n\nOPEN, from the 2026-11-10 review -- recorded, not invented here (each would be original code with no fork commit behind it):\n(1) COVERAGE. Two other interrupt-IN give-ups on this path still restart at buf + actual_length and can still join reports: dwc2_hc_xacterr_intr() (USB_ENDPOINT_XFER_INT: complete_split = 0, halt XACT_ERR; the URB fails -EPROTO only at error_count 3) and dwc2_hc_frmovrun_intr() (USB_ENDPOINT_XFER_INT: halt FRAME_OVERRUN). The PR measured 0 joined reports with only the NYET branch fixed, so under its load those two did not fire, but nothing rules them out. A fix covering all three would live where the transfer restarts (dwc2_release_channel() for a split INT IN); candidate for the author upstream.\n(2) DATA TOGGLE, unverified. If the TT had already ACKed the lost packet to the device, the device's toggle is ahead of the host's, and the device's next packet may be dropped as a toggle mismatch. That would give the short-tail report of the KNOWN LIMIT rather than a join -- consistent with the PR's 'packets are still lost' -- but it is unproven without a bus trace.\n(3) PRE-EXISTING, unchanged: past_end never bumps qtd->error_count (#if 0 upstream), so an interrupt IN that keeps missing its window retries forever. 0069 now discards the partial data on each miss instead of joining it; cs_miss in hcd_stats is the only signal.\nNo allocation, free or locking changes -- the review found no leak or lifetime issue."
+}

@@ -101,6 +101,7 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | — | `0066-dwc2-ddma-keep-xfercompl-unmasked` | *post-audit (added 2026-09-26, #205)* | **excluded** — descriptor DMA is off on this board: dwc2 only enables it through `0059`, which is held for hardware qualification, so this code never runs | Same as `0054`. |
 | — | `0067-wifi-rtw88-8821c-support-rfe-type-7` | *post-audit (added 2026-09-30)* | **included** | Adds the missing RFE type 7 definition to rtw88's RTL8821C driver; USB-generic, no architecture exposure. |
 | — | `0068-dwc2-host-ack-all-hcint-bits` | *post-audit (added 2026-10-19, fork 3726e2eba)* | **included** | Writes the raw HCINT value back in `dwc2_hc_n_intr()`, as before v6.7; fixes lost low-speed HID packets behind a hub under bulk load on the DE10. Buffer-DMA path, which is this board's mode; generic dwc2 logic. |
+| — | `0069-dwc2-host-drop-partial-int-in-on-cs-timeout` | *post-audit (added 2026-11-10, fork 9fcb1cb21)* | **included** | When a complete split runs past its microframes, drops the partial interrupt IN data instead of joining it to the next packet (phantom pad input under bulk load on the DE10). Buffer-DMA path, which is this board's mode; generic dwc2 logic. |
 
 ### DE25-local patches (not in the audit — new work)
 
@@ -120,8 +121,9 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | dwc2 series `0054`–`0066` (#205) | 13 considered, **3** included (`0056`, `0060`, `0061`); 10 held: the descriptor-DMA set and `0058`/`0059`/`0062` wait for hardware qualification (`docs/dwc2-usb-irq.md`) |
 | rtw88 `0067` (2026-09-30) | 1 considered, **1** included |
 | dwc2 `0068` (2026-10-19, fork #114) | 1 considered, **1** included |
+| dwc2 `0069` (2026-11-10, fork #115) | 1 considered, **1** included |
 | DE25-local patches | **2** (`0101`, `0102`) |
-| **Total applied here** | **39** |
+| **Total applied here** | **40** |
 
 ## Note for the DE25 DTS
 

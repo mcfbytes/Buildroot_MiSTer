@@ -284,3 +284,4 @@
 0066-dwc2-ddma-keep-xfercompl-unmasked.patch
 0067-wifi-rtw88-8821c-support-rfe-type-7.patch
 0068-dwc2-host-ack-all-hcint-bits.patch
+0069-dwc2-host-drop-partial-int-in-on-cs-timeout.patch

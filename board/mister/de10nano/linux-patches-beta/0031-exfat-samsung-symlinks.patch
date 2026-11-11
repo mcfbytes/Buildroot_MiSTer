@@ -408,8 +408,8 @@ diff --git a/fs/exfat/namei.c b/fs/exfat/namei.c
 +	}
 +
 +	i_size_write(inode, len);
-+	ei->valid_size = len;
-+	ei->zeroed_size = len;
++	exfat_set_valid_size(ei, len);
++	exfat_set_zeroed_size(ei, len);
 +	mark_inode_dirty(inode);
 +	return 0;
 +}

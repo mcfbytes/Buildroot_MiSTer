@@ -1,6 +1,6 @@
 # Silent-regression triage — the headline list
 
-Generated 2026-10-19 21:06 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
+Generated 2026-11-10 18:09 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
 
 **Total: 0 candidates** (of which 0 feature-loss).
 
@@ -31,6 +31,7 @@ These WOULD regress silently if their patch (or, for `carried-as-package` rows, 
 - `8179ac736` Add driver for Namco Guncon 3 (#20) → 0011-hid-guncon3.patch
 - `817ace70b` Remove XBox One Wireless Adapter USB IDs from mt76 driver t… → 0027-mt76x2u-release-xbox-adapter-ids.patch
 - `9b9aebfac` hid-guncon3: fix warnings. → 0011-hid-guncon3.patch
+- `9fcb1cb21` usb: dwc2: drop partial interrupt IN data when a split runs… → 0069-dwc2-host-drop-partial-int-in-on-cs-timeout.patch
 - `a2242dd85` xpad: exclude GIP-capable controllers. → 0017-xpad-mister-deltas.patch
 - `aa8afe109` Add de10-nano DT. → 0004-dts-de10nano-MiSTer.patch
 - `b00a72159` Add support for NSO Mega Drive Controller (#50) → 0038-hid-nintendo-nso-genesis-bt-pid.patch, 0039-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch

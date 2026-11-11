@@ -24,7 +24,7 @@
     "  2. The kernel custom datasource returned a bare object instead of a one-element",
     "     array -- see its own description below.",
     "The only reliable check is a real extraction run, which needs no GitHub token:",
-    "  npx --package renovate@latest -- renovate --platform=local --dry-run=full",
+    "  npx --package renovate@<pin in renovate-validate.yml> -- renovate --platform=local --dry-run=full",
     "Expect a `regex` entry in the 'Dependency extraction complete' stats with",
     "fileCount 23 / depCount 24 (2026-08-17, 22 customManagers). RE-DERIVE BOTH",
     "whenever a manager is added or a managerFilePatterns entry changes -- neither",
@@ -119,7 +119,7 @@
   ],
   "automerge": false,
   "platformAutomerge": false,
-  "dependencyDashboard": {"enabled": true},
+  "dependencyDashboard": true,
   "prConcurrentLimit": 2,
   "prHourlyLimit": 2,
   "schedule": [
@@ -502,6 +502,18 @@
       "depNameTemplate": "MiSTer-devel/Distribution_MiSTer",
       "packageNameTemplate": "https://github.com/MiSTer-devel/Distribution_MiSTer",
       "datasourceTemplate": "git-refs"
+    },
+    {
+      "customType": "regex",
+      "description": "Renovate version that renovate-validate.yml runs (both the validator and the extraction smoke test). Pinned because the hosted Mend app runs a Renovate that lags npm: on 2026-11-11, 44.232.0's validator demanded `dependencyDashboard: {enabled: true}`, Mend's app rejected that form, and opened issue #295. See the packageRule below for the release-age delay.",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/renovate-validate\\.yml$/"
+      ],
+      "matchStrings": [
+        "--package renovate@(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "renovate",
+      "datasourceTemplate": "npm"
     }
   ],
   "packageRules": [
@@ -653,6 +665,19 @@
         "github-tags",
         "github-releases"
       ],
+      "addLabels": [
+        "gh-actions"
+      ]
+    },
+    {
+      "description": "CI's own Renovate pin (renovate-validate.yml). Hold each release for 14 days so Mend's hosted app has probably caught up before CI's validator moves to it. If the bump PR goes red with 'Config migration necessary', apply the migration in the same PR only after confirming Mend accepts the new form; otherwise close it and wait (issue #295).",
+      "matchManagers": [
+        "custom.regex"
+      ],
+      "matchDepNames": [
+        "renovate"
+      ],
+      "minimumReleaseAge": "14 days",
       "addLabels": [
         "gh-actions"
       ]

@@ -13,8 +13,20 @@ Renovate is **installed on this repository** and this config is active.
 pushing any change to it:
 
 ```sh
-npx --package renovate -- renovate-config-validator renovate.json
+npx --package renovate@<pin> -- renovate-config-validator renovate.json
 ```
+
+**Use the pinned version, not `renovate@latest`.** `<pin>` is the version in
+`.github/workflows/renovate-validate.yml`. Both of its steps use that version. The hosted
+Mend app runs Renovate behind npm, and the validator's `--strict` mode fails on any pending
+migration. On 2026-11-11, 44.232.0 moved `dependencyDashboard` from a boolean to
+`{"enabled": true}`. Mend's app, still on an older release, then rejected the
+object form and opened issue #295 to say so.
+
+Renovate bumps the pin itself (a custom regex manager), held back 14 days by
+`minimumReleaseAge` so Mend has probably caught up. If a bump PR fails with "Config
+migration necessary", apply the migration in that PR only once Mend's app accepts the new
+form. Otherwise close the PR and wait.
 
 That check is not optional busywork: an **invalid Renovate config makes Renovate
 skip the repository silently**. It does not fail loudly on Renovate's side — the

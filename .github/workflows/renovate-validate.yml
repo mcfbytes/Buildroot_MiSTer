@@ -54,8 +54,10 @@ jobs:
       # Renovate would otherwise tolerate and ignore) fail the run too. We want
       # to hear about a manager that has quietly stopped doing anything, not just
       # about outright-malformed JSON.
+      # Pinned (both steps): hosted Mend lags npm. Renovate bumps this pin
+      # itself, held for 14 days by minimumReleaseAge (docs/renovate.md).
       - name: Validate renovate.json
-        run: npx --yes --package renovate -- renovate-config-validator --strict renovate.json
+        run: npx --yes --package renovate@44.231.0 -- renovate-config-validator --strict renovate.json
 
       # The validator above checks SHAPE ONLY. It cannot tell you whether a
       # manager actually matches a file or whether a datasource returns anything
@@ -76,7 +78,7 @@ jobs:
           set -euo pipefail
           # NB: the full debug log runs to several GB — filter the stream, never
           # spool it to disk, or this step fills the runner.
-          LOG_LEVEL=debug npx --yes --package renovate@latest -- \
+          LOG_LEVEL=debug npx --yes --package renovate@44.231.0 -- \
             renovate --platform=local --dry-run=full 2>&1 \
             | grep -E '"regex": \{"fileCount"|"message": "Failed to look up' \
             > renovate-run.log || true

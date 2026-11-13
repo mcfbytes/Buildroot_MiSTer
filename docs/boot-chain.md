@@ -712,9 +712,9 @@ Shorthand: `have() { grep -qx "CONFIG_$1" "$CFG"; }` / `notset() { grep -qx "# C
 | B2 | `CONFIG_ARM_ATAG_DTB_COMPAT` | **not set / absent** | Absent from stock (it depends on `ARM_APPENDED_DTB`). Purely an appended-DTB feature. | `! grep -q '^CONFIG_ARM_ATAG_DTB_COMPAT=' "$CFG"` |
 | B3 | `CONFIG_USE_OF` | `y` | Stock `CONFIG_USE_OF=y`, `CONFIG_OF=y`. Mandatory: without it `IMAGE_ENABLE_OF_LIBFDT` on the U-Boot side is irrelevant — the kernel would ignore `r2`. | `grep -qx 'CONFIG_USE_OF=y' "$CFG"` |
 | B4 | `CONFIG_ATAGS` | `y` (stock parity) — **inert either way** | Stock is `CONFIG_ATAGS=y`. **This is a nuance the verification doc's "No ATAG involvement" could be misread on:** ATAGs are *not used at boot* (r2 holds the DTB, `gd->bd->bi_boot_params` is not passed), but the symbol *is* enabled in the stock kernel — it defaults `y` (`linux:arch/arm/Kconfig:1628-1630`) and nobody turned it off. Setting it to `n` is also correct and saves a little text; setting it to `y` is stock parity. **Assert nothing about the boot path from this symbol** — assert B5/B6 instead. Recommendation: keep `=y` (minimise divergence), document that it is dead code. | `grep -qE '^(CONFIG_ATAGS=y\|# CONFIG_ATAGS is not set)$' "$CFG"` (informational) |
-| B5 | `CONFIG_CMDLINE` | **`""`** | Stock: `CONFIG_CMDLINE=""`. This is the load-bearing one. `early_init_dt_scan_chosen()` copies `/chosen/bootargs` into `boot_command_line`, then: `linux:drivers/of/fdt.c:1158-1169` — with `CONFIG_CMDLINE` empty and neither `EXTEND` nor `FORCE` defined, the `else` branch runs `if (!data[0]) strlcpy(data, CONFIG_CMDLINE, …)`, i.e. **a no-op**, and the DT bootargs survive intact. | `grep -qx 'CONFIG_CMDLINE=""' "$CFG"` |
+| B5 | `CONFIG_CMDLINE` | **`"uio_pdrv_genirq.of_id=generic-uio"`** (one token, appended) | Stock: `CONFIG_CMDLINE=""`. `early_init_dt_scan_chosen()` copies `/chosen/bootargs` into `boot_command_line` and, under B7's `CMDLINE_EXTEND`, appends `CONFIG_CMDLINE` after it (`linux:drivers/of/fdt.c`), so U-Boot's `root=`, `loop=`, `mem=511M` and `ro` survive and the kernel adds exactly one token: the `uio_pdrv_genirq` match string the HPS<->FPGA UIO nodes need ([`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §4). It must never carry anything U-Boot also sets. | `grep -qx 'CONFIG_CMDLINE="uio_pdrv_genirq.of_id=generic-uio"' "$CFG"` |
 | B6 | `CONFIG_CMDLINE_FORCE` | **not set** | Absent in stock. If set, `linux:drivers/of/fdt.c:1162-1163` does `strlcpy(data, CONFIG_CMDLINE, …)` — **unconditionally replacing the bootloader cmdline**, destroying `root=`, `loop=`, `mem=511M` and `ro`. The board would not boot. *(Naming note for the task text: on ARM the symbol is `CMDLINE_FORCE`; there is no `CONFIG_CMDLINE_OVERRIDE` — that name belongs to other subsystems. `CMDLINE_FROM_BOOTLOADER` is the default member of a `choice` whose prompt only appears when `CMDLINE != ""` and which `depends on ATAGS` (`linux:arch/arm/Kconfig:1740-1743`) — which is why it is simply **absent** from the stock config rather than `=y`. Do not "fix" that absence.)* | `! grep -q '^CONFIG_CMDLINE_FORCE=y' "$CFG"` |
-| B7 | `CONFIG_CMDLINE_EXTEND` | **not set** | Absent in stock. If set, `linux:drivers/of/fdt.c:1159-1161` appends `CONFIG_CMDLINE` to the bootloader's — harmless while `CMDLINE=""`, but it makes B5 load-bearing in a way that is easy to break later. Keep off. | `! grep -q '^CONFIG_CMDLINE_EXTEND=y' "$CFG"` |
+| B7 | `CONFIG_CMDLINE_EXTEND` | **`y`** | Absent in stock (stock's `CMDLINE` is empty). Required by B5: it is the mode that appends rather than replaces (`linux:drivers/of/fdt.c`), the same recipe the RT line has booted since 2026-08. Together with B6 it is what keeps the bootloader cmdline intact. | `grep -qx 'CONFIG_CMDLINE_EXTEND=y' "$CFG"` |
 
 ### 8.2 Initramfs assertions (A1) — **contains the biggest surprise in this task**
 
@@ -849,9 +849,9 @@ forbid() { grep -q  "$1" "$CFG" && { echo "FAIL: must not have '$1'"; rc=1; }; }
 
 req    '# CONFIG_ARM_APPENDED_DTB is not set'   # B1
 req    'CONFIG_USE_OF=y'                        # B3
-req    'CONFIG_CMDLINE=""'                      # B5
+req    'CONFIG_CMDLINE="uio_pdrv_genirq.of_id=generic-uio"'  # B5
 forbid '^CONFIG_CMDLINE_FORCE=y'                # B6
-forbid '^CONFIG_CMDLINE_EXTEND=y'               # B7
+req    'CONFIG_CMDLINE_EXTEND=y'                # B7
 req    'CONFIG_BLK_DEV_INITRD=y'                # I1  <-- diverges from stock ON PURPOSE
 grep -q '^CONFIG_INITRAMFS_SOURCE=".\+"' "$CFG" || { echo "FAIL: INITRAMFS_SOURCE empty"; rc=1; }  # I2
 req    'CONFIG_BLK_DEV_LOOP=y'                  # L1

@@ -6,9 +6,8 @@
 #
 # The base linux.config reconciles cleanly to 7.2 and 7.3 via `olddefconfig`
 # (verified: every MiSTer-critical symbol survives), so this fragment carries ONLY the
-# deltas that make this the RT/beta kernel: PREEMPT_RT itself, the UIO
-# doorbell support that the RT line exists to serve, and pstore/ramoops so a
-# board that dies on this kernel can say what it was doing.
+# deltas that make this the RT/beta kernel: PREEMPT_RT itself and
+# pstore/ramoops so a board that dies on this kernel can say what it was doing.
 
 # --- PREEMPT_RT: the point of the variant ------------------------------------
 # A fully-preemptible real-time kernel. On Linux 7.3, arch/arm selects
@@ -17,50 +16,10 @@
 # RT patch to carry. (RT for 32-bit ARM merged into mainline in Linux 7.1.)
 CONFIG_PREEMPT_RT=y
 
-# --- UIO doorbells: FPGA-to-HPS f2h_irq8..15 into userspace ------------------
-# ADR-002-interim (Main_MiSTer rewrite plan): stop polling the FPGA cause
-# register over the lightweight bridge; block on read() of /dev/uioN instead.
-# The device-tree half is board/mister/de10nano/linux-patches-beta/
-# 0043-dts-uio-doorbells.patch — eight "generic-uio" nodes on GIC SPI 48..55
-# (f2h_irq8..15; renumbered off SPI 40/41, which carry stock HDMI_TX_VS and
-# video_sync per sys_top.v — see 0044/0045 for the region + writecombine half)
-# (SPI 40 is vsync and stays with the MiSTer_fb driver).
-#
-# RT-ONLY, and that asymmetry is the whole point. linux-patches/ has no series
-# file, so the stock 6.18 build applies every patch in it, this one included —
-# but CONFIG_UIO is not set in the shared board/mister/de10nano/linux.config,
-# so on stock those nodes match no driver, create no device and cost nothing
-# but DTB bytes. These two symbols are what turn them into real /dev/uioN
-# devices, and they live here so the stock kernel config stays byte-untouched.
-CONFIG_UIO=y
-CONFIG_UIO_PDRV_GENIRQ=y
-
-# --- The cmdline parameter uio_pdrv_genirq needs when it is built in ---------
-# uio_pdrv_genirq ships with an EMPTY of_match_table; the compatible string it
-# matches is written into that table at runtime by its of_id parameter
-# (module_param_string(of_id, uio_of_genirq_match[0].compatible, 128, 0) —
-# drivers/uio/uio_pdrv_genirq.c). As a module that would be a modprobe
-# argument. Built in (=y above, so the doorbells exist before userspace does),
-# the kernel command line is the only way to set it — without the line below
-# the DTS nodes bind to nothing and no /dev/uio* appears.
-#
-# This fragment is also the RT line's ONLY bootargs surface. There is no
-# per-line U-Boot environment in this repo: U-Boot is stock and unmodified for
-# both kernels (patches/uboot/ is empty; docs/rt-beta-kernel.md §5), and
-# /media/fat/linux/u-boot.txt selects only WHICH zImage loads — it carries no
-# command-line content. The real cmdline arrives via U-Boot's stock
-# `setenv bootargs` plus its /chosen FDT fixup (docs/boot-chain.md §4.2).
-#
-# EXTEND, never FORCE: under CMDLINE_EXTEND, early_init_dt_scan_chosen()
-# appends CONFIG_CMDLINE *after* whatever /chosen supplied (drivers/of/fdt.c),
-# so U-Boot's root=, console= and the rest survive and we contribute exactly
-# one token. CMDLINE_FORCE would overwrite them and the board would not boot.
-# The two symbols must be set together: arch/arm/Kconfig gates the whole
-# "Kernel command line type" choice on `depends on CMDLINE != ""`, and the
-# shared linux.config leaves CONFIG_CMDLINE empty, so no choice is selected
-# there at all — hence no conflict with the stock line.
-CONFIG_CMDLINE="uio_pdrv_genirq.of_id=generic-uio"
-CONFIG_CMDLINE_EXTEND=y
+# --- UIO is in the shared linux.config, not here --------------------------
+# Both lines carry the HPS<->FPGA device-tree series (0045, 0072) and the
+# CONFIG_UIO* + uio_pdrv_genirq.of_id cmdline it needs
+# (docs/dts-mister-fpga-interface.md).
 
 # --- pstore/ramoops: a crash record that outlives the crash -------------------
 # The device-tree half is board/mister/de10nano/linux-patches-beta/
@@ -119,8 +78,7 @@ CONFIG_CMDLINE_EXTEND=y
 # BETA-ONLY, and it has to be. The DTS node lives only in
 # linux-patches-beta/, so the stock 6.18 DTB has no ramoops node at all;
 # setting these symbols in the shared linux.config would give the stock kernel
-# a pstore subsystem with nothing to bind to. The asymmetry is the same one
-# CONFIG_UIO has above, in the same direction, for the same reason.
+# a pstore subsystem with nothing to bind to.
 CONFIG_PSTORE=y
 CONFIG_PSTORE_RAM=y
 CONFIG_PSTORE_CONSOLE=y

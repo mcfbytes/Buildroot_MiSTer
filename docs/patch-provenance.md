@@ -1856,7 +1856,7 @@ resources in the DE10 DTS: `no-map` reserved-memory tiles over `0x1ff00000..0x3f
 `generic-uio` windows (LW bridge, heavy HPS-to-FPGA bridge, FPGA-manager page, DDR aperture, low DDR)
 and one UIO node per `f2h` IRQ line 1..63. `0045` adds `UIO_MEM_PHYS_WC` so the aperture node maps
 write-combined. Both were beta-only (`0043`/`0044`/`0045` in `linux-patches-beta/`); `0072`
-superseded `0043` and `0044`, which were removed with their UIO names kept, and `0045` moved to
+superseded `0043` and `0044`, which were removed, their UIO nodes renamed to the one `mister_<name>` scheme, and `0045` moved to
 `linux-patches/`. Carried in the de10nano and beta series (beta by symlink); not in de25nano. Needs
 `CONFIG_UIO*` and the `uio_pdrv_genirq.of_id` cmdline, now in the shared `linux.config`. Evidence,
 exclusions and the userspace contract: [`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md).

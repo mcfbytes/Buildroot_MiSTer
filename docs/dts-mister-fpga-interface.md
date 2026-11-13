@@ -14,8 +14,13 @@ Patches (shared by the 6.18 and RT lines; the beta `series` symlinks them):
 | `linux.config` | `CONFIG_UIO=y`, `CONFIG_UIO_PDRV_GENIRQ=y`, `CONFIG_CMDLINE="uio_pdrv_genirq.of_id=generic-uio"` + `CONFIG_CMDLINE_EXTEND=y` |
 | `rootfs-overlay/etc/udev/rules.d/65-mister-uio.rules` | the `/dev/mister/*` symlinks; `scripts/ci-tests.sh` checks it names exactly the DT's UIO nodes |
 
-0072 replaced the beta-only `0043-dts-uio-doorbells` and `0044-dts-uio-fpga-regions` and keeps
-every UIO name they exported. The target is the MiSTer kernel fork (`scripts/export-kernel-tree.sh`);
+**Naming: one name per device.** The UIO name is `mister_<name>`; udev adds `/dev/mister/<name>`
+with `_` as `-`. IRQ nodes are `mister_f2h_irq<N>`, N the hardware f2h line, at
+`/dev/mister/irq/f2h-irq<N>`. Semantic names are udev aliases only, never second UIO names:
+`/dev/mister/doorbell/<k>` and `/dev/mister/fb` (§5). 0072 replaced the beta-only
+`0043-dts-uio-doorbells` and `0044-dts-uio-fpga-regions` and renamed their nodes to this scheme
+(`mister_doorbell<k>` is now `mister_f2h_irq<k+7>`, `mister_lw_window` is `mister_lw_bridge`);
+greenfield's consumers move to the same names. The target is the MiSTer kernel fork (`scripts/export-kernel-tree.sh`);
 mainline would want a real binding and driver instead of `generic-uio`, which is out of scope.
 
 **Stock Main_MiSTer is unaffected.** It maps everything through `/dev/mem`, which these nodes do not
@@ -36,13 +41,13 @@ every `/dev/mem` page attribute are what they were.
     (RT line only: ramoops@1fe00000, patch 0046)
 /MiSTer_fb@22000000                   + memory-region = <&mister_fb_mem>
 /mister                               simple-mfd, ranges
-    lw-bridge@ff200000                mister_lw_window      SO, never WC        H-1
-    h2f-bridge@c0000000               mister_h2f_window     SO                  H-1, whole window
+    lw-bridge@ff200000                mister_lw_bridge      SO, never WC        H-1
+    h2f-bridge@c0000000               mister_h2f_bridge     SO                  H-1, whole window
     fpga-mgr@ff706000                 mister_fpga_mgr       SO                  GPO +0x10, GPI +0x14
     ddr-aperture@20000000             mister_ddr_aperture   WC (with 0045)
     ddr-low@1ff00000                  mister_ddr_low        SO, two maps
     fabric-irqs                       simple-mfd, interrupt-parent = <&intc>
-        f2h-1 .. f2h-63               mister_f2h_irqN / mister_doorbell1..8 (N = 8..15)
+        f2h-irq1 .. f2h-irq63         mister_f2h_irq1 .. mister_f2h_irq63
 ```
 
 0072 appends a second `/ { ... };` block at the end of the DTS instead of editing nodes in place.
@@ -126,13 +131,13 @@ write, and Main programs the FPGA itself, so this is the same sharing `/dev/mem`
 cells 40..103. The cell is the SPI index, not the INTID (INTID = cell + 32). The existing
 `MiSTer_fb` node uses the same convention: cell 40 = `HDMI_TX_VS`.
 
-| N | cell | node | uio name | trigger | evidence |
-|---|---|---|---|---|---|
-| 0 | 40 | none (MiSTer_fb) | — | edge (fb driver) | `HDMI_TX_VS`, owned by `MiSTer_fb` (`0004`); the only f2h line a kernel driver claims in either DTB |
-| 1 | 41 | `f2h-1` | `mister_f2h_irq1` | EDGE_RISING | `video_sync` (`sys_top.v:1532-1542`): high for one line at the sync line, a pulse with no ack register; measured 60.17 Hz on silicon |
-| 2..7 | 42..47 | `f2h-2..7` | `mister_f2h_irq2..7` | LEVEL_HIGH | tied 0 in every published core; platform reserve (audio watermark, CEC) per the allocation policy |
-| 8..15 | 48..55 | `f2h-8..15` | `mister_doorbell1..8` | LEVEL_HIGH | the doorbell pool; `TurboGrafx16_MiSTer/sys/mister_cd_ring.v:158` `doorbell ... level, LEVEL_HIGH -> f2h_irq[8]` |
-| 16..63 | 56..103 | `f2h-16..63` | `mister_f2h_irq16..63` | LEVEL_HIGH | tied 0 in every published core |
+| N | cell | node / uio name | trigger | evidence |
+|---|---|---|---|---|
+| 0 | 40 | none (MiSTer_fb) | edge (fb driver) | `HDMI_TX_VS`, owned by `MiSTer_fb` (`0004`); the only f2h line a kernel driver claims in either DTB |
+| 1 | 41 | `f2h-irq1` / `mister_f2h_irq1` | EDGE_RISING | `video_sync` (`sys_top.v:1532-1542`): high for one line at the sync line, a pulse with no ack register; measured 60.17 Hz on silicon |
+| 2..7 | 42..47 | `f2h-irq2..7` / `mister_f2h_irq2..7` | LEVEL_HIGH | tied 0 in every published core; platform reserve (audio watermark, CEC) per the allocation policy |
+| 8..15 | 48..55 | `f2h-irq8..15` / `mister_f2h_irq8..15` (doorbell pool, `/dev/mister/doorbell/1..8`) | LEVEL_HIGH | the doorbell pool; `TurboGrafx16_MiSTer/sys/mister_cd_ring.v:158` `doorbell ... level, LEVEL_HIGH -> f2h_irq[8]` |
+| 16..63 | 56..103 | `f2h-irq16..63` / `mister_f2h_irq16..63` | LEVEL_HIGH | tied 0 in every published core |
 
 **Trigger types follow the fabric.** A doorbell is backed by a cause register the FPGA holds high
 until userspace acknowledges it; edge would lose a second event raised before the first is acked,
@@ -145,21 +150,31 @@ and a core that drives one must follow it.
 `IRQ_DISABLE_UNLAZY`, so the line is truly masked while the cause is cleared. A line a buggy core
 holds high fires once and stays masked until someone re-arms it. Measured: pool nodes on undriven
 lines recorded zero events and zero initial count across 42 s of armed polling (the 0043 rig run).
-`f2h-1` with no consumer costs one interrupt per boot.
+`f2h-irq1` with no consumer costs one interrupt per boot.
 
 **Each claim is exclusive.** `uio_pdrv_genirq` refuses `IRQF_SHARED`, so a node takes its line from
 any future in-kernel consumer; such a consumer deletes that one node.
 
-**Names are ABI.** Pool lines keep `mister_doorbell1..8` (pool ordinal k = line k+7), which
-greenfield's `UioHandle` keys on; `/dev/mister/irq/f2h-N` adds the line-number view.
+**Why line 0 has no node.** `MiSTer_fb` requests it with `IRQF_SHARED` (`MiSTer_fb.c:357`) while
+`uio_pdrv_genirq` requests without it, so whichever probes second fails to get the line; and even
+if both held it, the UIO handler masks the line on every fire until userspace re-arms it, which
+would starve the framebuffer's vsync.
+
+**Doorbell aliases.** Pool ordinal k (1..8) is f2h line k+7, SPI cell k+47: greenfield's
+`l1_proto/include/proto/irq_binding.h:14` (an `IRQ:` token's ordinal N names doorbell N) and
+`docs/layers/doorbell-axi-rt.md:26,31` (the pool is SPI 48..55, doorbells 1..8 in order);
+`TurboGrafx16_MiSTer/sys/sys_top.v:590-591` (f2h_irq[8] = `mister_doorbell1`). udev links
+`/dev/mister/doorbell/<k>` to `irq/f2h-irq<k+7>`; `ci-tests.sh` checks all eight.
 
 ## 3. Left out, and why
 
-- **Line 0** (`HDMI_TX_VS`): `MiSTer_fb`'s vsync (§2.3).
+- **Line 0** (`HDMI_TX_VS`): `MiSTer_fb`'s vsync; a UIO node would fail to share it or starve it (§2.3).
 - **Per-core regions** (MSU track, savestates, rewind rings, CD buffers, ...). Cores change without
   kernel updates; per-core layouts stay in greenfield's manifests (`CoreWindowDecl`) as offsets into
   `mister_ddr_aperture`. The DT carries only the board-level tiles every core shares.
-- **FPGA-to-HPS DMA request lines**: they need a dmaengine binding and no core uses them.
+- **FPGA-to-HPS DMA request lines**: they need a dmaengine binding and no core uses them. A future
+  fb/DRM driver gets mem-to-mem DMA from the existing `pdma` node (`pl330`) with no DT change; the
+  request lines matter only if fabric logic paces the transfers.
 - **The FPGA-manager data port** (`0xffb90000`), **SDRAM controller** (`0xffc20000`), **reset
   manager** (`0xffd05000`), **system manager** (`0xffd08000`), **NIC-301** (`0xff800000`): owned by
   kernel drivers (fpga-mgr, sdr, reset, syscon) or tied to the frozen bridge sequence; whether those
@@ -201,8 +216,10 @@ greenfield's `UioHandle` keys on; `/dev/mister/irq/f2h-N` adds the line-number v
    the event count when it fires; clear the core's cause register, then arm again.
 
 `/dev/mister/` view (eudev, `65-mister-uio.rules`): `lw-bridge`, `h2f-bridge`, `fpga-mgr`,
-`ddr-aperture`, `ddr-low`, and `irq/f2h-1` .. `irq/f2h-63`. Nodes stay root-only (0600); a non-root
-Main would add a group to the rule.
+`ddr-aperture`, `ddr-low`, `irq/f2h-irq1` .. `irq/f2h-irq63`, and two alias sets:
+`doorbell/1` .. `doorbell/8` (= `irq/f2h-irq8` .. `irq/f2h-irq15`) and `fb` (the `MiSTer_fb`
+framebuffer, matched by its `fix.id`; `/dev/fb0` itself is unchanged). Nodes stay root-only (0600);
+a non-root Main would add a group to the rule.
 
 ## 6. Verified, and what only the rig can show
 
@@ -213,11 +230,12 @@ UIO names, SPI cells 40..103 each exactly once, and the merged `/reserved-memory
 compiles with 0045 under both resolved configs; the RT resolved config is unchanged and the 6.18 one
 gains exactly the UIO and cmdline symbols. QEMU has no Cyclone V machine, so probing is rig-only:
 
-- all 68 UIO devices probe on both kernels, with the names above, and `/dev/mister/*` appears;
+- all 68 UIO devices probe on both kernels, with the names above, and `/dev/mister/*` (doorbell
+  and fb aliases included) appears;
 - `/proc/cmdline` ends in `uio_pdrv_genirq.of_id=generic-uio` with U-Boot's tokens intact;
 - `dmesg` lists the six reserved tiles, no overlap error, and `/proc/iomem` is unchanged below
   `0x1ff00000`;
-- `f2h-1` records one event and stays masked; lines 2..63 record none;
+- `f2h-irq1` records one event and stays masked; lines 2..63 record none;
 - stock Main and greenfield behave as before (greenfield now resolves `mister_fpga_mgr` through UIO
   on both lines, still SO);
 - the aperture's WC throughput on the 6.18 line.

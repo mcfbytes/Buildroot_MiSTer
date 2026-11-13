@@ -342,7 +342,7 @@ card, and nothing on the card referenced it), and deliberately NOT inside
 ## 8. The three beta-local UIO patches (0043, 0044, 0045)
 
 > **Superseded 2026-11-13.** `0043` and `0044` were replaced by the shared
-> `0072-dts-de10nano-MiSTer-fpga-interface.patch` (same UIO names, plus every other f2h line, the
+> `0072-dts-de10nano-MiSTer-fpga-interface.patch` (nodes renamed to one `mister_<name>` scheme, doorbells kept as udev aliases, plus every other f2h line, the
 > heavy bridge, the FPGA-manager page and a `reserved-memory` carve-out), `0045` moved to
 > `linux-patches/`, and `CONFIG_UIO*` + the `of_id` cmdline moved to the shared `linux.config`: both
 > lines carry the set now. The current description is

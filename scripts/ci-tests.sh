@@ -1381,6 +1381,21 @@ else
 	fail "60-jms583-phantom.rules present, matches JMS583 (152d:0583)" "missing or wrong match"
 fi
 
+# -- /dev/mister/* names for the HPS<->FPGA UIO nodes ------------------------
+# Every linux,uio-name 0072 declares gets exactly one rule, and no rule names a
+# node the DT lacks (docs/dts-mister-fpga-interface.md).
+UIO_RULE="etc/udev/rules.d/65-mister-uio.rules"
+UIO_DT="$ROOT/board/mister/de10nano/linux-patches/0072-dts-de10nano-MiSTer-fpga-interface.patch"
+uio_dt_names=$(sed -n 's/^+.*linux,uio-name = "\([a-z0-9_]*\)";.*/\1/p' "$UIO_DT" | sort)
+uio_rule_names=$(tar xOf "$ROOTFS_TAR" "./$UIO_RULE" 2>/dev/null \
+	| sed -n 's/.*ATTR{name}=="\([a-z0-9_]*\)".*/\1/p' | sort)
+if [ -n "$uio_dt_names" ] && [ "$uio_dt_names" = "$uio_rule_names" ]; then
+	pass "65-mister-uio.rules names every 0072 UIO node ($(echo "$uio_dt_names" | wc -l))"
+else
+	fail "65-mister-uio.rules names every 0072 UIO node" \
+		"rule set and DT linux,uio-name set differ (or the rule is missing)"
+fi
+
 # -- vhd_mount's mount point -------------------------------------------------
 # vhd_mount mounts /dev/loop1p1 on /media/rootfs; "/" is read-only at runtime,
 # so the directory must ship in the image (same .gitkeep idiom as /media/fat).

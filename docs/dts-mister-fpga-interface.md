@@ -25,8 +25,10 @@ mainline would want a real binding and driver instead of `generic-uio`, which is
 
 **Stock Main_MiSTer is unaffected.** It maps everything through `/dev/mem`, which these nodes do not
 touch. The reserved-memory tiles lie outside `memblock.memory` under `mem=511M`, so ARM's
-`pfn_valid()` (`arch/arm/mm/init.c`, which tests `memblock.memory`, not `no-map`) and therefore
-every `/dev/mem` page attribute are what they were.
+`pfn_valid()` (`arch/arm/mm/init.c:126-145`, which tests `memblock.memory`, not `no-map`) and
+therefore every `/dev/mem` page attribute are what they were. **Greenfield is not unaffected:** the
+UIO names changed (§2.3), so it needs its matching rename (branch `lead/uio-names`) to land with
+this series.
 
 ## 1. The tree
 
@@ -73,9 +75,9 @@ re-read at the sources they cite. Legacy = `Main_MiSTer_master`; core RTL = the 
 |---|---|---|---|
 | ddr-low | `0x1ff00000` | `0xff000` | `mem=511M` = `0x1ff00000` is the kernel's top (`board/mister/de10nano/uboot.env:80,99`). The minimig A2065 flat window is `0x1ff00000` + 64 KiB (`support/minimig/minimig_a2065_ddr3.h:17`); the tile runs to the handoff page. |
 | handoff | `0x1ffff000` | `0x1000` | legacy `fpga_io.cpp:398,601` `shmem_map(0x1FFFF000, 0x1000)`; U-Boot `fpgaload` clears it (`uboot.env:92`). |
-| scaler | `0x20000000` | `0x1800000` | `sys_top.v:716-721` `RAMBASE 0x20000000`, `RAMSIZE 0x800000` (`0x200000` under `MISTER_SMALL_VBUF`, SNES); ascal triple-buffers at `base + b*RAMSIZE` (`ascal.vhd:436-443`): 3 x 8 MiB = 24 MiB. |
+| scaler (shared) | `0x20000000` | `0x1800000` | `sys_top.v:716-721` `RAMBASE 0x20000000`, `RAMSIZE 0x800000` (`0x200000` under `MISTER_SMALL_VBUF`, SNES); ascal triple-buffers at `base + b*RAMSIZE` (`ascal.vhd:436-443`): 3 x 8 MiB = 24 MiB. Shared: stock SNES (`MISTER_SMALL_VBUF`, 6 MiB of slots) starts its MSU data track at `0x20600000`, inside this tile. |
 | core (lo) | `0x21800000` | `0x800000` | the gap between the scaler's end and the framebuffer; core-owned (SNES MSU, Jaguar, ...). |
-| fb | `0x22000000` | `0x1800000` | `MiSTer_fb@22000000` (`0004`); legacy `video.cpp:37` `FB_ADDR = 0x20000000 + 32 MiB` and `:2414` maps `FB_SIZE*4*3` = 1920*1080*12 = `0x17BB000`, rounded up to 24 MiB, below the Menu core's wipe at `0x24000000`. |
+| fb (shared) | `0x22000000` | `0x1800000` | `MiSTer_fb@22000000` (`0004`); legacy `video.cpp:37` `FB_ADDR = 0x20000000 + 32 MiB` and `:2414` maps `FB_SIZE*4*3` = 1920*1080*12 = `0x17BB000`, rounded up to 24 MiB, below the Menu core's wipe at `0x24000000`. Shared: stock SNES resumes its MSU track at `0x22800000`, past the 8 MiB hole (`Main_SiSTer/rewrite-plan/phase5/ddr-region-map.md:212`; legacy `user_io.cpp:2882-2888`). |
 | core (hi) | `0x23800000` | `0x1c800000` | the rest: `0x40000000 - 0x23800000`. |
 
 The tiles sum to `0x00100000 + 0x20000000` exactly (`0xff000 + 0x1000 + 0x1800000 + 0x800000 +
@@ -85,6 +87,10 @@ The tiles sum to `0x00100000 + 0x20000000` exactly (`0xff000 + 0x1000 + 0x180000
 does not own, kept the kernel out of the aperture. Lose that token and a write-combined user mapping
 of the aperture would alias pages the kernel maps cacheable, which ARMv7 leaves UNPREDICTABLE.
 With `no-map` the DTB alone keeps the kernel out.
+
+**"Shared" tiles are reserved from the kernel, not from cores.** Greenfield moves the SNES MSU
+track above the fb tile (its `parity-divergences.md` row, branch `lead/snes-msu-base`); stock keeps it
+inside both tiles.
 
 **The framebuffer tile is 24 MiB whatever `MiSTer_fb` claims.** The driver reads its `reg`, not the
 `memory-region` (`MiSTer_fb.c` is untouched here), so `reg = <0x22000000 0x800000>` (8 MiB, today)
@@ -106,7 +112,8 @@ hard-hangs with no fault, no panic, no console output, power cycle only. Seen th
 silicon, all reads; a write also waits for a fabric response, so presume it equally lethal. The
 menu core decodes nothing in the LW window. **On the h2f window it is the whole window:** every
 core checkout on this host (48 `sys/sysmem.sv` copies) instantiates `cyclonev_hps_interface_hps2fpga`
-with only `port_size_config` and no slave (`NES_MiSTer/sys/sysmem.sv:398-402`), so no offset answers. Mapping is safe; touching is not. A consumer
+with only `port_size_config` and no slave (`NES_MiSTer/sys/sysmem.sv:398-402`), so no offset answers (`port_size_config` `2'b11` in every copy). The node is kept as a root-only
+H-1 trap, describing the hardware, not as a usable window. Mapping is safe; touching is not. A consumer
 touches only offsets the loaded core declares; "probe to see what answers" is destructive,
 diagnostics included. No signal is ever delivered, so a SIGBUS guard cannot help.
 
@@ -150,7 +157,16 @@ and a core that drives one must follow it.
 `IRQ_DISABLE_UNLAZY`, so the line is truly masked while the cause is cleared. A line a buggy core
 holds high fires once and stays masked until someone re-arms it. Measured: pool nodes on undriven
 lines recorded zero events and zero initial count across 42 s of armed polling (the 0043 rig run).
-`f2h-irq1` with no consumer costs one interrupt per boot.
+`f2h-irq1` is edge-triggered, so its disable is lazy: the first `video_sync` edge fires the handler
+and is masked, the second only sets `IRQS_PENDING` and masks the line at the GIC, and that edge is
+replayed on the first arm. With no consumer it costs two interrupts per boot (`/proc/interrupts`
+shows 2, the UIO event count 1), and **the first armed `read()` returns a stale vsync: discard the
+first event after arming** (§5).
+
+**One IRQ thread per node.** UIO requests each line with `request_threaded_irq()`, so every node
+has an `irq/NN-mister_f2h_irqN` kthread at `SCHED_FIFO` 50; on the RT kernel forced threading
+roughly doubles that, to about 126 threads. They sleep unless their line fires and cost about
+1-1.5 MB in all; on 6.18 they are new. Their affinity must keep them off the RT CPU (CPU 1) (§6).
 
 **Each claim is exclusive.** `uio_pdrv_genirq` refuses `IRQF_SHARED`, so a node takes its line from
 any future in-kernel consumer; such a consumer deletes that one node.
@@ -187,7 +203,10 @@ would starve the framebuffer's vsync.
 - `uio_pdrv_genirq` has an empty `of_match_table` filled from its `of_id` parameter; built in, the
   kernel command line is the only way to set it. `CONFIG_CMDLINE_EXTEND` appends
   `CONFIG_CMDLINE` after U-Boot's `/chosen` bootargs (`drivers/of/fdt.c`), so `root=`, `mem=511M` and
-  the rest survive. Never `CMDLINE_FORCE`: it overwrites them and the board does not boot.
+  the rest survive. Never `CMDLINE_FORCE`: it overwrites them and the board does not boot. If
+  `u-boot.txt`'s `$v` contains `--`, or the line exceeds `COMMAND_LINE_SIZE` (1024), the appended
+  `of_id` token is silently lost (passed to init, or truncated): the board boots, but no UIO node
+  binds.
 - `linux,uio-name` gives the exported name verbatim (`uio_pdrv_genirq.c`), so node names follow DT
   convention while userspace keeps its names.
 - **Write-combining is a two-part unlock.** Stock `uio_mmap_physical()` maps `UIO_MEM_PHYS` with
@@ -195,8 +214,11 @@ would starve the framebuffer's vsync.
   measured). 0045 adds `UIO_MEM_PHYS_WC` (`pgprot_writecombine()`, Normal non-cacheable) and the
   property parse. Without 0045 the property is ignored and the aperture maps SO: slower, never
   unsafe. It never degrades to a cached mapping, which would corrupt memory the FPGA writes without
-  snooping the A9 caches. `/dev/mem` cannot give WC here: for `!pfn_valid` ranges ARM's
-  `phys_mem_access_prot()` returns `pgprot_noncached()` whatever the flags.
+  snooping the A9 caches. `/dev/mem` cannot give WC at `0x20000000` and above: for `!pfn_valid`
+  ranges ARM's `phys_mem_access_prot()` returns `pgprot_noncached()` whatever the flags. Below it
+  the reverse holds: `pfn_valid()` rounds to the 4 MiB pageblock `[0x1fc00000, 0x20000000)`
+  (`arch/arm/mm/init.c:126-145`), so the ddr-low and handoff tiles are `pfn_valid`, and `/dev/mem`
+  with `O_SYNC` maps them WC while their UIO node maps them SO.
 
 ## 5. Userspace: how to map each node
 
@@ -213,7 +235,9 @@ would starve the framebuffer's vsync.
 4. On the WC aperture a store is not visible when it retires: fence (`dmb`/`dsb`) between the payload
    and whatever publishes it (doorbell, strobe, ring index).
 5. Interrupts: `write(fd, &(uint32_t){1}, 4)` arms the line, a blocking `read(fd, &count, 4)` returns
-   the event count when it fires; clear the core's cause register, then arm again.
+   the event count when it fires; clear the core's cause register, then arm again. Discard the
+   first event after the first arm: an edge line (`f2h-irq1`) replays an edge latched while it was
+   masked, and a level line may report one raised before its consumer started.
 
 `/dev/mister/` view (eudev, `65-mister-uio.rules`): `lw-bridge`, `h2f-bridge`, `fpga-mgr`,
 `ddr-aperture`, `ddr-low`, `irq/f2h-irq1` .. `irq/f2h-irq63`, and two alias sets:
@@ -235,7 +259,10 @@ gains exactly the UIO and cmdline symbols. QEMU has no Cyclone V machine, so pro
 - `/proc/cmdline` ends in `uio_pdrv_genirq.of_id=generic-uio` with U-Boot's tokens intact;
 - `dmesg` lists the six reserved tiles, no overlap error, and `/proc/iomem` is unchanged below
   `0x1ff00000`;
-- `f2h-irq1` records one event and stays masked; lines 2..63 record none;
-- stock Main and greenfield behave as before (greenfield now resolves `mister_fpga_mgr` through UIO
-  on both lines, still SO);
+- `f2h-irq1` shows 2 in `/proc/interrupts` and 1 UIO event, then stays masked; lines 2..63 record
+  none;
+- no `irq/NN-mister_*` thread has CPU 1 in its affinity (`/proc/irq/NN/smp_affinity_list`,
+  `taskset -p` on the kthreads), on both kernels;
+- stock Main behaves as before; greenfield works only with its `lead/uio-names` rename (it then
+  resolves `mister_fpga_mgr` through UIO on both lines, still SO);
 - the aperture's WC throughput on the 6.18 line.

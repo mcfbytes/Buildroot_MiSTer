@@ -1864,6 +1864,15 @@ and the flush ioctl answers, else falls back to `/dev/mem`. Motivation: a 1080p 
 as the user mapping. Verified: applies to 6.18.63 and 7.3.4; `MiSTer_fb.o` zero diagnostics at `W=1`; the flush
 compiles to `dsb st; bl arm_heavy_mb`.
 
+### `0071` — DTS: `MiSTer_fb` region 8 → 24 MiB, added 2026-11-13
+
+Original, by the repo owner; applies after `0004` in both series (beta by symlink). `reg` becomes
+`<0x22000000 0x1800000>`, ending `0x237FFFFF`: legacy Main's own over-map extent (`video.cpp:2414`), below the Menu
+wipe / SMS rotation fb at `0x24000000`, enough for two 1080p 8888 frames. Depends on `0070` (the narrowed `mode`
+wipe). Stock Main with SNES + `.msu` still puts MSU data at `0x22800000+` (where its own menu-background buffers
+already over-map); greenfield sends MSU base `0x23000000` (track from `0x23800000`), so the window is free for it on
+every core, with no per-core carve-out. Built: 6.18.63 and 7.3.4 DTBs show the new `reg`.
+
 ### Provenance note
 
 B1 and B4 were **found by automated static review on PR #2**, not by the porting

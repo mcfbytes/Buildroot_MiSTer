@@ -552,8 +552,12 @@ Read that table carefully, because **the plan's mental model is wrong in one imp
 > * The three buffers Main_MiSTer uses (24.9 MB) **overrun the 8 MiB the `MiSTer_fb` DT node
 >   claims**. That is intentional: only buffer 0 (1920×1080×4 + 4096 = 8,298,496 B ≤ 8 MiB) is
 >   the fbdev framebuffer. Buffers 1 and 2 are OSD/menu backgrounds that only Main_MiSTer knows
->   about, reached purely through `/dev/mem`. **`reg = <0x22000000 0x800000>` is exactly right
->   and must not be "fixed" upward.**
+>   about, reached purely through `/dev/mem`. Stock's `reg = <0x22000000 0x800000>` covers buffer 0.
+>   `0071` grows it to `0x1800000` (24 MiB, to `0x237FFFFF`, legacy's own extent) so an fbdev client can
+>   mmap two 1080p 8888 frames; that is safe only with `0070`, whose `mode` write no longer wipes the
+>   whole resource (it would wipe buffers 1 and 2). Stock Main with SNES + a `.msu` still writes MSU data at
+>   `0x22800000+` (its own `video_menu_bg` over-maps there too); the greenfield rewrite moves its MSU track to
+>   `0x23800000+`, so for it the whole window is framebuffer on every core.
 
 All of this lives at 544 MiB physical, i.e. **far above the `mem=511M` line** — so the kernel's
 page allocator never owns it and `/dev/mem` is the only way in. See `docs/boot-chain.md` §6.4.

@@ -1,0 +1,62 @@
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Fri, 13 Nov 2026 17:30:00 -0600
+Subject: [PATCH] ARM: dts: de10nano: grow the MiSTer_fb region to 24 MiB
+
+Origin:       original, this repo (not from the fork, not upstream).
+Author:       Michael C. Ferguson; applies on top of 0004 (and, in the beta
+              series, after 0043/0046, whose nodes it does not touch).
+Upstream:     No (MiSTer-specific node).
+Disposition:  carry -- approved by the owner 2026-11-13. Depends on 0070.
+
+reg grows from <0x22000000 0x800000> (8 MiB) to <0x22000000 0x1800000>
+(24 MiB, ending 0x237fffff), so with 0070's smem_len a /dev/fb0 mmap
+reaches two 1080p 8888 frames (2 x 8,294,400 B = 15.8 MiB, plus the 4 KiB
+header page), not just two 565 frames.
+
+Why this extent:
+- it matches legacy Main's own over-map, shmem_map(FB_ADDR, FB_SIZE*4*3)
+  = 0x22000000-0x237bafff (Main_MiSTer video.cpp:2414): legacy already
+  treats those bytes as its framebuffers (buffer 0 = fb0, buffers 1-2 =
+  menu backgrounds) on every core;
+- it stays below 0x24000000, where the Menu core's DDR wipe and SMS's
+  screen-rotation framebuffer start.
+
+Why it needs 0070: stock's `mode` write memsets the whole resource. Over
+24 MiB that would wipe legacy's menu-background buffers on every mode
+write; 0070 clears only the header page and the visible frame.
+
+SNES MSU-1: the core's MSU data store skips an absolute 8 MiB hole at
+0x22000000-0x227FFFFF, and the track base is whatever Main sends at run
+time. Stock Main sends a base that puts the track's post-hole part at
+0x22800000+ while a .msu is mounted, i.e. inside this grown window -- but
+stock Main's own video_menu_bg buffers already over-map those bytes
+(video.cpp:2414), so the overlap is stock's own, not new here, and stock
+Main never mmaps /dev/fb0. The greenfield rewrite sends base 0x23000000
+and writes the track linearly from 0x23800000, so the whole window
+0x22000000-0x237FFFFF is free for the framebuffer on every core it runs;
+no per-core 8 MiB carve-out is needed.
+
+The memremap() grows from 8 to 24 MiB of vmalloc space; with mem=511M
+the ARM vmalloc area is several hundred MiB, so this is well within it.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+--- a/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
++++ b/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
+@@ -125,7 +125,12 @@
+ 	 */
+ 	MiSTer_fb@22000000 {
+ 		compatible = "MiSTer_fb";
+-		reg = <0x22000000 0x800000>;
++		/*
++		 * 24 MiB, 0x22000000-0x237fffff: legacy Main's own over-map
++		 * extent, below the Menu core's wipe at 0x24000000.  Needs
++		 * patch 0070 (the mode write clears only the visible frame).
++		 */
++		reg = <0x22000000 0x1800000>;
+ 		interrupt-parent = <&intc>;
+ 		interrupts = <0 40 IRQ_TYPE_EDGE_RISING>;
+ 	};

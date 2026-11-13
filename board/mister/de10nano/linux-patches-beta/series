@@ -107,72 +107,46 @@
 # in one command (grep the pristine tarball for the added lines) and must be
 # checked, not inferred from a subject line.
 #
-# The list now runs 0037 -> 0038 with no gap. 0043, 0044, 0045 and 0046
-# are BETA-LOCAL — real files
-# in THIS directory, deliberately absent from the shared linux-patches/ set so
-# the stock 6.18 build (which globs that whole dir via BR2_LINUX_KERNEL_PATCH)
-# never sees them. Apply-order facts, precisely: 0043 anchors on 0004's
-# output; 0044 anchors on 0043's output; 0045 touches only drivers/uio and
-# include files no other patch in this series touches, so it applies
-# independently at any position; 0046 touches the same DTS as 0043/0044 but
-# anchors on the memory@0 node, which sits ABOVE everything those two insert
-# and which no patch in this series modifies — so its hunk lands at the same
-# line whether or not they have been applied, and its position is free too.
-# All four apply fine over the hole. Together they are the RT line's reason to
-# exist right now (ADR-002-interim and ADR-003, Main_MiSTer rewrite plan):
+# The list now runs 0037 -> 0038 with no gap. One patch, 0046, is
+# BETA-LOCAL -- a real file in THIS directory, absent from the shared
+# linux-patches/ set so the stock 6.18 build (which globs that whole dir via
+# BR2_LINUX_KERNEL_PATCH) never sees it:
 #
-#   0043  UIO doorbell nodes on GIC SPI 48..55 (f2h_irq8..15). Interrupt-only
-#         nodes; a blocking read() on /dev/uioN replaces the cause-register
-#         poll over the lightweight bridge. The pool sat at SPI 41..48 until
-#         2026-08-14 — stock gateware drives BOTH low f2h lines
-#         (HDMI_TX_VS and video_sync, sys_top.v:573), so the old split had a
-#         UIO node exclusively claiming a live ~60 Hz line. Renumbered, not
-#         renamed: the node names are userspace ABI and stayed
-#         mister_doorbell1..8, which are now pool ordinals rather than line
-#         numbers.
-#   0044  reg-bearing UIO nodes for the 2 MB lightweight-bridge register
-#         window and the 512 MiB shared DDR3 aperture — named, size-bounded
-#         mappings in place of /dev/mem. Memory only, no interrupts. Must
-#         sort after 0043: it anchors on the last doorbell node.
-#   0045  UIO_MEM_PHYS_WC, a write-combining page attribute for UIO physical
-#         maps, selected by the "mister,map-writecombine" property 0044 puts
-#         on the aperture node (and deliberately not on the register-window
-#         node). Touches drivers/uio/, include/linux/ and the uio-howto
-#         documentation only, no DTS, so its position is free — listed last
-#         because 0044 is what gives the property a consumer. Without 0045
-#         that property is inert and the aperture maps strongly-ordered:
-#         slower, never unsafe.
-#   0046  a /reserved-memory ramoops node at 0x1FE00000+0x100000 — the last
-#         MiB below the mem=511M cap — split 23x32 KiB dmesg records /
-#         256 KiB console / 32 KiB pmsg. Unrelated to the UIO set: it is
-#         there because hardware finding H-1 hung the board three times, once
-#         with a serial console attached and capturing, and produced ZERO
-#         bytes of output each time. The UART stops being serviced at the
-#         instant of a hang; DRAM does not, and is readable on the next boot.
-#         Needs CONFIG_PSTORE / CONFIG_PSTORE_RAM / CONFIG_PSTORE_CONSOLE /
-#         CONFIG_PSTORE_PMSG
-#         from ../linux-rt.fragment — which is also why it must stay
-#         beta-local, since in the stock DTB the node would reserve 1 MiB of
-#         every user's RAM for a subsystem that is not compiled in.
+#   0046  a /reserved-memory ramoops node at 0x1FE00000+0x100000 -- the last
+#         MiB below the mem=511M cap -- split 23x32 KiB dmesg records /
+#         256 KiB console / 32 KiB pmsg, because hardware finding H-1 hung
+#         the board three times and the serial console captured nothing.
+#         Needs CONFIG_PSTORE* from ../linux-rt.fragment, which is why it
+#         stays beta-local. It anchors on memory@0, which nothing else here
+#         modifies, so its position is free.
 #
-# ONE NUMBERING NAMESPACE, TWO DIRECTORIES. 0043-0046 being beta-local is why
-# the next SHARED patch took 0047 rather than 0043: a number means one patch
+# The HPS<->FPGA interface patches are SHARED (both lines) since 2026-11-13,
+# symlinked here like every other shared patch: 0045 (UIO_MEM_PHYS_WC) and
+# 0072 (the MiSTer HPS<->FPGA device-tree description; docs/
+# dts-mister-fpga-interface.md). 0072 superseded the beta-local 0043 (UIO
+# doorbells) and 0044 (LW window + DDR aperture), whose UIO names it keeps;
+# both files were removed and their numbers stay retired. 0072 appends a
+# second root block at the end of the DTS, so it applies whether or not
+# 0046 or a MiSTer_fb resize are present.
+#
+# ONE NUMBERING NAMESPACE, TWO DIRECTORIES. 0043-0046 having been beta-local
+# is why the next SHARED patch took 0047 rather than 0043: a number means one patch
 # across both directories, so a reader who sees "0044" never has to ask which
-# 0044. The shared dir therefore reads 0001-0042 then 0048-0053, with the
-# 0043-0046 hole reserved and 0047's number staying taken by the retired
-# patch (2026-09-21). Applying order is unaffected — the shared dir is
+# 0044. The shared dir therefore reads 0001-0042, 0045 (shared since
+# 2026-11-13), then 0048 onward; 0043/0044 stay retired, 0046 beta-local,
+# and 0047's number stays taken by the retired patch (2026-09-21). Applying order is unaffected — the shared dir is
 # globbed and sorted, so 0048-0053 simply apply in that order there. Of those
 # six, 0050, 0051 and 0053 are NOT in this series at all (all three excluded
 # above, for three different reasons); 0048, 0049 and 0052 ARE in this series, as
 # plain symlinks,
-# listed below in their numeric position after the beta-local 0043-0046 block
+# listed below in their numeric position after the 0045/0046 entries
 # (0048/0049 apply cleanly to both kernels unmodified, so they need no
 # re-anchored copy — see the NOT-symlink exceptions list just below, which
 # they are not on).
 #
 # NOT-symlink exceptions: six of the shared-patch entries are REAL FILES
-# re-anchored for 7.x (0043-0046 above are real files too, but they are
-# beta-local originals, not re-anchors of anything) —
+# re-anchored for 7.x (0046 above is a real file too, but it is a
+# beta-local original, not a re-anchor of anything) —
 # the shared 6.18 patches are deliberately untouched (parity with stock).
 # Buildroot applies patches with `patch -F0` (fuzz zero), and these six
 # (0001, 0013, 0015, 0030, 0031, 0037 — 0031 rejoined the list on 2026-09-06,
@@ -262,8 +236,6 @@
 0038-hid-nintendo-nso-genesis-bt-pid.patch
 0039-hid-nintendo-nso-n64-genesis-stock-button-mapping.patch
 0042-hid-playstation-stock-lightbar-led-names.patch
-0043-dts-uio-doorbells.patch
-0044-dts-uio-fpga-regions.patch
 0045-uio-writecombine.patch
 0046-dts-ramoops.patch
 0048-hid-google-stadiaff-classic2usb-retrozord.patch
@@ -285,3 +257,4 @@
 0067-wifi-rtw88-8821c-support-rfe-type-7.patch
 0068-dwc2-host-ack-all-hcint-bits.patch
 0069-dwc2-host-drop-partial-int-in-on-cs-timeout.patch
+0072-dts-de10nano-MiSTer-fpga-interface.patch

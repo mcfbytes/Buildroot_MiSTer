@@ -1849,6 +1849,21 @@ reports RFE type 7, which `rtw8821c_rfe_defs[]` has no entry for, so probe fails
 was still missing from wireless, wireless-next and rtw-next on 2026-09-30. Carried in all three
 series (beta and de25nano by symlink). Not yet tested on the hardware, not sent upstream (owner decision).
 
+### `0070` — MiSTer_fb: mmap the whole region + `FBIO_MISTER_FLUSH`, added 2026-11-13
+
+Original, by the repo owner; applies on top of `0001`, whose text stays untouched (stock parity). Carried in de10nano
+and, by symlink + `series`, the beta (7.x RT) series; not in de25nano (no `MiSTer_fb` there). Three changes in
+`MiSTer_fb.c`: `fix.smem_len` = resource − 4096 so `mmap` (write-combined, `fb_io_mmap`) reaches every frame a client
+keeps in the region, with `screen_size` = one visible frame so `read`/`write` are unchanged; a no-argument
+`FBIO_MISTER_FLUSH` = `_IO('F', 0xA0)` doing `wmb()` (`dsb st` + PL310 sync — the scaler reads DDR past the L2);
+and the `mode` write wipes only the header page + the visible frame. Consumer: the greenfield rewrite's HD OSD,
+which writes its two 1080p RGB565 slots (`0x22001000`, `0x223F6000`) through `/dev/fb0` when `smem_len` covers both
+and the flush ioctl answers, else falls back to `/dev/mem`. Motivation: a 1080p 565 frame is 38 ms through
+`/dev/mem` O_SYNC vs 4.2 ms through `/dev/fb0` on the rig. ABI: `docs/abi-contract.md` §4.2–§4.3. The kernel's
+`MEMREMAP_WT` mapping is kept: on 32-bit ARM `ioremap_wt` is `ioremap_wc`, the same Normal non-cacheable attributes
+as the user mapping. Verified: applies to 6.18.63 and 7.3.4; `MiSTer_fb.o` zero diagnostics at `W=1`; the flush
+compiles to `dsb st; bl arm_heavy_mb`.
+
 ### Provenance note
 
 B1 and B4 were **found by automated static review on PR #2**, not by the porting

@@ -587,6 +587,12 @@ static int fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 | **Argument** | pointer to a `__u32` that **must be 0** |
 | **Returns** | `0` on a vsync; `-ETIMEDOUT` after 50 ms (`VSYNC_TIMEOUT_MSEC`, `MiSTer_fb.c:29`); `-ENODEV` if `*arg != 0` (`:101`); `-ENOTTY` for any other `cmd` (`:128`) |
 
+**Our addition, `0070`:** `FBIO_MISTER_FLUSH` = `_IO('F', 0xA0)` = **`0x000046A0`**, no argument, returns `0`,
+never sleeps: `wmb()` (on this SoC `dsb st` + the PL310 `outer_sync()`), for a client that wrote a frame through the
+write-combined `mmap` and is about to hand it to the scaler. Stock answers `-ENOTTY`, which is the probe. `0070` also
+sets `fix.smem_len` to the region minus the header page (`0x7FF000`), so `mmap` covers every frame in the region;
+`read(2)`/`write(2)` stay bounded to one visible frame via `screen_size`. Legacy Main never mmaps, so it sees neither.
+
 **`FBIO_WAITFORVSYNC` is a *standard mainline* ioctl, not a MiSTer invention** — and it is
 **byte-identical in 5.15 and 6.18**:
 
@@ -638,9 +644,11 @@ This — not the ioctl — is where the MiSTer-specific framebuffer ABI actually
 
 Writing `mode`:
 1. `console_lock()` + `lock_fb_info()`;
-2. **`memset(fb_base, 0, resource_size(fb_res))`** (`:347`) — the whole 8 MiB is wiped;
-3. `sscanf(val, "%u %u %u %u %u", &format, &rb, &width, &height, &stride)` (`:349`);
-4. `setup_fb_info()` recomputes `bits_per_pixel`, the RGB bitfields and `fix.smem_len`;
+2. `sscanf(val, "%u %u %u %u %u", &format, &rb, &width, &height, &stride)`;
+3. `setup_fb_info()` recomputes `bits_per_pixel`, the RGB bitfields and `screen_size` (one visible frame);
+4. **the header page and the new visible frame are wiped** (`4096 + screen_size` bytes from `fb_base`). Stock wipes the
+   whole 8 MiB resource; `0070` narrows it so a second frame a client keeps further up the region survives. What the
+   screen shows after the write is the same (all black);
 5. `fb_set()` → `fb_pan_display` + `fb_set_cmap` + `fb_add_videomode` + **`fbcon_update_vcs()`** (`:336`);
 6. `res_count++` (`:355`).
 
@@ -651,7 +659,7 @@ offsets. Defaults if never set: `640×480`, `stride = (width*4 + 255) & ~255`
 (`MiSTer_fb.c:147-149`).
 
 **MUST for P1.4:** the five-field string, the field order, the `0664` mode, the format codes,
-the wipe-on-write, and the read-only parameter names. The word `mode` is written by
+the wipe-on-write of the visible frame, and the read-only parameter names. The word `mode` is written by
 `system("echo …")` from a `/bin/sh` — so the file must also be **writable by root via a plain
 shell redirect**, which means it must be a real sysfs attribute, not a debugfs node.
 

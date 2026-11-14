@@ -11,7 +11,14 @@
 #                                        profile and every package/*/*.hash>, so a package added by the
 #                                        profile or a bumped pin re-saves the cache
 #   3. output/host (the cross toolchain) key: br-host-<workspace>-<version>-<toolchain fingerprint>
-#   4. ccache                            key: <version>
+#   4. ccache                            key: <version>, capped at 2Gi
+#
+# The repo's ceiling is 10 GB, LRU. Master's live set is ~8 GiB (dl/ ~3.4 +
+# toolchain ~2.7 + ccache <= 2), so a SECOND generation of any one of them does
+# not fit: saving it makes GitHub evict the least-recently-used entries, which
+# are the ones this very run restored first -- the toolchain. So a master run
+# with `prune-superseded: "true"` deletes the generation it supersedes BEFORE it
+# saves the new one, and trims dl/ to this build's own sources. docs/ci.md#cache-supersede
 #
 # Two rules keep the caches honest. dl/ is saved only when `make external-deps`
 # confirms every required file is present, because a cache key is immutable and
@@ -36,6 +43,12 @@ inputs:
     default: ""
   run-legal-info:
     description: Also run `make legal-info` (the SBOM) after the build. "true"/"false".
+    required: false
+    default: "false"
+  prune-superseded:
+    description: >-
+      "true" on master: delete the master cache generations this run's saves supersede, just before
+      saving. Needs `actions: write` on the calling job (build.yml grants it); other callers leave it off.
     required: false
     default: "false"
 
@@ -111,15 +124,31 @@ runs:
           output/build/host-*
         key: ${{ env.BR_HOST_KEY }}
 
+    # 2Gi: one cold build stores ~1.8 GB (55k objects) and a warm one touches
+    # fewer, so this holds a whole build with headroom. docs/ci.md#ccache-cap
     - name: Cache ccache
+      id: ccache
       uses: hendrikmuhs/ccache-action@dbeefd73e8e2ffc1bbc412570072735eb4db3607 # v1.2.25
       env:
         DEBIAN_FRONTEND: noninteractive
       with:
         key: ${{ env.BUILDROOT_VERSION }}
-        max-size: 4G
+        max-size: 2Gi
         update-package-index: true
         save: ${{ github.ref == 'refs/heads/master' }}
+
+    # The action writes max-size into ~/.config/ccache/ccache.conf, which
+    # Buildroot's own ccache never reads (its build seds out the XDG/home paths
+    # and reads only $BR_CACHE_DIR/ccache.conf). Without this the build's cap
+    # is ccache's 5 GB default, and the cache grew ~1 GB per master build.
+    - name: Cap the ccache that Buildroot's ccache reads
+      shell: bash
+      run: |
+        set -eu
+        export CCACHE_DIR="$GITHUB_WORKSPACE/.ccache"
+        mkdir -p "$CCACHE_DIR"
+        ccache --set-config=max_size=2Gi
+        grep -H '^max_size' "$CCACHE_DIR/ccache.conf"
 
     - name: Install build dependencies
       shell: bash
@@ -149,10 +178,12 @@ runs:
       run: make mister_de10nano_defconfig
 
     - name: Build
+      id: build
       shell: bash
       run: make BR2_CCACHE=y BR2_CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" BR2_CCACHE_USE_BASEDIR=y
 
     - name: Generate legal-info (SBOM)
+      id: legal-info
       if: inputs.run-legal-info == 'true'
       shell: bash
       run: make legal-info BR2_CCACHE=y BR2_CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" BR2_CCACHE_USE_BASEDIR=y
@@ -184,6 +215,89 @@ runs:
         else
           echo "tarball=false" >> "$GITHUB_OUTPUT"
         fi
+
+    # restore-keys hydrates dl/ from an OLDER generation, so without this every
+    # bumped package's previous tarball rode along forever (5.2 GB on disk vs
+    # 4.5 GB needed on 2026-11-11). Only regular files directly under dl/<pkg>/
+    # go; the Buildroot tarball (dl/ itself) and dl/<pkg>/git/ clones stay.
+    - name: Trim dl/ to this build's sources before caching it
+      if: always() && github.ref == 'refs/heads/master' && steps.dl-cache.outputs.cache-hit != 'true' && steps.dl-state.outputs.complete == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        before=$(du -sm dl | cut -f1)
+        find dl -mindepth 2 -maxdepth 2 -type f -printf '%P\n' | sort > /tmp/dl-files.txt
+        removed=0
+        while IFS= read -r rel; do
+          if ! grep -qxF -- "${rel##*/}" /tmp/dl-needed.txt; then
+            rm -f -- "dl/$rel"
+            removed=$((removed + 1))
+            echo "trimmed dl/$rel"
+          fi
+        done < /tmp/dl-files.txt
+        echo "dl/ trimmed: $removed stale file(s), ${before} MiB -> $(du -sm dl | cut -f1) MiB"
+
+    # Each save below writes a new immutable key while the generation it replaces
+    # is still live, and LRU then evicts what this run restored first (the
+    # toolchain). Delete the superseded generation first. Each flag mirrors its
+    # save step's condition; nothing outside refs/heads/master and the three key
+    # shapes is touched, and every failure here is a warning, never a red build.
+    # docs/ci.md#cache-supersede
+    - name: Delete the master cache generations this run supersedes
+      if: always() && inputs.prune-superseded == 'true' && github.ref == 'refs/heads/master'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        BUILD_OK: ${{ steps.build.outcome == 'success' && (steps.legal-info.outcome == 'success' || steps.legal-info.outcome == 'skipped') }}
+        DL_HIT: ${{ steps.dl-cache.outputs.cache-hit }}
+        DL_COMPLETE: ${{ steps.dl-state.outputs.complete }}
+        DL_KEY: ${{ steps.dl-cache.outputs.cache-primary-key }}
+        HOST_HIT: ${{ steps.host-cache.outputs.cache-hit }}
+        CCACHE_OUTCOME: ${{ steps.ccache.outcome }}
+      run: |
+        set -uo pipefail
+        api="repos/$GITHUB_REPOSITORY/actions/caches"
+        ref=refs/heads/master
+
+        # $1 server-side key prefix, $2 ERE the returned key must match, $3 key to keep.
+        prune() {
+          local prefix=$1 pattern=$2 keep=$3 id got_ref size key
+          if ! gh api --method GET --paginate "$api" -f "ref=$ref" -f "key=$prefix" \
+               -q '.actions_caches[] | "\(.id)\t\(.ref)\t\(.size_in_bytes)\t\(.key)"' \
+               </dev/null > /tmp/supersede.txt; then
+            echo "::warning title=cache supersede::could not list ${prefix}* on master; not pruned"
+            return 0
+          fi
+          while IFS=$'\t' read -r id got_ref size key; do
+            [ -n "$id" ] || continue
+            # Response-side guard, as in cache-prune.yml: trust what came back, not what was asked.
+            if [ "$got_ref" != "$ref" ] || ! [[ "$key" =~ $pattern ]]; then
+              echo "::warning title=cache supersede::refusing cache $id ($key) on '$got_ref'"
+              continue
+            fi
+            [ "$key" != "$keep" ] || continue
+            case "${size:-}" in ''|*[!0-9]*) size=0 ;; esac
+            if gh api --silent -X DELETE "$api/$id" </dev/null; then
+              echo "deleted superseded $key ($((size / 1048576)) MiB)"
+            else
+              echo "::warning title=cache supersede::could not delete cache $id ($key)"
+            fi
+          done < /tmp/supersede.txt
+        }
+
+        if [ "$DL_HIT" != "true" ] && [ "$DL_COMPLETE" = "true" ]; then
+          prune br-dl- '^br-dl-[0-9]{4}\.[0-9]{2}(\.[0-9]+)?-[0-9a-f]{64}$' "$DL_KEY"
+        fi
+        if [ "$BUILD_OK" = "true" ] && [ "$HOST_HIT" != "true" ]; then
+          prune br-host- '^br-host-[0-9a-f]{8}-' "$BR_HOST_KEY"
+        fi
+        # The ccache post step saves a fresh ccache-<version>-<timestamp> after
+        # this; on a red build it still saves, but the older generation is kept
+        # and cache-prune.yml removes it afterwards.
+        if [ "$BUILD_OK" = "true" ] && [ "$CCACHE_OUTCOME" = "success" ]; then
+          prune ccache- '^ccache-' ""
+        fi
+        exit 0
 
     - name: Save dl/ download cache
       if: always() && github.ref == 'refs/heads/master' && steps.dl-cache.outputs.cache-hit != 'true' && steps.dl-state.outputs.complete == 'true'

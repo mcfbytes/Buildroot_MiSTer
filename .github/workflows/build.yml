@@ -181,9 +181,19 @@ jobs:
     # that cache. See docs/ci.md#build-timeouts.
     timeout-minutes: 300
 
+    # `actions: write` so a master run can delete the cache generation it is
+    # about to supersede, BEFORE saving (docs/ci.md#cache-supersede). The token
+    # reaches only that master-only step: the checkout below does not persist
+    # it, so no package build script on a PR run can read it.
+    permissions:
+      contents: read
+      actions: write
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # The patch-header and configuration lints that used to sit here run
       # in the `lint-config` job above, which this job `needs` -- same
@@ -194,6 +204,7 @@ jobs:
         uses: ./.github/actions/buildroot-build
         with:
           run-legal-info: "true"
+          prune-superseded: "true"
 
       - name: Build overview (job summary)
         run: |

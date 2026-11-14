@@ -157,15 +157,22 @@ and a core that drives one must follow it.
 holds high fires once and stays masked until someone re-arms it. Measured: pool nodes on undriven
 lines recorded zero events and zero initial count across 42 s of armed polling (the 0043 rig run).
 `f2h-irq1` is edge-triggered, so its disable is lazy: the first `video_sync` edge fires the handler
-and is masked, the second only sets `IRQS_PENDING` and masks the line at the GIC, and that edge is
-replayed on the first arm. With no consumer it costs two interrupts per boot (`/proc/interrupts`
-shows 2, the UIO event count 1), and **the first armed `read()` returns a stale vsync: discard the
-first event after arming** (§5).
+and is masked, a later one only sets `IRQS_PENDING` and masks the line at the GIC, uncounted
+(`handle_edge_irq()` returns before `kstat_incr_irqs_this_cpu()`), and is replayed on the first arm.
+With no consumer `/proc/interrupts` shows 1 (measured on 7.3.4 RT, Main_SiSTer
+`harness/rig/rt734-all-patches-measured.md`), and **the first armed `read()` may return a stale
+vsync: discard the first event after arming** (§5).
+
+**Every line fires once per FPGA reprogram.** Lines 2..63 read 0 only until the first core load:
+reprogramming the FPGA fires every f2h line once, and the kernel then masks each until a program
+arms it, so after any core load all 63 lines read 1 in `/proc/interrupts` (measured, same record).
 
 **One IRQ thread per node.** UIO requests each line with `request_threaded_irq()`, so every node
 has an `irq/NN-mister_f2h_irqN` kthread at `SCHED_FIFO` 50; on the RT kernel forced threading
-roughly doubles that, to about 126 threads. They sleep unless their line fires and cost about
-1-1.5 MB in all; on 6.18 they are new. Their affinity must keep them off the RT CPU (CPU 1) (§6).
+doubles that: 126 threads, measured (63 primary + 63 forced-thread secondaries). They sleep unless
+their line fires and cost about 1-1.5 MB in all; on 6.18 they are new. Measured on RT, all 126 had
+`Cpus_allowed_list` 0, following the GIC effective affinity, with nothing pinning them; they must
+stay off the RT CPU (CPU 1) (§6).
 
 **Each claim is exclusive.** `uio_pdrv_genirq` refuses `IRQF_SHARED`, so a node takes its line from
 any future in-kernel consumer; such a consumer deletes that one node.
@@ -236,7 +243,9 @@ would starve the framebuffer's vsync.
 5. Interrupts: `write(fd, &(uint32_t){1}, 4)` arms the line, a blocking `read(fd, &count, 4)` returns
    the event count when it fires; clear the core's cause register, then arm again. Discard the
    first event after the first arm: an edge line (`f2h-irq1`) replays an edge latched while it was
-   masked, and a level line may report one raised before its consumer started.
+   masked, and a level line may report one raised before its consumer started. `open()` snapshots
+   the event count (`uio_open()`), so the once-per-reprogram edge (§2.3) is not replayed to a new
+   listener; a consumer already armed across a core load does see it.
 
 `/dev/mister/` view (eudev, `65-mister-uio.rules`): `lw-bridge`, `h2f-bridge`, `fpga-mgr`,
 `ddr-aperture`, `ddr-low`, `irq/f2h-irq1` .. `irq/f2h-irq63`, and two alias sets:
@@ -257,10 +266,11 @@ gains exactly the UIO and cmdline symbols. QEMU has no Cyclone V machine, so pro
 - all 68 UIO devices probe on both kernels, with the names above, and `/dev/mister/*` (doorbell
   and fb aliases included) appears;
 - `/proc/cmdline` ends in `uio_pdrv_genirq.of_id=generic-uio` with U-Boot's tokens intact;
-- `dmesg` lists the six reserved tiles, no overlap error, and `/proc/iomem` is unchanged below
-  `0x1ff00000`;
-- `f2h-irq1` shows 2 in `/proc/interrupts` and 1 UIO event, then stays masked; lines 2..63 record
-  none;
+- the boot log lists the six reserved tiles, no overlap error, and `/proc/iomem` is unchanged below
+  `0x1ff00000`. The 16 KB log buffer has usually dropped those lines by the time anyone looks; on
+  RT read them from pstore's console record (`/sys/fs/pstore/console-ramoops-0`, patch 0046);
+- with no consumer, `f2h-irq1` shows 1 in `/proc/interrupts` and stays masked; lines 2..63 show 0
+  until the first core load and 1 each after it (§2.3);
 - no `irq/NN-mister_*` thread has CPU 1 in its affinity (`/proc/irq/NN/smp_affinity_list`,
   `taskset -p` on the kthreads), on both kernels;
 - stock Main behaves as before; greenfield works only with its `lead/uio-names` rename (it then

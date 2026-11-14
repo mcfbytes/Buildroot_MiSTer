@@ -38,8 +38,8 @@ this series.
     mister-handoff@1ffff000           0x00001000   U-Boot handoff / reboot-flag page
     mister-scaler@20000000            0x01800000   ascal scaler, 3 slots
     mister-core@21800000              0x00800000   core-owned
-    mister-fb@22000000                0x00800000   HPS framebuffer   <- MiSTer_fb memory-region
-    mister-core@22800000              0x1d800000   core-owned (SS20 PROM/RAM, ...), to the top
+    mister-fb@22000000                0x01800000   HPS framebuffer   <- MiSTer_fb memory-region
+    mister-core@23800000              0x1c800000   core-owned, to the top of the aperture
     (RT line only: ramoops@1fe00000, patch 0046)
 /MiSTer_fb@22000000                   + memory-region = <&mister_fb_mem>
 /mister                               simple-mfd, ranges
@@ -77,11 +77,11 @@ re-read at the sources they cite. Legacy = `Main_MiSTer_master`; core RTL = the 
 | handoff | `0x1ffff000` | `0x1000` | legacy `fpga_io.cpp:398,601` `shmem_map(0x1FFFF000, 0x1000)`; U-Boot `fpgaload` clears it (`uboot.env:92`). |
 | scaler (shared) | `0x20000000` | `0x1800000` | `sys_top.v:716-721` `RAMBASE 0x20000000`, `RAMSIZE 0x800000` (`0x200000` under `MISTER_SMALL_VBUF`, SNES); ascal triple-buffers at `base + b*RAMSIZE` (`ascal.vhd:436-443`): 3 x 8 MiB = 24 MiB. Shared: stock SNES (`MISTER_SMALL_VBUF`, 6 MiB of slots) starts its MSU data track at `0x20600000`, inside this tile. |
 | core (lo) | `0x21800000` | `0x800000` | the gap between the scaler's end and the framebuffer; core-owned (SNES MSU, Jaguar, ...). |
-| fb (shared) | `0x22000000` | `0x800000` | `MiSTer_fb@22000000` `reg = <0x22000000 0x800000>` (`0004`), the same 8 MiB as stock, so `memory-region` and `reg` agree; legacy `video.cpp:37` `FB_ADDR = 0x20000000 + 32 MiB`. Shared: on stock SNES/SGB the MSU track skips exactly this 8 MiB hole (`msu_data_store.sv:40-41`). |
-| core (hi, shared) | `0x22800000` | `0x1d800000` | the rest: `0x40000000 - 0x22800000`. Lives here: the SPARCstation 20 boot PROM `0x22f00000-0x22f7ffff` and main RAM from `0x23000000` (`Main_SiSTer/rewrite-plan/phase5/ddr-region-map.md:120,124,246,275`), and on stock the SNES/SGB MSU track resuming at `0x22800000` and legacy's `video_menu_bg` buffers `0x227e9000-0x237bafff` (`:239`, legacy `video.cpp:3950-3954`), which start inside the fb tile. |
+| fb (shared) | `0x22000000` | `0x1800000` | `MiSTer_fb@22000000` (`0004`); legacy `video.cpp:37` `FB_ADDR = 0x20000000 + 32 MiB` and `:2414` maps `FB_SIZE*4*3` = 1920*1080*12 = `0x17BB000`, rounded up to 24 MiB, below the Menu core's wipe at `0x24000000`. Shared: stock SNES resumes its MSU track at `0x22800000`, past the 8 MiB hole (`Main_SiSTer/rewrite-plan/phase5/ddr-region-map.md:212`; legacy `user_io.cpp:2882-2888`). Its upper 16 MiB is shared too: the SPARCstation 20 boot PROM `0x22f00000-0x22f7ffff` and RAM from `0x23000000` live there (`Main_SiSTer/rewrite-plan/phase5/ddr-region-map.md:120,124,246,275`), as do, on stock, the SNES/SGB MSU track and legacy's `video_menu_bg` buffers `0x227e9000-0x237bafff` (`:239`); greenfield and the fb mode clear stay below `0x22800000`. |
+| core (hi) | `0x23800000` | `0x1c800000` | the rest: `0x40000000 - 0x23800000`. |
 
 The tiles sum to `0x00100000 + 0x20000000` exactly (`0xff000 + 0x1000 + 0x1800000 + 0x800000 +
-0x800000 + 0x1d800000`) and are adjacent, `0x1ff00000` to `0x40000000`. They must not overlap: `of_reserved_mem` reports overlap as an error.
+0x1800000 + 0x1c800000`) and are adjacent, `0x1ff00000` to `0x40000000`. They must not overlap: `of_reserved_mem` reports overlap as an error.
 
 **Why carve-outs at all:** `memory@0` declares 1 GiB and only U-Boot's `mem=511M`, which this repo
 does not own, kept the kernel out of the aperture. Lose that token and a write-combined user mapping
@@ -92,10 +92,9 @@ With `no-map` the DTB alone keeps the kernel out.
 track above the fb tile (its `parity-divergences.md` row, branch `lead/snes-msu-base`); stock keeps it
 inside both tiles.
 
-**The framebuffer tile is 8 MiB, not legacy's 24 MiB over-map** (`video.cpp:2414`,
-`FB_SIZE*4*3` = `0x17BB000`). A 24 MiB fb region has no consumer, and a 24 MiB `smem_len` would invite
-fbdev clients to clear over the SPARCstation 20's PROM and RAM; that band is core-owned (row above).
-The driver reads its `reg`, not the `memory-region` (`MiSTer_fb.c` is untouched here).
+**The framebuffer tile is 24 MiB and matches 0071's `reg`** (`0x22000000 + 0x1800000`, PR #297).
+The driver reads its `reg`, not the `memory-region` (`MiSTer_fb.c` is untouched here), so until 0071
+lands the 8 MiB stock `reg` simply sits inside the tile. Merge order between the two is free.
 
 ### 2.2 The `/mister` windows
 
@@ -247,7 +246,8 @@ a non-root Main would add a group to the rule.
 
 ## 6. Verified, and what only the rig can show
 
-Verified off-device (2026-11-13): both lines apply the full series at `-F0` (6.18.63, 7.3.4); the DTB builds with 0 dtc warnings by default and the
+Verified off-device (2026-11-13): both lines apply the full series at `-F0` (6.18.63, 7.3.4), with
+and without the `MiSTer_fb` 24 MiB resize; the DTB builds with 0 dtc warnings by default and the
 same 5 pre-existing `socfpga.dtsi` warnings under `W=1` as before; the decompiled DTB has 68 unique
 UIO names, SPI cells 40..103 each exactly once, and the merged `/reserved-memory`, whose `mister-*`
 tiles are adjacent from `0x1ff00000` to `0x40000000`; `drivers/uio/`

@@ -8,8 +8,8 @@ Describe every fixed HPS<->FPGA resource the board has, as one tree:
 
   /reserved-memory   no-map tiles covering 0x1ff00000..0x3fffffff: the
                      DDR above mem=511M, the U-Boot handoff page, the ascal
-                     scaler, the 8 MiB HPS framebuffer (MiSTer_fb gains a
-                     memory-region matching its reg) and the core-owned rest.
+                     scaler, the HPS framebuffer (MiSTer_fb gains a
+                     memory-region phandle) and the core-owned remainder.
   /mister            map-only generic-uio windows: the LW bridge, the heavy
                      HPS-to-FPGA bridge, the FPGA-manager page (GPO/GPI),
                      the 512 MiB DDR aperture (write-combined with 0045) and
@@ -88,14 +88,14 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 +			no-map;
 +		};
 +
++		/* Upper 16 MiB shared: SS20 PROM/RAM; stock SNES/SGB MSU, menu bg. */
 +		mister_fb_mem: mister-fb@22000000 {
-+			reg = <0x22000000 0x00800000>;
++			reg = <0x22000000 0x01800000>;
 +			no-map;
 +		};
 +
-+		/* SS20 PROM/RAM; on stock also SNES/SGB MSU, legacy video_menu_bg. */
-+		mister_core_hi: mister-core@22800000 {
-+			reg = <0x22800000 0x1d800000>;
++		mister_core_hi: mister-core@23800000 {
++			reg = <0x23800000 0x1c800000>;
 +			no-map;
 +		};
 +	};

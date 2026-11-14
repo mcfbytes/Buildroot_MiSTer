@@ -13,7 +13,7 @@ Disposition:  carry -- feature. Lets a userspace client (the greenfield HD OSD)
               takes 38 ms strongly ordered and 4.2 ms write-combined on the
               DE10-Nano (owner's rig, 2026-10-09).
 
-Three changes, all inside drivers/video/fbdev/MiSTer_fb.c:
+Four changes, all inside drivers/video/fbdev/MiSTer_fb.c:
 
 1. fix.smem_len = resource_size - 4096 (the whole DT region past the header
    page), so mmap() reaches every frame a client places in the region, not
@@ -22,16 +22,18 @@ Three changes, all inside drivers/video/fbdev/MiSTer_fb.c:
    read(2)/write(2) on /dev/fb0 stay bounded exactly as smem_len bounded them
    (fb_sys_read/fb_sys_write use screen_size when it is non-zero).
 
-2. FBIO_MISTER_FLUSH = _IO('F', 0xA0) = 0x000046A0, no argument, returns 0,
-   never sleeps: wmb(). On this SoC (CONFIG_ARM_HEAVY_MB, CONFIG_OUTER_CACHE_SYNC,
-   PL310) wmb() is dsb(st) followed by outer_cache.sync(), which drains the
-   PL310 store buffer. The FPGA scaler reads DDR through an f2sdram port that
-   does not pass the L2, so a client that wrote a frame through the
-   write-combined mapping calls this before it hands the frame to the scaler.
-   Userspace can issue "dsb st" but cannot sync the PL310. 'F' 0xA0 is free:
-   ioctl-number.rst lists 'F' driver-private numbers 00-0F, 20, 80-8F and DD
-   only, and no header in include/ uses 'F' 0xA0-0xDC. Unpatched kernels
-   answer -ENOTTY, which is how userspace probes for it.
+2. FBIO_MISTER_FLUSH = _IO('F', 0xA0) = 0x000046A0, no argument, returns 0:
+   wmb(). It runs under the fb_info lock the fbdev core takes around every
+   driver ioctl, which change 4 keeps short. On this SoC (CONFIG_ARM_HEAVY_MB,
+   CONFIG_OUTER_CACHE_SYNC, PL310) wmb() is dsb(st) followed by
+   outer_cache.sync(), which drains the PL310 store buffer. The FPGA scaler
+   reads DDR through an f2sdram port that does not pass the L2, so a client
+   that wrote a frame through the write-combined mapping calls this before it
+   hands the frame to the scaler. Userspace can issue "dsb st" but cannot sync
+   the PL310. 'F' 0xA0 is free: ioctl-number.rst lists 'F' driver-private
+   numbers 00-0F, 20, 80-8F and DD only, and no header in include/ uses 'F'
+   0xA0-0xDC. Unpatched kernels answer -ENOTTY, which is how userspace probes
+   for it.
 
 3. Writing the `mode` parameter clears the header page and the new mode's
    visible frame (screen_size bytes), not the whole region. Stock memsets the
@@ -40,25 +42,38 @@ Three changes, all inside drivers/video/fbdev/MiSTer_fb.c:
    MSU track resumes at 0x22800000). Nothing outside the visible frame was
    ever displayed, so what the screen shows after a mode write is unchanged.
 
+4. FBIO_WAITFORVSYNC drops info->lock for its wait (unlock_fb_info; wait;
+   lock_fb_info). fbdev core (fb_chrdev.c, 6.18 and 7.x) calls the driver's
+   fb_ioctl under lock_fb_info, so a client looping on the vsync wait (the
+   greenfield T-FRAME seat, SCHED_FIFO) held the lock for up to a frame, or
+   VSYNC_TIMEOUT_MSEC with no vsync, and every other ioctl on the fb queued
+   behind it: FBIO_MISTER_FLUSH slept a frame or two, and on PREEMPT_RT the
+   FIFO waiter would re-take the rtmutex ahead of a SCHED_OTHER flusher. The
+   wait reads only frame_count and vs_wait, never info; the open file holds a
+   reference on info for the ioctl's duration, so it cannot go away while
+   unlocked. Stock behaviour for a single waiter (Main_MiSTer) is unchanged.
+
 The kernel's own mapping stays memremap(MEMREMAP_WT), as stock has it. It
 cannot fight the user's write-combined alias: on 32-bit ARM ioremap_wt is
-ioremap_wc (arch/arm/include/asm/io.h), Normal non-cacheable, the same
-attributes pgprot_writecombine gives the mmap; and where WT is genuinely
-cached its lines are never dirty, so no write-back can overwrite a user
-store. fbcon's own drawing is held off while a client owns the screen (the
-greenfield HD OSD keeps the console in KD_GRAPHICS).
+ioremap_wc (arch/arm/include/asm/io.h), Normal non-cacheable like the mmap's
+pgprot_writecombine (only shareability differs: MT_DEVICE_WC lacks
+L_PTE_SHARED, benign because socfpga.dtsi sets arm,shared-override on the
+PL310); and where WT is genuinely cached its lines are never dirty, so no
+write-back can overwrite a user store. fbcon's own drawing is held off while a
+client owns the screen (the greenfield HD OSD keeps the console in
+KD_GRAPHICS).
 
 Visible side effect: the probe line now reports the region length, e.g.
 "frame buffer device at 0x22001000+0x7ff000" instead of "+0x12c000".
 
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
- drivers/video/fbdev/MiSTer_fb.c | 52 ++++++++++++++++++++++++++++++++++++----
- 1 file changed, 47 insertions(+), 5 deletions(-)
+ drivers/video/fbdev/MiSTer_fb.c | 67 ++++++++++++++++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 62 insertions(+), 5 deletions(-)
 
 --- a/drivers/video/fbdev/MiSTer_fb.c
 +++ b/drivers/video/fbdev/MiSTer_fb.c
-@@ -27,6 +27,20 @@
+@@ -27,6 +27,22 @@
  #define PALETTE_SIZE         256
  #define DRIVER_NAME          "MiSTer_fb"
  #define VSYNC_TIMEOUT_MSEC   50
@@ -70,7 +85,9 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 + * through the write-combined mmap to the FPGA scaler (which reads DDR over
 + * an f2sdram port, past the L2).  Userspace can issue "dsb st" itself but
 + * cannot sync the PL310; wmb() on ARM is dsb(st) plus outer_sync().  No
-+ * argument, never sleeps, returns 0.  'F' 0xA0 is unused in
++ * argument, returns 0.  It never waits on a vsync: the fbdev core's
++ * info->lock around it is held only by short paths, because
++ * FBIO_WAITFORVSYNC drops it for its wait.  'F' 0xA0 is unused in
 + * Documentation/userspace-api/ioctl/ioctl-number.rst and include/ (the 'F'
 + * driver-private numbers there are 0x00-0x0F, 0x20, 0x80-0x8F and 0xDD).
 + * A kernel without this patch answers -ENOTTY, so userspace can probe it.
@@ -79,18 +96,30 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  
  static u32 width = 0, height = 0, stride = 0, format = 0, rb = 1, frame_count = 0, res_count = 0;
  module_param(width,  uint, 0444);
-@@ -124,6 +138,10 @@
+@@ -122,7 +138,22 @@
+ 			break;
+ 		}
  
++		/*
++		 * The fbdev core calls every driver ioctl under info->lock, and
++		 * this wait lasts up to a frame (VSYNC_TIMEOUT_MSEC with no
++		 * vsync).  Holding the lock across it would queue every other
++		 * ioctl on this fb (FBIO_MISTER_FLUSH, FBIOGET_*) behind the
++		 * waiter.  The wait reads only frame_count and vs_wait, never
++		 * info, and the open file holds a reference on info, so the lock
++		 * is dropped for the wait and retaken for the core's unlock.
++		 */
++		unlock_fb_info(info);
  		ret = fb_wait_for_vsync(ioarg);
- 		break;
++		lock_fb_info(info);
++		break;
 +	case FBIO_MISTER_FLUSH:
 +		wmb();
 +		ret = 0;
-+		break;
+ 		break;
  	default:
  		ret = -ENOTTY;
- 	}
-@@ -162,6 +180,15 @@
+@@ -162,6 +193,17 @@
   *
   * The drawing ops stay on the sys_* helpers, as in 5.15: memremap() hands
   * back a normal-memory mapping, so direct dereference is correct there.
@@ -98,15 +127,17 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 + * The kernel mapping stays MEMREMAP_WT, as stock has it, while userspace
 + * may write the same bytes through fb_io_mmap's write-combined mapping.
 + * The two aliases cannot fight: on 32-bit ARM ioremap_wt IS ioremap_wc
-+ * (arch/arm/include/asm/io.h), Normal non-cacheable, the same attributes
-+ * as pgprot_writecombine, and where WT is truly cached its lines are never
-+ * dirty, so no write-back can overwrite a userspace store.  The kernel's
++ * (arch/arm/include/asm/io.h), Normal non-cacheable like
++ * pgprot_writecombine.  Only shareability differs (MT_DEVICE_WC lacks
++ * L_PTE_SHARED), which is benign because socfpga.dtsi sets
++ * arm,shared-override on the PL310.  Where WT is truly cached its lines are
++ * never dirty, so no write-back can overwrite a userspace store.  The kernel's
 + * own drawing (fbcon) is held off while a client owns the screen: the HD
 + * OSD keeps the console in KD_GRAPHICS.
   */
  static const struct fb_ops ops = {
  	.owner = THIS_MODULE,
-@@ -267,7 +294,17 @@
+@@ -267,7 +309,17 @@
  
  	dev_info(&fbdev->pdev->dev, "width = %u, height = %u, format=%u\n", info->var.xres, info->var.yres, format);
  
@@ -125,7 +156,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  
  	info->pseudo_palette = fbdev->fb_base;
  
-@@ -296,8 +333,8 @@
+@@ -296,8 +348,8 @@
  	}
  
  	retval = setup_fb_info(fbdev);
@@ -136,7 +167,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  
  	retval = fb_alloc_cmap(&fbdev->info.cmap, PALETTE_SIZE, 0);
  	if (retval < 0) return retval;
-@@ -377,11 +414,16 @@
+@@ -377,11 +429,16 @@
  		console_lock();
  		lock_fb_info(&p_fbdev->info);
  

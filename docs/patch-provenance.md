@@ -1852,26 +1852,33 @@ series (beta and de25nano by symlink). Not yet tested on the hardware, not sent 
 ### `0070` — MiSTer_fb: mmap the whole region + `FBIO_MISTER_FLUSH`, added 2026-11-13
 
 Original, by the repo owner; applies on top of `0001`, whose text stays untouched (stock parity). Carried in de10nano
-and, by symlink + `series`, the beta (7.x RT) series; not in de25nano (no `MiSTer_fb` there). Three changes in
+and, by symlink + `series`, the beta (7.x RT) series; not in de25nano (no `MiSTer_fb` there). Four changes in
 `MiSTer_fb.c`: `fix.smem_len` = resource − 4096 so `mmap` (write-combined, `fb_io_mmap`) reaches every frame a client
 keeps in the region, with `screen_size` = one visible frame so `read`/`write` are unchanged; a no-argument
 `FBIO_MISTER_FLUSH` = `_IO('F', 0xA0)` doing `wmb()` (`dsb st` + PL310 sync — the scaler reads DDR past the L2);
-and the `mode` write wipes only the header page + the visible frame. Consumer: the greenfield rewrite's HD OSD,
-which writes its two 1080p RGB565 slots (`0x22001000`, `0x223F6000`) through `/dev/fb0` when `smem_len` covers both
-and the flush ioctl answers, else falls back to `/dev/mem`. Motivation: a 1080p 565 frame is 38 ms through
-`/dev/mem` O_SYNC vs 4.2 ms through `/dev/fb0` on the rig. ABI: `docs/abi-contract.md` §4.2–§4.3. The kernel's
-`MEMREMAP_WT` mapping is kept: on 32-bit ARM `ioremap_wt` is `ioremap_wc`, the same Normal non-cacheable attributes
-as the user mapping. Verified: applies to 6.18.63 and 7.3.4; `MiSTer_fb.o` zero diagnostics at `W=1`; the flush
-compiles to `dsb st; bl arm_heavy_mb`.
+the `mode` write wipes only the header page + the visible frame; and `FBIO_WAITFORVSYNC` drops `info->lock` for its
+wait. The fbdev core runs every driver ioctl under that lock (`fb_chrdev.c`), so without the drop a client looping
+on the vsync wait (greenfield's SCHED_FIFO T-FRAME) made every other ioctl on the fb, the flush included, wait up to a
+frame (50 ms with no vsync). The wait touches only `frame_count`/`vs_wait`, and the open file pins `info`.
+Consumer: the greenfield rewrite's HD OSD, which writes its two 1080p RGB565 slots (`0x22001000`, `0x223F6000`)
+through `/dev/fb0` when `smem_len` covers both and the flush ioctl answers, else falls back to `/dev/mem`.
+Motivation: a 1080p 565 frame is 38 ms through `/dev/mem` O_SYNC vs 4.2 ms through `/dev/fb0` on the rig. ABI:
+`docs/abi-contract.md` §4.2–§4.3. The kernel's `MEMREMAP_WT` mapping is kept: on 32-bit ARM `ioremap_wt` is
+`ioremap_wc`, Normal non-cacheable like the user mapping; only shareability differs (`MT_DEVICE_WC` lacks
+`L_PTE_SHARED`), benign because `socfpga.dtsi` sets `arm,shared-override` on the PL310. Verified: applies to 6.18.63
+and 7.3.4; `MiSTer_fb.o` zero diagnostics at `W=1`; the flush compiles to `dsb st; bl arm_heavy_mb`.
 
 ### `0071` — DTS: `MiSTer_fb` region 8 → 24 MiB, added 2026-11-13
 
 Original, by the repo owner; applies after `0004` in both series (beta by symlink). `reg` becomes
 `<0x22000000 0x1800000>`, ending `0x237FFFFF`: legacy Main's own over-map extent (`video.cpp:2414`), below the Menu
 wipe / SMS rotation fb at `0x24000000`, enough for two 1080p 8888 frames. Depends on `0070` (the narrowed `mode`
-wipe). Stock Main with SNES + `.msu` still puts MSU data at `0x22800000+` (where its own menu-background buffers
-already over-map); greenfield sends MSU base `0x23000000` (track from `0x23800000`), so the window is free for it on
-every core, with no per-core carve-out. Built: 6.18.63 and 7.3.4 DTBs show the new `reg`.
+wipe). The upper 16 MiB (`0x22800000`–`0x237FFFFF`) is not free on every core: SPARCstation 20 at its default 464 MB
+keeps its boot PROM at `0x22F00000`–`0x22F7FFFF` and RAM from `0x23000000`, and stock Main with SNES + `.msu` puts MSU
+data at `0x22800000+`. Neither the kernel nor greenfield writes there: `0070`'s `mode` clear is limited to the header
+page and the visible frame, and greenfield maps `0x7FF000` of `/dev/fb0`. A client that mmaps and clears the whole
+`smem_len` would overwrite those bytes; none in the tree does. Kept on review by the owner (2026-11-13). Built:
+6.18.63 and 7.3.4 DTBs show the new `reg`.
 
 ### Provenance note
 

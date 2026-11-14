@@ -529,7 +529,7 @@ Confirmed by exhaustive grep: Main_MiSTer touches **no** `/sys` path other than 
 | `FB_SIZE` | `1920 * 1080` = 2,073,600 **pixels** (×4 B = 8,294,400 B) | `Main:video.cpp:36` |
 | Main_MiSTer's mapping | `shmem_map(FB_ADDR, FB_SIZE * 4 * 3)` = **24,883,200 B** at `0x22000000` | `Main:video.cpp:2417` |
 | DTS node | `MiSTer_fb { compatible = "MiSTer_fb"; reg = <0x22000000 0x800000>; interrupts = <0 40 1>; }` | `docs/stock-inventory/20250402/stock.dts:993-997` |
-| `/dev/fb0` pixels start at | `fb_res->start + 4096` = **`0x22001000`** | `linux515:drivers/video/fbdev/MiSTer_fb.c:265-266` |
+| `/dev/fb0` pixels start at | `fb_res->start + 4096` = **`0x22001000`** | `MiSTer_fb.c:351-352` |
 | Buffer *n* base (Main_MiSTer's view) | `FB_ADDR + (FB_SIZE*4*n) + (n ? 0 : 4096)` | `Main:video.cpp:3574` |
 
 Read that table carefully, because **the plan's mental model is wrong in one important way**:
@@ -552,15 +552,21 @@ Read that table carefully, because **the plan's mental model is wrong in one imp
 > * The three buffers Main_MiSTer uses (24.9 MB) **overrun the 8 MiB the `MiSTer_fb` DT node
 >   claims**. That is intentional: only buffer 0 (1920×1080×4 + 4096 = 8,298,496 B ≤ 8 MiB) is
 >   the fbdev framebuffer. Buffers 1 and 2 are OSD/menu backgrounds that only Main_MiSTer knows
->   about, reached purely through `/dev/mem`. **`reg = <0x22000000 0x800000>` is exactly right
->   and must not be "fixed" upward.**
+>   about, reached purely through `/dev/mem`. Stock's `reg = <0x22000000 0x800000>` covers buffer 0.
+>   `0071` grows it to `0x1800000` (24 MiB, to `0x237FFFFF`, legacy's own extent). The upper 16 MiB
+>   (`0x22800000`–`0x237FFFFF`) is not free on every core: SPARCstation 20 at its default 464 MB keeps its boot
+>   PROM at `0x22F00000`–`0x22F7FFFF` and RAM from `0x23000000`, and stock Main with SNES + a `.msu` writes MSU
+>   data from `0x22800000` (where its own `video_menu_bg` over-maps too). Nothing writes there through the fb:
+>   `0070`'s `mode` clear is limited to the header page and the visible frame, and greenfield maps `0x7FF000` of
+>   `/dev/fb0`. A client that mmaps and clears the whole `smem_len` would overwrite those cores' bytes.
 
 All of this lives at 544 MiB physical, i.e. **far above the `mem=511M` line** — so the kernel's
 page allocator never owns it and `/dev/mem` is the only way in. See `docs/boot-chain.md` §6.4.
 
 ### 4.2 The ioctl — **MUST, bit-exact**
 
-`MiSTer_fb` implements exactly **one** ioctl (`linux515:drivers/video/fbdev/MiSTer_fb.c:111-133`):
+Line cites in §4 are `drivers/video/fbdev/MiSTer_fb.c` as we ship it on 6.18 (`0001` + `0070`). Stock's
+`MiSTer_fb` implements exactly **one** ioctl (`fb_ioctl()`, `MiSTer_fb.c:127-163`, shown without `0070`):
 
 ```c
 static int fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
@@ -585,7 +591,17 @@ static int fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 | **Numeric value** | **`0x40044620`** |
 | dir / type / nr / size | `_IOC_WRITE` (1) / `'F'` = `0x46` / `0x20` / `4` |
 | **Argument** | pointer to a `__u32` that **must be 0** |
-| **Returns** | `0` on a vsync; `-ETIMEDOUT` after 50 ms (`VSYNC_TIMEOUT_MSEC`, `MiSTer_fb.c:29`); `-ENODEV` if `*arg != 0` (`:101`); `-ENOTTY` for any other `cmd` (`:128`) |
+| **Returns** | `0` on a vsync; `-ETIMEDOUT` after 50 ms (`VSYNC_TIMEOUT_MSEC`, `MiSTer_fb.c:29`); `-ENODEV` if `*arg != 0` (`:117`); `-ENOTTY` for any other `cmd` (`:159`) |
+
+**Our additions, `0070`:** `FBIO_MISTER_FLUSH` = `_IO('F', 0xA0)` = **`0x000046A0`**, no argument, returns `0`:
+`wmb()` (on this SoC `dsb st` + the PL310 `outer_sync()`), for a client that wrote a frame through the
+write-combined `mmap` and is about to hand it to the scaler. Stock answers `-ENOTTY`, which is the probe. Like every
+driver ioctl it runs under the `fb_info` lock the fbdev core takes (`fb_chrdev.c`), so it can sleep on that mutex, but
+never behind a vsync: `0070` also makes `FBIO_WAITFORVSYNC` drop the lock for its wait (`MiSTer_fb.c:141-152`), so
+the lock is only ever held for short paths (a `mode` write, `FBIOGET_*`, blanking). `0070` also sets `fix.smem_len`
+to the region minus the header page (`0x7FF000`), so `mmap` covers every frame in the region
+(`0x17FF000` with `0071`); `read(2)`/`write(2)`
+stay bounded to one visible frame via `screen_size`. Legacy Main never mmaps, so it sees neither.
 
 **`FBIO_WAITFORVSYNC` is a *standard mainline* ioctl, not a MiSTer invention** — and it is
 **byte-identical in 5.15 and 6.18**:
@@ -610,7 +626,7 @@ Because the type is a fixed-width `__u32`, **the number is architecture-independ
 ARM and 64-bit x86 agree. **There is no ioctl-number drift risk in P1.4.** The only thing P1.4
 can break is the *semantics*: the 50 ms timeout, the `arg != 0 ⇒ -ENODEV` rule, and the fact
 that the wait is driven by the FPGA's **IRQ 40** (`irq_handler()` → `frame_count++` →
-`wake_up_interruptible(&vs_wait)`, `MiSTer_fb.c:49-54`). Lose the IRQ and every
+`wake_up_interruptible(&vs_wait)`, `MiSTer_fb.c:65-70`). Lose the IRQ and every
 `FBIO_WAITFORVSYNC` returns `-ETIMEDOUT` after 50 ms — a hard 20 fps cap on the menu, with no
 error message.
 
@@ -633,25 +649,27 @@ This — not the ioctl — is where the MiSTer-specific framebuffer ABI actually
 
 | Path | Mode | Format | Kernel side | Userland side |
 |---|---|---|---|---|
-| `/sys/module/MiSTer_fb/parameters/**mode**` | **0664 RW** | five unsigned ints, `"%u %u %u %u %u"` = **`format rb width height stride`** | `module_param_cb(mode, &param_ops, NULL, 0664)`, `MiSTer_fb.c:376`; `mode_set()` `:340-359`; `mode_get()` `:361-370` | `Main:video.cpp:3548-3552` (`fprintf(fp, "%d %d %d %d %d\n", 8888, 1, w, h, w*4)`) and `Main:video.cpp:4390-4391` (`system("echo %d %d %d %d %d >/sys/module/MiSTer_fb/parameters/mode")`) |
-| `…/width`, `…/height`, `…/stride`, `…/format`, `…/rb`, `…/frame_count`, `…/res_count` | 0444 RO | `uint` | `module_param(…, uint, 0444)`, `MiSTer_fb.c:32-38` | not read by Main_MiSTer; community scripts do |
+| `/sys/module/MiSTer_fb/parameters/**mode**` | **0664 RW** | five unsigned ints, `"%u %u %u %u %u"` = **`format rb width height stride`** | `module_param_cb(mode, &param_ops, NULL, 0664)`, `MiSTer_fb.c:466`; `mode_set()` `:425-449`; `mode_get()` `:451-459` | `Main:video.cpp:3548-3552` (`fprintf(fp, "%d %d %d %d %d\n", 8888, 1, w, h, w*4)`) and `Main:video.cpp:4390-4391` (`system("echo %d %d %d %d %d >/sys/module/MiSTer_fb/parameters/mode")`) |
+| `…/width`, `…/height`, `…/stride`, `…/format`, `…/rb`, `…/frame_count`, `…/res_count` | 0444 RO | `uint` | `module_param(…, uint, 0444)`, `MiSTer_fb.c:48-54` | not read by Main_MiSTer; community scripts do |
 
 Writing `mode`:
 1. `console_lock()` + `lock_fb_info()`;
-2. **`memset(fb_base, 0, resource_size(fb_res))`** (`:347`) — the whole 8 MiB is wiped;
-3. `sscanf(val, "%u %u %u %u %u", &format, &rb, &width, &height, &stride)` (`:349`);
-4. `setup_fb_info()` recomputes `bits_per_pixel`, the RGB bitfields and `fix.smem_len`;
-5. `fb_set()` → `fb_pan_display` + `fb_set_cmap` + `fb_add_videomode` + **`fbcon_update_vcs()`** (`:336`);
-6. `res_count++` (`:355`).
+2. `sscanf(val, "%u %u %u %u %u", &format, &rb, &width, &height, &stride)`;
+3. `setup_fb_info()` recomputes `bits_per_pixel`, the RGB bitfields and `screen_size` (one visible frame);
+4. **the header page and the new visible frame are wiped** (`4096 + screen_size` bytes from `fb_base`). Stock wipes the
+   whole 8 MiB resource; `0070` narrows it so a second frame a client keeps further up the region survives. What the
+   screen shows after the write is the same (all black);
+5. `fb_set()` → `fb_pan_display` + `fb_set_cmap` + `fb_add_videomode` + **`fbcon_update_vcs()`** (`:421`);
+6. `res_count++` (`:445`).
 
-`format` values the driver understands (`MiSTer_fb.c:173-224`): **`8`** (palettised, 8 bpp,
+`format` values the driver understands (`MiSTer_fb.c:233-302`): **`8`** (palettised, 8 bpp,
 `FB_VISUAL_PSEUDOCOLOR`), **`565`** and **`1555`** (16 bpp), and **anything else ⇒ `8888`**
 (32 bpp; the driver *rewrites* `format` to `8888`). `rb` non-zero swaps the red and blue field
 offsets. Defaults if never set: `640×480`, `stride = (width*4 + 255) & ~255`
-(`MiSTer_fb.c:147-149`).
+(`MiSTer_fb.c:223-225`).
 
 **MUST for P1.4:** the five-field string, the field order, the `0664` mode, the format codes,
-the wipe-on-write, and the read-only parameter names. The word `mode` is written by
+the wipe-on-write of the visible frame, and the read-only parameter names. The word `mode` is written by
 `system("echo …")` from a `/bin/sh` — so the file must also be **writable by root via a plain
 shell redirect**, which means it must be a real sysfs attribute, not a debugfs node.
 

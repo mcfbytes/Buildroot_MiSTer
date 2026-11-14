@@ -257,4 +257,6 @@
 0067-wifi-rtw88-8821c-support-rfe-type-7.patch
 0068-dwc2-host-ack-all-hcint-bits.patch
 0069-dwc2-host-drop-partial-int-in-on-cs-timeout.patch
+0070-fbdev-MiSTer_fb-mmap-whole-region-and-flush-ioctl.patch
+0071-dts-de10nano-MiSTer_fb-region-24MiB.patch
 0072-dts-de10nano-MiSTer-fpga-interface.patch

@@ -1,0 +1,65 @@
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Fri, 13 Nov 2026 17:30:00 -0600
+Subject: [PATCH] ARM: dts: de10nano: grow the MiSTer_fb region to 24 MiB
+
+Origin:       original, this repo (not from the fork, not upstream).
+Author:       Michael C. Ferguson; applies on top of 0004 (and, in the beta
+              series, after 0043/0046, whose nodes it does not touch).
+Upstream:     No (MiSTer-specific node).
+Disposition:  carry -- approved by the owner 2026-11-13, kept on review
+              (owner, 2026-11-13). Depends on 0070.
+
+reg grows from <0x22000000 0x800000> (8 MiB) to <0x22000000 0x1800000>
+(24 MiB, ending 0x237fffff), so with 0070's smem_len a /dev/fb0 mmap
+reaches two 1080p 8888 frames (2 x 8,294,400 B = 15.8 MiB, plus the 4 KiB
+header page), not just two 565 frames.
+
+Why this extent:
+- it matches legacy Main's own over-map, shmem_map(FB_ADDR, FB_SIZE*4*3)
+  = 0x22000000-0x237bafff (Main_MiSTer video.cpp:2414): legacy already
+  treats those bytes as its framebuffers (buffer 0 = fb0, buffers 1-2 =
+  menu backgrounds) on every core;
+- it stays below 0x24000000, where the Menu core's DDR wipe and SMS's
+  screen-rotation framebuffer start.
+
+Why it needs 0070: stock's `mode` write memsets the whole resource. Over
+24 MiB that would wipe legacy's menu-background buffers on every mode
+write; 0070 clears only the header page and the visible frame.
+
+What else lives in the grown window, by loaded core:
+- SPARCstation 20 at its default 464 MB setting keeps its boot PROM at
+  0x22F00000-0x22F7FFFF and its RAM from 0x23000000, i.e. inside the upper
+  16 MiB (0x22800000-0x237FFFFF). SNES/SGB with a .msu mounted under stock
+  Main keeps MSU data from 0x22800000; stock's own video_menu_bg buffers
+  over-map those bytes too (video.cpp:2414), and stock never mmaps /dev/fb0.
+- Neither the kernel nor the greenfield rewrite writes there. 0070's `mode`
+  clear is limited to the header page and the visible frame, fbcon draws
+  only the visible frame, and greenfield maps 0x7FF000 (the stock 8 MiB)
+  of /dev/fb0. The grown node only lets an fbdev client reach those bytes:
+  a client that mmaps and clears the whole smem_len would overwrite the
+  SPARCstation 20's PROM/RAM while that core runs. No in-tree client does.
+
+The memremap() grows from 8 to 24 MiB of vmalloc space; with mem=511M
+the ARM vmalloc area is several hundred MiB, so this is well within it.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+--- a/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
++++ b/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
+@@ -125,7 +125,12 @@
+ 	 */
+ 	MiSTer_fb@22000000 {
+ 		compatible = "MiSTer_fb";
+-		reg = <0x22000000 0x800000>;
++		/*
++		 * 24 MiB, 0x22000000-0x237fffff: legacy Main's own over-map
++		 * extent, below the Menu core's wipe at 0x24000000.  Needs
++		 * patch 0070 (the mode write clears only the visible frame).
++		 */
++		reg = <0x22000000 0x1800000>;
+ 		interrupt-parent = <&intc>;
+ 		interrupts = <0 40 IRQ_TYPE_EDGE_RISING>;
+ 	};

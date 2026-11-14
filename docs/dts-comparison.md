@@ -263,6 +263,7 @@ Every difference the decompiled-DTB diff turns up, accounted for.
 | D13 | root `compatible` gains `"terasic,de10-nano"`; `model` "DE10-nano" → "DE10-Nano" | Mainline's. The machine match (`altr,socfpga`) is unchanged and still present. |
 | D14 | `uart0` gains `clock-frequency = <100000000>` | Mainline's. A no-op: `dw8250_probe()` reads it first, then overwrites `uartclk` with `clk_get_rate(&l4_sp_clk)` when a `clocks` phandle is present — which it is. Same 100 MHz either way. |
 | D15 | spidev compatible `"altspi"` → `"rohm,dh2228fv"` | §5. |
+| D16 | `+ /reserved-memory` (six `no-map` tiles, `0x1ff00000..0x3fffffff`), `+ MiSTer_fb memory-region`, `+ /mister` (68 map-only `generic-uio` nodes: five windows, `f2h` IRQ lines 1..63) — patch `0072` | Additive; stock Main only uses `/dev/mem`, and the tiles lie outside `memblock.memory` under `mem=511M`, so no `/dev/mem` attribute moves. Evidence and hazards: [`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md). |
 
 ### 4.1 `osc1` — checked, no action needed
 

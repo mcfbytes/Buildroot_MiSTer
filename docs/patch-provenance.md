@@ -1880,6 +1880,19 @@ page and the visible frame, and greenfield maps `0x7FF000` of `/dev/fb0`. A clie
 `smem_len` would overwrite those bytes; none in the tree does. Kept on review by the owner (2026-11-13). Built:
 6.18.63 and 7.3.4 DTBs show the new `reg`.
 
+### `0045` + `0072` — the HPS<->FPGA interface, shared by both lines since 2026-11-13
+
+Original work by the repo owner, not from the fork. `0072` describes the board's fixed HPS<->FPGA
+resources in the DE10 DTS: `no-map` reserved-memory tiles over `0x1ff00000..0x3fffffff`, map-only
+`generic-uio` windows (LW bridge, heavy HPS-to-FPGA bridge, FPGA-manager page, DDR aperture, low DDR)
+and one UIO node per `f2h` IRQ line 1..63. `0045` adds `UIO_MEM_PHYS_WC` so the aperture node maps
+write-combined. Both were beta-only (`0043`/`0044`/`0045` in `linux-patches-beta/`); `0072`
+superseded `0043` and `0044`, which were removed, their UIO nodes renamed to the one `mister_<name>` scheme, and `0045` moved to
+`linux-patches/`. Carried in the de10nano and beta series (beta by symlink); not in de25nano. Needs
+`CONFIG_UIO*` and the `uio_pdrv_genirq.of_id` cmdline, now in the shared `linux.config`. Evidence,
+exclusions and the userspace contract: [`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md).
+Not for mainline (`generic-uio` is not a hardware binding); for the MiSTer fork via the export.
+
 ### Provenance note
 
 B1 and B4 were **found by automated static review on PR #2**, not by the porting

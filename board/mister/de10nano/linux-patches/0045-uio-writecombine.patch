@@ -1,0 +1,118 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
+Date: Fri, 14 Aug 2026 00:00:00 +0000
+Subject: [PATCH] uio: add a write-combining physical memtype and let
+ uio_pdrv_genirq request it
+
+uio_mmap_physical() maps every UIO_MEM_PHYS region with pgprot_noncached(),
+which on ARMv7 is Strongly-ordered: one outstanding transaction, ~100 MB/s
+write and ~54 MB/s read into the DE10-Nano's FPGA-shared DDR3, measured.
+
+Add UIO_MEM_PHYS_WC, mapped with pgprot_writecombine() (Normal
+non-cacheable on ARMv7, so still safe against a non-snooping device), and
+let uio_pdrv_genirq select it for every region of a node carrying the
+boolean property "mister,map-writecombine". Drivers that do not ask keep
+UIO_MEM_PHYS unchanged; architectures without a WC attribute alias it to
+pgprot_noncached().
+
+Rationale, ordering obligations and the consumer node:
+docs/dts-mister-fpga-interface.md (Buildroot_MiSTer).
+
+Provenance
+----------
+Origin:       None; authored for this tree (stock MiSTer builds no UIO).
+Author:       Michael C. Ferguson, 2026-08-14.
+Upstream:     Not submitted. The memtype half is generic; the property
+              parse is MiSTer-local. Disposition "carry"
+              (docs/patch-provenance.md 3.1).
+History:      Beta-only (linux-patches-beta/) until 2026-11-13; now shared
+              by the 6.18 and RT lines, with its in-code comments cut to
+              one line each.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ Documentation/driver-api/uio-howto.rst | 9 +++++++++
+ drivers/uio/uio.c                      | 3 +++
+ drivers/uio/uio_pdrv_genirq.c          | 6 +++++-
+ include/linux/uio_driver.h             | 2 ++
+ 4 files changed, 19 insertions(+), 1 deletion(-)
+
+--- a/Documentation/driver-api/uio-howto.rst
++++ b/Documentation/driver-api/uio-howto.rst
+@@ -279,6 +279,15 @@ fields of ``struct uio_mem``:
+    with :c:func:`__get_free_pages()` but not kmalloc()). There's also
+    ``UIO_MEM_VIRTUAL`` for virtual memory.
+ 
++   ``UIO_MEM_PHYS_WC`` is ``UIO_MEM_PHYS`` mapped write-combining rather
++   than uncached, for memory-like regions such as buffers, framebuffers
++   and shared apertures. Stores to such a mapping may be merged and
++   reordered, so user space must place a barrier between a write and
++   whatever publishes it, and a device that also has ordered registers
++   must describe those as a separate ``UIO_MEM_PHYS`` mapping. Do not use
++   it for a region where reads have side effects or may not complete:
++   write-combining memory may be read speculatively.
++
+ -  ``phys_addr_t addr``: Required if the mapping is used. Fill in the
+    address of your memory block. This address is the one that appears in
+    sysfs.
+--- a/drivers/uio/uio.c
++++ b/drivers/uio/uio.c
+@@ -757,6 +757,8 @@ static int uio_mmap_physical(struct vm_area_struct *vma)
+ 	vma->vm_ops = &uio_physical_vm_ops;
+ 	if (idev->info->mem[mi].memtype == UIO_MEM_PHYS)
+ 		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
++	else if (idev->info->mem[mi].memtype == UIO_MEM_PHYS_WC)
++		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+ 
+ 	/*
+ 	 * We cannot use the vm_iomap_memory() helper here,
+@@ -858,6 +860,7 @@ static int uio_mmap(struct file *filep, struct vm_area_struct *vma)
+ 	switch (idev->info->mem[mi].memtype) {
+ 	case UIO_MEM_IOVA:
+ 	case UIO_MEM_PHYS:
++	case UIO_MEM_PHYS_WC:
+ 		ret = uio_mmap_physical(vma);
+ 		break;
+ 	case UIO_MEM_LOGICAL:
+--- a/drivers/uio/uio_pdrv_genirq.c
++++ b/drivers/uio/uio_pdrv_genirq.c
+@@ -113,6 +113,7 @@ static int uio_pdrv_genirq_probe(struct platform_device *pdev)
+ 	struct fwnode_handle *node = dev_fwnode(&pdev->dev);
+ 	struct uio_pdrv_genirq_platdata *priv;
+ 	struct uio_mem *uiomem;
++	bool map_wc;
+ 	int ret = -EINVAL;
+ 	int i;
+ 
+@@ -186,6 +187,9 @@ static int uio_pdrv_genirq_probe(struct platform_device *pdev)
+ 		}
+ 	}
+ 
++	/* Per device, not per region: ordered registers go in a separate node. */
++	map_wc = device_property_read_bool(&pdev->dev, "mister,map-writecombine");
++
+ 	uiomem = &uioinfo->mem[0];
+ 
+ 	for (i = 0; i < pdev->num_resources; ++i) {
+@@ -201,7 +205,7 @@ static int uio_pdrv_genirq_probe(struct platform_device *pdev)
+ 			break;
+ 		}
+ 
+-		uiomem->memtype = UIO_MEM_PHYS;
++		uiomem->memtype = map_wc ? UIO_MEM_PHYS_WC : UIO_MEM_PHYS;
+ 		uiomem->addr = r->start & PAGE_MASK;
+ 		uiomem->offs = r->start & ~PAGE_MASK;
+ 		uiomem->size = (uiomem->offs + resource_size(r)
+--- a/include/linux/uio_driver.h
++++ b/include/linux/uio_driver.h
+@@ -171,6 +171,8 @@ extern int __must_check
+  * Do not use in new drivers.
+  */
+ #define UIO_MEM_DMA_COHERENT	5
++/* UIO_MEM_PHYS, write-combined: not for registers or side-effect reads */
++#define UIO_MEM_PHYS_WC	6
+ 
+ /* defines for uio_port->porttype */
+ #define UIO_PORT_NONE	0
+-- 
+2.51.0

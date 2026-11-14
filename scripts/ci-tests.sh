@@ -1381,6 +1381,33 @@ else
 	fail "60-jms583-phantom.rules present, matches JMS583 (152d:0583)" "missing or wrong match"
 fi
 
+# -- /dev/mister/* names for the HPS<->FPGA UIO nodes ------------------------
+# Every linux,uio-name 0072 declares gets exactly one rule, and no rule names a
+# node the DT lacks (docs/dts-mister-fpga-interface.md).
+UIO_RULE="etc/udev/rules.d/65-mister-uio.rules"
+UIO_DT="$ROOT/board/mister/de10nano/linux-patches/0072-dts-de10nano-MiSTer-fpga-interface.patch"
+uio_dt_names=$(sed -n 's/^+.*linux,uio-name = "\([a-z0-9_]*\)";.*/\1/p' "$UIO_DT" | sort)
+uio_rules=$(tar xOf "$ROOTFS_TAR" "./$UIO_RULE" 2>/dev/null || true)
+uio_rule_names=$(printf '%s\n' "$uio_rules" | grep '^SUBSYSTEM=="uio"' \
+	| sed -n 's/.*ATTR{name}=="\([a-z0-9_]*\)".*/\1/p' | sort)
+if [ -n "$uio_dt_names" ] && [ "$uio_dt_names" = "$uio_rule_names" ]; then
+	pass "65-mister-uio.rules names every 0072 UIO node ($(echo "$uio_dt_names" | wc -l))"
+else
+	fail "65-mister-uio.rules names every 0072 UIO node" \
+		"rule set and DT linux,uio-name set differ (or the rule is missing)"
+fi
+# Doorbell ordinal k is f2h line k+7 (greenfield proto/irq_binding.h + doorbell-axi-rt.md).
+uio_db_bad=0
+for k in 1 2 3 4 5 6 7 8; do
+	printf '%s\n' "$uio_rules" | grep -qF "ATTR{name}==\"mister_f2h_irq$((k + 7))\", SYMLINK+=\"mister/irq/f2h-irq$((k + 7)) mister/doorbell/$k\"" \
+		|| uio_db_bad=1
+done
+if [ "$uio_db_bad" -eq 0 ]; then
+	pass "65-mister-uio.rules aliases mister/doorbell/1..8 to f2h-irq8..15"
+else
+	fail "65-mister-uio.rules aliases mister/doorbell/1..8 to f2h-irq8..15" "an alias is missing or points at the wrong line"
+fi
+
 # -- vhd_mount's mount point -------------------------------------------------
 # vhd_mount mounts /dev/loop1p1 on /media/rootfs; "/" is read-only at runtime,
 # so the directory must ship in the image (same .gitkeep idiom as /media/fat).

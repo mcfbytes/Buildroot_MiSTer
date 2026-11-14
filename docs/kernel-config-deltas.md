@@ -99,7 +99,7 @@ diff -q work/kbuild/stockport/.config work/kbuild/roundtrip/.config
 
 ⚠ **Consequence for anyone writing a checker:** several load-bearing symbols
 (`CONFIG_DEVMEM=y`, `# CONFIG_STRICT_DEVMEM is not set`, `# CONFIG_ARM_APPENDED_DTB is not
-set`, `CONFIG_CMDLINE=""`) are **at their kconfig defaults on 32-bit ARM and therefore do
+set`) are **at their kconfig defaults on 32-bit ARM and therefore do
 NOT appear in the 430-line defconfig.** `docs/boot-chain.md` §8.7's script must be run
 against the **expanded `.config`**, not against `board/mister/de10nano/linux.config`. Running
 it against the defconfig would fail every one of those `req` lines for the wrong reason. This
@@ -479,7 +479,7 @@ assumption Phase 0 kept disproving. All verified in the **expanded** `.config`.
 |---|---|---|
 | **A4** — `/dev/mem` unrestricted | `DEVMEM=y`; `# STRICT_DEVMEM is not set`; `IO_STRICT_DEVMEM` absent (it `depends on STRICT_DEVMEM`) | ✔ survived `olddefconfig` untouched. Without this, `fpga_io.cpp`'s `/dev/mem` mmap fails and the entire FPGA path dies — **and** the `0x1FFFF000` warm-reboot mailbox becomes unreachable (`docs/boot-chain.md` §6.4). |
 | **A3 / B1** — no appended DTB | `# CONFIG_ARM_APPENDED_DTB is not set`; `ARM_ATAG_DTB_COMPAT` absent | ✔ |
-| **B5/B6/B7** — bootloader cmdline survives | `CONFIG_CMDLINE=""`; `CMDLINE_FORCE` **absent**; `CMDLINE_EXTEND` **absent** | ✔ `CMDLINE_FORCE` would `strlcpy()` over the bootloader cmdline (`drivers/of/fdt.c`), destroying `root=`, `loop=`, `ro` and `mem=511M` → **unbootable**. Per `docs/boot-chain.md` §8.1/B6, the *absence* of `CMDLINE_FROM_BOOTLOADER` is correct (it is a `choice` member gated on `CMDLINE != ""`), and has **not** been "fixed". |
+| **B5/B6/B7** — bootloader cmdline survives | `CONFIG_CMDLINE="uio_pdrv_genirq.of_id=generic-uio"`; `CMDLINE_FORCE` **absent**; `CMDLINE_EXTEND=y` (since 2026-11-13, for the HPS<->FPGA UIO nodes, [`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md)) | ✔ `EXTEND` appends one token after the bootloader cmdline (`drivers/of/fdt.c`). `CMDLINE_FORCE` would `strlcpy()` over it, destroying `root=`, `loop=`, `ro` and `mem=511M` → **unbootable**. Per `docs/boot-chain.md` §8.1/B6, the *absence* of `CMDLINE_FROM_BOOTLOADER` is correct. |
 | **B3/B4** | `USE_OF=y`; `ATAGS=y` (stock parity, dead code at boot) | ✔ |
 | **A5** — modules | `MODULES=y`; `# MODULE_SIG is not set`; `MODULE_COMPRESS_XZ=y` (via D2) | ✔ signing **off** — required for out-of-tree modules. |
 | **A1/A11** — initramfs | `BLK_DEV_INITRD=y` (D1); `INITRAMFS_SOURCE` now **exists** (`=""`, owned by P1.10) | ✔ |

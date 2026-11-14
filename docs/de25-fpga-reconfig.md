@@ -18,8 +18,10 @@ contrasted against throughout — the carried patch series in
   Cited as bare `file:line`. Every kernel line number below was opened and read on
   2026-08-21, including a re-verification pass after the refutation (§10). This is the
   authoritative source in this document — the only one that could be read in full.
-- Carried DE10 patches: `board/mister/de10nano/linux-patches-beta/0043-dts-uio-doorbells.patch`,
-  `0044-dts-uio-fpga-regions.patch`, `0045-uio-writecombine.patch`, and
+- Carried DE10 patches (as read on 2026-08-21): the then beta-only `0043-dts-uio-doorbells.patch`,
+  `0044-dts-uio-fpga-regions.patch` and `0045-uio-writecombine.patch` (since 2026-11-13 `0043`/`0044`
+  are folded into the shared `linux-patches/0072-dts-de10nano-MiSTer-fpga-interface.patch` and `0045`
+  is in `linux-patches/`; `docs/dts-mister-fpga-interface.md`), and
   `linux-patches/0001-fbdev-add-MiSTer_fb-driver.patch`.
 - Terasic **DE25-Nano User Manual**, rev. 2025-09-05, 51 pp. — *UM*. **Read in full this
   session**: the DigiKey mirror `mm.digikey.com/Volume0/opasdata/d220001/medias/docus/7704/P0804.pdf`

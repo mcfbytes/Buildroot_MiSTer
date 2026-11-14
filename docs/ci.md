@@ -357,7 +357,15 @@ gcc/binutils/glibc never invoke a compiler at all and never reach ccache. The
 two caches are substitutes for each other. A small ccache next to a healthy
 `br-host` cache hit is the system working, not a leak.
 
-**Now that variants share the 10 GB ceiling:** main's set is ~7 GB (2.7 GB
+**The budget as of 2026-11 (run 42982571571, cache entry sizes):** `br-dl`
+3722 MiB, `br-host` 2789 MiB, ccache 3344 MiB (grown from 0.8 GB, see
+[`#ccache-cap`](#ccache-cap)), tarball 8 MiB: **9.6 GiB of the 10 GB
+ceiling for ONE generation.** That leaves no room for the second generation
+every save briefly creates, which is why a master run now deletes the one it
+supersedes before saving ([`#cache-supersede`](#cache-supersede)). With
+ccache capped at 2Gi and `dl/` trimmed, the set is ~8 GiB.
+
+**Now that variants share the 10 GB ceiling:** main's set was ~7 GB (2.7 GB
 dl + ~3 GB br-host + br-initramfs-host + ~0.7 GB ccache + the tiny tarball).
 Each kernel variant adds ~2-3 GB (`br-<name>-host` — the cross-toolchain
 dominates it) plus up to ~3 GB (`br-dl-<name>` — its content mostly overlaps
@@ -735,7 +743,72 @@ master `Build` (`workflow_run`) and in the daily sweep, and deletes every
 `ccache-<version>-<timestamp>` entry on `refs/heads/master` except the newest
 per `<version>`. Same response-side guard as the PR prune: an entry whose
 returned `.ref` is not master, or whose key does not start `ccache-`, is
-refused. An older version's single generation is left to LRU.
+refused. An older version's single generation is left to LRU. Since
+[`#cache-supersede`](#cache-supersede) this is the backstop: a green master
+`Build` has already deleted the old generation before saving its own.
+
+<a id="cache-supersede"></a>
+### Delete the superseded generation BEFORE saving
+
+**The mechanism this guards against.** A key is immutable, so every refresh is
+a NEW entry, and for a while both generations are live. GitHub evicts as soon
+as the repo is over its ceiling, least-recently-used first, and the least
+recently used entries are the ones the same run restored in its first
+minutes. Run **42982571571** (2026-11-11, green) restored the tarball, `br-dl`
+(3420 MiB, via restore-keys), `br-host` (2789 MiB) and ccache (2435 MiB), then
+saved a new `br-dl` (3722 MiB) and ccache (3344 MiB): 15.3 GiB live. By the
+next prune the tarball, the old `br-dl` **and `br-host`** were gone, and the
+next master run logged `Cache not found` for the toolchain. A prune that runs
+after the build (`workflow_run`) is too late: the eviction has already
+happened.
+
+So with `prune-superseded: "true"` (build.yml only), the composite action runs
+one step after `legal-info` and before the saves, on master only. For each save
+that is about to happen (the same condition as that save step), it deletes
+master's older entries of that shape:
+
+| about to save | deletes on `refs/heads/master` | keeps |
+|---|---|---|
+| `dl/` (miss + complete) | `br-dl-<version>-<sha256>` | the key being saved |
+| toolchain (green + miss) | `br-host-<ws>-…` | `BR_HOST_KEY` |
+| ccache (green + action ok) | every `ccache-*` | none: the post step saves the new one |
+
+It uses the same response-side guard as `cache-prune.yml` (`.ref` must be
+master and the key must match the shape), and it never fails the build: if a
+listing or a delete fails, it warns and the save goes ahead. The cost is that
+if the save itself fails after the delete, the next run starts colder. That is
+recoverable; losing `br-host` to eviction on every package bump was not. The
+build job therefore holds `actions: write`. Its checkout uses
+`persist-credentials: false`, and only this master-only step references the
+token.
+
+The same step trims `dl/` before saving it: restore-keys hydrates from an
+older generation, so each bumped package's previous tarball used to be kept
+forever (5.2 GB on disk against 4.5 GB needed). Files directly under
+`dl/<pkg>/` that `make external-deps` does not list are removed. `dl/<pkg>/git/`
+clones and the Buildroot tarball stay. Not covered: a package whose
+`_ACTUAL_SOURCE_TARBALL` differs from its `_SOURCE` (Buildroot's `go-bin` and
+`nodejs-bin`, neither of which is in the image). `external-deps` does not list
+that legal-info tarball, so it would be trimmed and fetched again on every
+run.
+
+<a id="ccache-cap"></a>
+### ccache cap: 2Gi, set where Buildroot's ccache reads it
+
+`hendrikmuhs/ccache-action`'s `max-size` goes into
+`~/.config/ccache/ccache.conf`. Buildroot's host-ccache never reads that file:
+`package/ccache/ccache.mk` seds out the XDG and home config paths, and reads
+only `$BR_CACHE_DIR/ccache.conf`. So the build ran under ccache's 5 GB default,
+nothing was ever evicted, and the cache grew by about a GB per master build
+(1.8, then 2.4, then 3.3 GiB), with stale objects from every package bump. A
+separate step now writes `max_size=2Gi` into `.ccache/ccache.conf`.
+
+Why 2Gi: a cold build (run 43144569857, br-host miss) stores **1.8 GB**
+(54.9k misses out of 64.4k cacheable calls). A warm build touches fewer
+objects (47.1k cacheable calls, 86% hits, run 42982571571), because restored
+host packages never compile. One whole cold build fits under 2Gi with about
+15% to spare, and LRU cleanup evicts objects no current build touches. If a
+warm build's `ccache -s` hit rate falls well below ~85%, the cap is too tight.
 
 <a id="dl-completeness"></a>
 ### dl/ completeness before save

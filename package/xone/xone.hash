@@ -7,6 +7,6 @@
 #   https://github.com/dlundqvist/xone/archive/f2aa9fe01103d7600553b505b298ff0bd47ff280/xone-f2aa9fe01103d7600553b505b298ff0bd47ff280.tar.gz
 #
 #   sha256sum xone-f2aa9fe01103d7600553b505b298ff0bd47ff280.tar.gz
-sha256  a41601d1c4eb974fe5f9edd8e5ed45ef738e73b8f478e5e605cc59cd9a9960fc  xone-f2aa9fe01103d7600553b505b298ff0bd47ff280.tar.gz
+sha256  dc733e625e12f7326a48a577a98e057ac367c3ab7b9fc2ef418f12b0fe714f42  xone-30317da0e6ddedefdedde780d8b40be0dc7118ce.tar.gz
 # LICENSE -- see XONE_LICENSE_FILES comment in the .mk
 sha256  8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643  LICENSE

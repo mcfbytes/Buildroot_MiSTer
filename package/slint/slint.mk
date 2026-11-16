@@ -6,7 +6,7 @@
 
 # The C++ API (libslint_cpp.so + CMake package), software renderer only, plus the
 # carried 0001-0003 (fontconfig dlopen, ARGB8888 target, scene clock). docs/slint.md.
-SLINT_VERSION = 1.18.1
+SLINT_VERSION = 1.19.0
 SLINT_SITE = $(call github,slint-ui,slint,v$(SLINT_VERSION))
 SLINT_LICENSE = GPL-3.0 or LicenseRef-Slint-Royalty-free-2.0 or LicenseRef-Slint-Software-3.0
 SLINT_LICENSE_FILES = \

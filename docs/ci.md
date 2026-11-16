@@ -792,6 +792,26 @@ clones and the Buildroot tarball stay. Not covered: a package whose
 that legal-info tarball, so it would be trimmed and fetched again on every
 run.
 
+The trim is only as right as its `external-deps` list, so that call carries the
+build's `BR2_CCACHE=y` ([`#dl-completeness`](#dl-completeness)). Run
+**43564510479** (merge of #299) trimmed without it, deleting `ccache`, `blake3`,
+`hiredis` and `xxhash` from the saved `dl/`. The next runs restored that `dl/`
+plus `br-host`, which holds `output/build/host-ccache-*` with its
+`.stamp_downloaded`, so nothing re-fetched the tarball and `legal-info` died in
+run **43820563055**: `cp: cannot stat '.../dl/ccache/ccache-4.13.6.tar.xz'`.
+
+<a id="stamp-heal"></a>
+**Self-heal before the build.** Any `dl/` cache can lack a file a restored
+`output/build/<pkg>` thinks it already downloaded (this trim, an older save,
+eviction). So right after `Configure`, the action lists `external-deps`
+(with `BR2_CCACHE=y`), and for each file missing from `dl/` whose
+`output/build/<stem>` or `output/build/host-<stem>` has `.stamp_downloaded`, it
+removes that directory (what `<pkg>-dirclean` does) and logs a warning. That
+package then downloads and rebuilds; its dependants' stamps depend on it
+order-only, so nothing else rebuilds. `<stem>` is the file name minus its archive
+extension, which matches `<pkg>-<version>` for ordinary tarballs. A source named
+differently is not matched, and that run still fails at `legal-info` as before.
+
 <a id="ccache-cap"></a>
 ### ccache cap: 2Gi, set where Buildroot's ccache reads it
 
@@ -3304,4 +3324,5 @@ Part IV above, alongside the other composite-action internals.)
 | (earlier design) | From-scratch sdcard Buildroot build overran the 360-min runner cap; release never published | [`#sdcard-timing-6h-cap`](#sdcard-timing-6h-cap) |
 | (inherited bug) | `gh` ignores `$GITHUB_REPOSITORY`; a green ~9h build produced no release without `GH_REPO` | [`#gh-repo-bug`](#gh-repo-bug) |
 | (verified locally) | `make external-deps` without `BR2_CCACHE=y` undercounts dl/ needs: 158 vs 163 files, misses ccache itself | [`#dl-completeness`](#dl-completeness) |
+| 43820563055 | legal-info: `ccache-4.13.6.tar.xz` missing; #299's trim used a bare `external-deps` (233 vs 237 files) | [`#cache-supersede`](#cache-supersede), [`#stamp-heal`](#stamp-heal) |
 | (verified locally) | An allow-list toolchain fingerprint silently missed `BR2_cortex_a9=y` (lowercase, no ARM/CPU prefix) | [`#toolchain-fingerprint`](#toolchain-fingerprint) |

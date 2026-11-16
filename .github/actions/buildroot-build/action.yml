@@ -177,6 +177,33 @@ runs:
       shell: bash
       run: make mister_de10nano_defconfig
 
+    # A restored output/build/<pkg>/.stamp_downloaded hides a source missing from
+    # dl/, and legal-info then dies on it. Dirclean those packages. docs/ci.md#stamp-heal
+    - name: Rebuild restored packages whose source is missing from dl/
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! make external-deps BR2_CCACHE=y BR2_CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" BR2_CCACHE_USE_BASEDIR=y \
+             2>/dev/null | grep -vE '/|=|^\s*$| |^#' | sort -u > /tmp/dl-needed-pre.txt; then
+          echo "::warning title=dl/ heal::make external-deps failed; restored packages not checked"
+          exit 0
+        fi
+        find dl -type f -printf '%f\n' 2>/dev/null | sort -u > /tmp/dl-have-pre.txt
+        comm -23 /tmp/dl-needed-pre.txt /tmp/dl-have-pre.txt > /tmp/dl-missing-pre.txt || true
+        healed=0
+        while IFS= read -r f; do
+          stem=$f
+          for ext in .tar.gz .tar.xz .tar.bz2 .tar.zst .tar.lz .tgz .zip .tar; do stem=${stem%"$ext"}; done
+          for d in "output/build/$stem" "output/build/host-$stem"; do
+            if [ -f "$d/.stamp_downloaded" ]; then
+              rm -rf -- "$d"
+              healed=$((healed + 1))
+              echo "::warning title=dl/ heal::$f missing from dl/ but ${d#output/build/} was restored; dircleaned so the build fetches it"
+            fi
+          done
+        done < /tmp/dl-missing-pre.txt
+        echo "$(wc -l < /tmp/dl-missing-pre.txt) source(s) missing from dl/, $healed restored package(s) dircleaned"
+
     - name: Build
       id: build
       shell: bash
@@ -194,7 +221,9 @@ runs:
       shell: bash
       run: |
         set -uo pipefail
-        if ! make external-deps 2>/dev/null | grep -vE '/|=|^\s*$| |^#' | sort -u > /tmp/dl-needed.txt; then
+        # Same BR2_CCACHE as the build, or host-ccache's sources go unlisted and get trimmed.
+        if ! make external-deps BR2_CCACHE=y BR2_CCACHE_DIR="$GITHUB_WORKSPACE/.ccache" BR2_CCACHE_USE_BASEDIR=y \
+             2>/dev/null | grep -vE '/|=|^\s*$| |^#' | sort -u > /tmp/dl-needed.txt; then
           echo "complete=false" >> "$GITHUB_OUTPUT"
           echo "::notice title=dl/ not cached::make external-deps failed, so dl/ completeness is unknown and it was not saved."
           exit 0

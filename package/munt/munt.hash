@@ -5,7 +5,7 @@
 #   https://github.com/munt/munt/archive/munt_2_8_2.tar.gz
 #
 #   sha256sum munt-munt_2_8_2.tar.gz
-sha256  a9baa120bbcdd9e5af7ed0878a32c59b378b730612459851b9acafcd76519b72  munt-munt_2_8_3.tar.gz
+sha256  75f29ed4b56c830e71005ce2d3ffc0b6b19a89ca8e3119054fa0d315b8bcc384  munt-munt_2_8_4.tar.gz
 # mt32emu/COPYING.LESSER.txt -- see MUNT_LICENSE_FILES comment in the .mk
 sha256  36b6d3fa47916943fd5fec313c584784946047ec1337a78b440e5992cb595f89  mt32emu/COPYING.LESSER.txt
 # mt32emu_alsadrv/COPYING.LESSER.txt -- byte-identical to the file above

@@ -2,6 +2,16 @@
 
 # MiSTer Linux Modernization
 
+[![Build](https://github.com/mcfbytes/Buildroot_MiSTer/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/mcfbytes/Buildroot_MiSTer/actions/workflows/build.yml)
+[![Lint CI](https://github.com/mcfbytes/Buildroot_MiSTer/actions/workflows/lint.yml/badge.svg?branch=master)](https://github.com/mcfbytes/Buildroot_MiSTer/actions/workflows/lint.yml)
+[![Latest release](https://img.shields.io/github/v/release/mcfbytes/Buildroot_MiSTer?include_prereleases&label=release)](https://github.com/mcfbytes/Buildroot_MiSTer/releases)
+[![Downloads](https://img.shields.io/github/downloads/mcfbytes/Buildroot_MiSTer/total?label=downloads)](https://github.com/mcfbytes/Buildroot_MiSTer/releases)
+[![License: GPL-3.0, kernel patches GPL-2.0](https://img.shields.io/badge/license-GPL--3.0%20%C2%B7%20kernel%20patches%20GPL--2.0-blue)](#contributing-and-licensing)
+[![Platform: MiSTer FPGA](https://img.shields.io/badge/platform-MiSTer%20FPGA%20%C2%B7%20DE10--Nano-orange)](https://github.com/MiSTer-devel/Wiki_MiSTer/wiki)
+[![Built with Buildroot](https://img.shields.io/badge/built%20with-Buildroot-2e6da4)](https://buildroot.org/)
+[![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen?logo=renovatebot)](docs/renovate.md)
+[![Ask DeepWiki](art/badges/deepwiki.svg)](https://deepwiki.com/mcfbytes/Buildroot_MiSTer)
+
 **A complete, reproducible operating system for the MiSTer DE10-Nano:** kernel, root
 filesystem, a real-time kernel variant, a flashable SD-card image, and the update channel
 that delivers them. It is built in the open from a current Buildroot and a mainline LTS

@@ -7,7 +7,7 @@ Author:       Michael C. Ferguson; applies on top of 0001 (Sorgelig's driver).
 Upstream:     No (MiSTer-specific driver). Carried in de10nano and, by symlink,
               the beta (7.x RT) series; 0001's text is left untouched so it keeps
               its parity with stock.
-Disposition:  carry -- feature. Lets a userspace client (the greenfield HD OSD)
+Disposition:  carry -- feature. Lets a userspace client (an HD OSD)
               write its frames through fb_io_mmap's write-combined mapping
               instead of /dev/mem O_SYNC (strongly ordered): a 1080p RGB565 frame
               takes 38 ms strongly ordered and 4.2 ms write-combined on the
@@ -44,8 +44,8 @@ Four changes, all inside drivers/video/fbdev/MiSTer_fb.c:
 
 4. FBIO_WAITFORVSYNC drops info->lock for its wait (unlock_fb_info; wait;
    lock_fb_info). fbdev core (fb_chrdev.c, 6.18 and 7.x) calls the driver's
-   fb_ioctl under lock_fb_info, so a client looping on the vsync wait (the
-   greenfield T-FRAME seat, SCHED_FIFO) held the lock for up to a frame, or
+   fb_ioctl under lock_fb_info, so a client looping on the vsync wait (a
+   SCHED_FIFO vsync thread) held the lock for up to a frame, or
    VSYNC_TIMEOUT_MSEC with no vsync, and every other ioctl on the fb queued
    behind it: FBIO_MISTER_FLUSH slept a frame or two, and on PREEMPT_RT the
    FIFO waiter would re-take the rtmutex ahead of a SCHED_OTHER flusher. The
@@ -60,7 +60,7 @@ pgprot_writecombine (only shareability differs: MT_DEVICE_WC lacks
 L_PTE_SHARED, benign because socfpga.dtsi sets arm,shared-override on the
 PL310); and where WT is genuinely cached its lines are never dirty, so no
 write-back can overwrite a user store. fbcon's own drawing is held off while a
-client owns the screen (the greenfield HD OSD keeps the console in
+client owns the screen (an HD OSD client keeps the console in
 KD_GRAPHICS).
 
 Visible side effect: the probe line now reports the region length, e.g.

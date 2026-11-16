@@ -32,9 +32,9 @@ What else lives in the grown window, by loaded core:
   16 MiB (0x22800000-0x237FFFFF). SNES/SGB with a .msu mounted under stock
   Main keeps MSU data from 0x22800000; stock's own video_menu_bg buffers
   over-map those bytes too (video.cpp:2414), and stock never mmaps /dev/fb0.
-- Neither the kernel nor the greenfield rewrite writes there. 0070's `mode`
+- Neither the kernel nor the HD OSD client writes there. 0070's `mode`
   clear is limited to the header page and the visible frame, fbcon draws
-  only the visible frame, and greenfield maps 0x7FF000 (the stock 8 MiB)
+  only the visible frame, and that client maps 0x7FF000 (the stock 8 MiB)
   of /dev/fb0. The grown node only lets an fbdev client reach those bytes:
   a client that mmaps and clears the whole smem_len would overwrite the
   SPARCstation 20's PROM/RAM while that core runs. No in-tree client does.

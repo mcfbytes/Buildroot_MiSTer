@@ -39,7 +39,7 @@ Ten workflows, two composite actions, one Buildroot recipe. A build is
 | `renovate-hash-sync.yml` | Renovate PRs | refresh the companion hash of whatever pin the PR bumped (each case is one `scripts/hash-sync-*.sh`) |
 | `renovate-validate.yml` | push, PRs | `renovate.json` validates |
 | `publish-db.yml` | published release | regenerate + publish `db.json` to Pages |
-| `cache-prune.yml` | closed PRs, weekly | delete a closed PR's Actions caches |
+| `cache-prune.yml` | closed PRs, daily, after each master build | delete a closed PR's Actions caches |
 | `fork-sync.yml` | weekly | backport queue against the upstream kernel fork |
 
 **The build action** (`.github/actions/buildroot-build`, ~200 lines) is `make mister_de10nano_defconfig && make`

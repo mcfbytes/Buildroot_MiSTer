@@ -1,7 +1,7 @@
 # linux-rt.fragment — kernel-config delta for the RT / 7.x beta variant.
 #
-# Layered on board/mister/de10nano/linux.config by Buildroot at kernel-build
-# time (BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES, set in configs/mister_rt.fragment).
+# Layered on board/mister/de10nano/linux.config by package/linux-rt at
+# kernel-build time (BR2_PACKAGE_LINUX_RT_CONFIG_FRAGMENT_FILES defaults here).
 # See docs/rt-beta-kernel.md.
 #
 # The base linux.config reconciles cleanly to 7.2 and 7.3 via `olddefconfig`

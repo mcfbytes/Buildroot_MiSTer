@@ -125,7 +125,7 @@ Columns: **SONAME** | **stock realfile** (version hint, from `shared-libraries.m
 
 | SONAME | stock realfile | Buildroot package | version | bump? | notes |
 |---|---|---|---|---|---|
-| `libz.so.1` | `libz.so.1.2.11` | `BR2_PACKAGE_ZLIB_NG` (via `BR2_PACKAGE_ZLIB` provider choice) | 2.3.3 compat | no | zlib SONAME has never bumped, and zlib-ng's `ZLIB_COMPAT` mode keeps it. `zlibVersion()` reports `1.3.1.zlib-ng` rather than a plain `1.x.y`, which is the one observable difference; decode output is bit-identical (verified, `harness/rig/png-check.sh`) |
+| `libz.so.1` | `libz.so.1.2.11` | `BR2_PACKAGE_ZLIB_NG` (via `BR2_PACKAGE_ZLIB` provider choice) | 2.3.3 compat | no | zlib SONAME has never bumped, and zlib-ng's `ZLIB_COMPAT` mode keeps it. `zlibVersion()` reports `1.3.1.zlib-ng` rather than a plain `1.x.y`, which is the one observable difference; decode output is bit-identical (verified on the rig) |
 | `libbz2.so.1.0` | `libbz2.so.1.0.8` | `BR2_PACKAGE_BZIP2` | 1.0.8 | no | unchanged since bzip2 1.0 (2000) |
 | `liblzma.so.5` | `liblzma.so.5.2.5` | `BR2_PACKAGE_XZ` | 5.8.3 | no |  |
 | `liblzo2.so.2` | `liblzo2.so.2.0.0` | `BR2_PACKAGE_LZO` | 2.10 | no |  |

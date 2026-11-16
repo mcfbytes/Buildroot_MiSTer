@@ -557,7 +557,7 @@ Read that table carefully, because **the plan's mental model is wrong in one imp
 >   (`0x22800000`–`0x237FFFFF`) is not free on every core: SPARCstation 20 at its default 464 MB keeps its boot
 >   PROM at `0x22F00000`–`0x22F7FFFF` and RAM from `0x23000000`, and stock Main with SNES + a `.msu` writes MSU
 >   data from `0x22800000` (where its own `video_menu_bg` over-maps too). Nothing writes there through the fb:
->   `0070`'s `mode` clear is limited to the header page and the visible frame, and greenfield maps `0x7FF000` of
+>   `0070`'s `mode` clear is limited to the header page and the visible frame, and the HD OSD client maps `0x7FF000` of
 >   `/dev/fb0`. A client that mmaps and clears the whole `smem_len` would overwrite those cores' bytes.
 
 All of this lives at 544 MiB physical, i.e. **far above the `mem=511M` line** — so the kernel's

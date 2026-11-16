@@ -732,10 +732,9 @@ glibc; it does not generate any locale *data*. That is a separate knob — §5.4
   `BR2_PACKAGE_ZLIB_FORCE_LIBZLIB` (only assimp/clamav/quazip do, none of them
   ours).
 
-  WHY: measured CHD decode win for the greenfield firmware, which unlike stock
-  links the SHARED libchdr and so does reach system zlib — audio hunks p90 -10
-  to -11%, max -7 to -15%. See `harness/rig/chd-decode-optimization.md` in
-  Main_MiSTer for the numbers. (`docs/abi-contract.md` records the zlib-ng
+  WHY: measured CHD decode win, on the rig, for a Main_MiSTer build that, unlike
+  stock, links the SHARED libchdr and so does reach system zlib — audio hunks
+  p90 -10 to -11%, max -7 to -15%. (`docs/abi-contract.md` records the zlib-ng
   2.3.3 selection.)
 - `BR2_PACKAGE_BZIP2=y`, `BR2_PACKAGE_XZ=y`, `BR2_PACKAGE_LZO=y`.
 - `BR2_PACKAGE_ZSTD=y` — `libzstd.so.1` + the zstd CLI (upstream has no

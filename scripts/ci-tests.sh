@@ -1396,7 +1396,7 @@ else
 	fail "65-mister-uio.rules names every 0072 UIO node" \
 		"rule set and DT linux,uio-name set differ (or the rule is missing)"
 fi
-# Doorbell ordinal k is f2h line k+7 (greenfield proto/irq_binding.h + doorbell-axi-rt.md).
+# Doorbell ordinal k is f2h line k+7 (docs/dts-mister-fpga-interface.md, doorbell aliases).
 uio_db_bad=0
 for k in 1 2 3 4 5 6 7 8; do
 	printf '%s\n' "$uio_rules" | grep -qF "ATTR{name}==\"mister_f2h_irq$((k + 7))\", SYMLINK+=\"mister/irq/f2h-irq$((k + 7)) mister/doorbell/$k\"" \

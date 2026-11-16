@@ -19,16 +19,15 @@ with `_` as `-`. IRQ nodes are `mister_f2h_irq<N>`, N the hardware f2h line, at
 `/dev/mister/irq/f2h-irq<N>`. Semantic names are udev aliases only, never second UIO names:
 `/dev/mister/doorbell/<k>` and `/dev/mister/fb` (§5). 0072 replaced the beta-only
 `0043-dts-uio-doorbells` and `0044-dts-uio-fpga-regions` and renamed their nodes to this scheme
-(`mister_doorbell<k>` is now `mister_f2h_irq<k+7>`, `mister_lw_window` is `mister_lw_bridge`);
-greenfield's consumers move to the same names. The target is the MiSTer kernel fork (`scripts/export-kernel-tree.sh`);
+(`mister_doorbell<k>` is now `mister_f2h_irq<k+7>`, `mister_lw_window` is `mister_lw_bridge`).
+The target is the MiSTer kernel fork (`scripts/export-kernel-tree.sh`);
 mainline would want a real binding and driver instead of `generic-uio`, which is out of scope.
 
 **Stock Main_MiSTer is unaffected.** It maps everything through `/dev/mem`, which these nodes do not
 touch. The reserved-memory tiles lie outside `memblock.memory` under `mem=511M`, so ARM's
 `pfn_valid()` (`arch/arm/mm/init.c:126-145`, which tests `memblock.memory`, not `no-map`) and
-therefore every `/dev/mem` page attribute are what they were. **Greenfield is not unaffected:** the
-UIO names changed (§2.3), so it needs its matching rename (branch `lead/uio-names`) to land with
-this series.
+therefore every `/dev/mem` page attribute are what they were. A UIO client written against the
+0043/0044 names needs the rename (§2.3).
 
 ## 1. The tree
 
@@ -64,9 +63,7 @@ between the two is no conflict: neither the bus nor `uio_pdrv_genirq` requests i
 
 ## 2. Evidence, per node
 
-Evidence rows are from `Main_SiSTer/rewrite-plan/phase5/ddr-region-map.md` (§2, §4, §5),
-`Main_SiSTer/docs/layers/mmio-windows.md` and `Main_SiSTer/docs/layers/doorbell-axi-rt.md` §1/§8,
-re-read at the sources they cite. Legacy = `Main_MiSTer_master`; core RTL = the published
+Evidence rows were re-read at the sources they cite. Legacy = `Main_MiSTer_master`; core RTL = the published
 `sys/` template, quoted from `NES_MiSTer/sys/` (identical lines in every core the map lists).
 
 ### 2.1 Reserved memory
@@ -77,7 +74,7 @@ re-read at the sources they cite. Legacy = `Main_MiSTer_master`; core RTL = the 
 | handoff | `0x1ffff000` | `0x1000` | legacy `fpga_io.cpp:398,601` `shmem_map(0x1FFFF000, 0x1000)`; U-Boot `fpgaload` clears it (`uboot.env:92`). |
 | scaler (shared) | `0x20000000` | `0x1800000` | `sys_top.v:716-721` `RAMBASE 0x20000000`, `RAMSIZE 0x800000` (`0x200000` under `MISTER_SMALL_VBUF`, SNES); ascal triple-buffers at `base + b*RAMSIZE` (`ascal.vhd:436-443`): 3 x 8 MiB = 24 MiB. Shared: stock SNES (`MISTER_SMALL_VBUF`, 6 MiB of slots) starts its MSU data track at `0x20600000`, inside this tile. |
 | core (lo) | `0x21800000` | `0x800000` | the gap between the scaler's end and the framebuffer; core-owned (SNES MSU, Jaguar, ...). |
-| fb (shared) | `0x22000000` | `0x1800000` | `MiSTer_fb@22000000` (`0004`); legacy `video.cpp:37` `FB_ADDR = 0x20000000 + 32 MiB` and `:2414` maps `FB_SIZE*4*3` = 1920*1080*12 = `0x17BB000`, rounded up to 24 MiB, below the Menu core's wipe at `0x24000000`. Shared: stock SNES resumes its MSU track at `0x22800000`, past the 8 MiB hole (`Main_SiSTer/rewrite-plan/phase5/ddr-region-map.md:212`; legacy `user_io.cpp:2882-2888`). Its upper 16 MiB is shared too: the SPARCstation 20 boot PROM `0x22f00000-0x22f7ffff` and RAM from `0x23000000` live there (`Main_SiSTer/rewrite-plan/phase5/ddr-region-map.md:120,124,246,275`), as do, on stock, the SNES/SGB MSU track and legacy's `video_menu_bg` buffers `0x227e9000-0x237bafff` (`:239`); greenfield and the fb mode clear stay below `0x22800000`. |
+| fb (shared) | `0x22000000` | `0x1800000` | `MiSTer_fb@22000000` (`0004`); legacy `video.cpp:37` `FB_ADDR = 0x20000000 + 32 MiB` and `:2414` maps `FB_SIZE*4*3` = 1920*1080*12 = `0x17BB000`, rounded up to 24 MiB, below the Menu core's wipe at `0x24000000`. Shared: stock SNES resumes its MSU track at `0x22800000`, past the 8 MiB hole (legacy `user_io.cpp:2882-2888`). Its upper 16 MiB is shared too: the SPARCstation 20 boot PROM `0x22f00000-0x22f7ffff` and RAM from `0x23000000` live there, as do, on stock, the SNES/SGB MSU track and legacy's `video_menu_bg` buffers `0x227e9000-0x237bafff`; the HD OSD client and the fb mode clear stay below `0x22800000`. |
 | core (hi) | `0x23800000` | `0x1c800000` | the rest: `0x40000000 - 0x23800000`. |
 
 The tiles sum to `0x00100000 + 0x20000000` exactly (`0xff000 + 0x1000 + 0x1800000 + 0x800000 +
@@ -88,9 +85,8 @@ does not own, kept the kernel out of the aperture. Lose that token and a write-c
 of the aperture would alias pages the kernel maps cacheable, which ARMv7 leaves UNPREDICTABLE.
 With `no-map` the DTB alone keeps the kernel out.
 
-**"Shared" tiles are reserved from the kernel, not from cores.** Greenfield moves the SNES MSU
-track above the fb tile (its `parity-divergences.md` row, branch `lead/snes-msu-base`); stock keeps it
-inside both tiles.
+**"Shared" tiles are reserved from the kernel, not from cores.** A client may move the SNES MSU
+track above the fb tile; stock keeps it inside both tiles.
 
 **The framebuffer tile is 24 MiB and matches 0071's `reg`** (`0x22000000 + 0x1800000`, PR #297).
 The driver reads its `reg`, not the `memory-region` (`MiSTer_fb.c` is untouched here), so until 0071
@@ -100,10 +96,10 @@ lands the 8 MiB stock `reg` simply sits inside the tile. Merge order between the
 
 | node | base | size | attribute | evidence |
 |---|---|---|---|---|
-| lw-bridge | `0xff200000` | `0x200000` | SO | U-Boot `base_addr_ac5.h:45` `SOCFPGA_LWFPGASLAVES_ADDRESS`; mainline `socfpga.dtsi` `fpga: bus@ff200000`; greenfield `kLwBridgeBase`/`kLwBridgeSize` (`hal/axi.h`) |
+| lw-bridge | `0xff200000` | `0x200000` | SO | U-Boot `base_addr_ac5.h:45` `SOCFPGA_LWFPGASLAVES_ADDRESS`; mainline `socfpga.dtsi` `fpga: bus@ff200000` |
 | h2f-bridge | `0xc0000000` | `0x3c000000` | SO | U-Boot `base_addr_ac5.h:9` `SOCFPGA_FPGA_SLAVES_ADDRESS 0xc0000000`; the window ends at the STM, `:10` `0xfc000000`: `0xfc000000 - 0xc0000000 = 0x3c000000` (960 MiB) |
-| fpga-mgr | `0xff706000` | `0x1000` | SO | legacy `fpga_base_addr_ac5.h:49`; GPO at `+0x10`, GPI at `+0x14` (`fpga_manager.h:17-18`); mmio-windows rows 1-2 |
-| ddr-aperture | `0x20000000` | `0x20000000` | WC with 0045, else SO | greenfield `fpga_mem(x) = 0x20000000 \| (x & 0x1FFFFFFF)`; mmio-windows row 9; the f2sdram ports |
+| fpga-mgr | `0xff706000` | `0x1000` | SO | legacy `fpga_base_addr_ac5.h:49`; GPO at `+0x10`, GPI at `+0x14` (`fpga_manager.h:17-18`) |
+| ddr-aperture | `0x20000000` | `0x20000000` | WC with 0045, else SO | the HPS view of FPGA DDR, `0x20000000 \| (x & 0x1FFFFFFF)`; the f2sdram ports |
 | ddr-low | `0x1ff00000` / `0x1ffff000` | `0xff000` / `0x1000` | SO | as the two tiles above; map0 / map1 |
 
 **H-1 (LW and h2f).** An access to an offset no fabric slave decodes never completes: the SoC
@@ -159,8 +155,8 @@ lines recorded zero events and zero initial count across 42 s of armed polling (
 `f2h-irq1` is edge-triggered, so its disable is lazy: the first `video_sync` edge fires the handler
 and is masked, a later one only sets `IRQS_PENDING` and masks the line at the GIC, uncounted
 (`handle_edge_irq()` returns before `kstat_incr_irqs_this_cpu()`), and is replayed on the first arm.
-With no consumer `/proc/interrupts` shows 1 (measured on 7.3.4 RT, Main_SiSTer
-`harness/rig/rt734-all-patches-measured.md`), and **the first armed `read()` may return a stale
+With no consumer `/proc/interrupts` shows 1 (measured on 7.3.4 RT
+on the rig), and **the first armed `read()` may return a stale
 vsync: discard the first event after arming** (§5).
 
 **Every line fires once per FPGA reprogram.** Lines 2..63 read 0 only until the first core load:
@@ -182,17 +178,15 @@ any future in-kernel consumer; such a consumer deletes that one node.
 if both held it, the UIO handler masks the line on every fire until userspace re-arms it, which
 would starve the framebuffer's vsync.
 
-**Doorbell aliases.** Pool ordinal k (1..8) is f2h line k+7, SPI cell k+47: greenfield's
-`l1_proto/include/proto/irq_binding.h:14` (an `IRQ:` token's ordinal N names doorbell N) and
-`docs/layers/doorbell-axi-rt.md:26,31` (the pool is SPI 48..55, doorbells 1..8 in order);
-`TurboGrafx16_MiSTer/sys/sys_top.v:590-591` (f2h_irq[8] = `mister_doorbell1`). udev links
+**Doorbell aliases.** Pool ordinal k (1..8) is f2h line k+7, SPI cell k+47 (the pool is SPI 48..55,
+doorbells 1..8 in order); `TurboGrafx16_MiSTer/sys/sys_top.v:590-591` (f2h_irq[8] = `mister_doorbell1`). udev links
 `/dev/mister/doorbell/<k>` to `irq/f2h-irq<k+7>`; `ci-tests.sh` checks all eight.
 
 ## 3. Left out, and why
 
 - **Line 0** (`HDMI_TX_VS`): `MiSTer_fb`'s vsync; a UIO node would fail to share it or starve it (§2.3).
 - **Per-core regions** (MSU track, savestates, rewind rings, CD buffers, ...). Cores change without
-  kernel updates; per-core layouts stay in greenfield's manifests (`CoreWindowDecl`) as offsets into
+  kernel updates; per-core layouts stay in userspace, as offsets into
   `mister_ddr_aperture`. The DT carries only the board-level tiles every core shares.
 - **FPGA-to-HPS DMA request lines**: they need a dmaengine binding and no core uses them. A future
   fb/DRM driver gets mem-to-mem DMA from the existing `pdma` node (`pl330`) with no DT change; the
@@ -273,6 +267,6 @@ gains exactly the UIO and cmdline symbols. QEMU has no Cyclone V machine, so pro
   until the first core load and 1 each after it (§2.3);
 - no `irq/NN-mister_*` thread has CPU 1 in its affinity (`/proc/irq/NN/smp_affinity_list`,
   `taskset -p` on the kthreads), on both kernels;
-- stock Main behaves as before; greenfield works only with its `lead/uio-names` rename (it then
-  resolves `mister_fpga_mgr` through UIO on both lines, still SO);
+- stock Main behaves as before; a UIO client resolves `mister_fpga_mgr` through UIO on both
+  lines, still SO;
 - the aperture's WC throughput on the 6.18 line.

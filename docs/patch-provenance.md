@@ -1858,9 +1858,9 @@ keeps in the region, with `screen_size` = one visible frame so `read`/`write` ar
 `FBIO_MISTER_FLUSH` = `_IO('F', 0xA0)` doing `wmb()` (`dsb st` + PL310 sync — the scaler reads DDR past the L2);
 the `mode` write wipes only the header page + the visible frame; and `FBIO_WAITFORVSYNC` drops `info->lock` for its
 wait. The fbdev core runs every driver ioctl under that lock (`fb_chrdev.c`), so without the drop a client looping
-on the vsync wait (greenfield's SCHED_FIFO T-FRAME) made every other ioctl on the fb, the flush included, wait up to a
+on the vsync wait (a SCHED_FIFO vsync thread) made every other ioctl on the fb, the flush included, wait up to a
 frame (50 ms with no vsync). The wait touches only `frame_count`/`vs_wait`, and the open file pins `info`.
-Consumer: the greenfield rewrite's HD OSD, which writes its two 1080p RGB565 slots (`0x22001000`, `0x223F6000`)
+Consumer: an HD OSD client, which writes its two 1080p RGB565 slots (`0x22001000`, `0x223F6000`)
 through `/dev/fb0` when `smem_len` covers both and the flush ioctl answers, else falls back to `/dev/mem`.
 Motivation: a 1080p 565 frame is 38 ms through `/dev/mem` O_SYNC vs 4.2 ms through `/dev/fb0` on the rig. ABI:
 `docs/abi-contract.md` §4.2–§4.3. The kernel's `MEMREMAP_WT` mapping is kept: on 32-bit ARM `ioremap_wt` is
@@ -1875,8 +1875,8 @@ Original, by the repo owner; applies after `0004` in both series (beta by symlin
 wipe / SMS rotation fb at `0x24000000`, enough for two 1080p 8888 frames. Depends on `0070` (the narrowed `mode`
 wipe). The upper 16 MiB (`0x22800000`–`0x237FFFFF`) is not free on every core: SPARCstation 20 at its default 464 MB
 keeps its boot PROM at `0x22F00000`–`0x22F7FFFF` and RAM from `0x23000000`, and stock Main with SNES + `.msu` puts MSU
-data at `0x22800000+`. Neither the kernel nor greenfield writes there: `0070`'s `mode` clear is limited to the header
-page and the visible frame, and greenfield maps `0x7FF000` of `/dev/fb0`. A client that mmaps and clears the whole
+data at `0x22800000+`. Neither the kernel nor that client writes there: `0070`'s `mode` clear is limited to the header
+page and the visible frame, and the client maps `0x7FF000` of `/dev/fb0`. A client that mmaps and clears the whole
 `smem_len` would overwrite those bytes; none in the tree does. Kept on review by the owner (2026-11-13). Built:
 6.18.63 and 7.3.4 DTBs show the new `reg`.
 

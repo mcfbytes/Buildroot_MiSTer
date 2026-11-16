@@ -6,7 +6,7 @@
 
 # Commit pin on the Zaparoo Menu core fork; the module is one subdirectory of it.
 # See docs/zaparoo-scanout.md.
-ZAPAROO_SCANOUT_VERSION = abc09d528ca5131eab881f44ef230057108c8109
+ZAPAROO_SCANOUT_VERSION = a6a845d8b0eb564a805a2f87038db32f618b67c1
 ZAPAROO_SCANOUT_SITE = $(call github,ZaparooProject,Menu_MiSTer,$(ZAPAROO_SCANOUT_VERSION))
 ZAPAROO_SCANOUT_LICENSE = GPL-3.0+
 ZAPAROO_SCANOUT_LICENSE_FILES = kernel/scanout-slots/zaparoo_scanout_uapi.h

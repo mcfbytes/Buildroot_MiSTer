@@ -792,7 +792,7 @@ refactor — it replaces no vendored code.
   must keep the `-DRC_CLIENT_SUPPORTS_HASH` that `rcheevos.pc` supplies: it
   gates public declarations in `rc_client.h`, not just implementation
   (`package/rcheevos/rcheevos.mk`).
-- `BR2_PACKAGE_SLINT=y` — Slint 1.18.1's C++ library, `libslint_cpp.so` (13.1 MB
+- `BR2_PACKAGE_SLINT=y` — Slint 1.19.0's C++ library, `libslint_cpp.so` (13.0 MB
   stripped), software renderer only, with this tree's three patches. Its consumer is
   SiSTer's optional HD OSD (a Main_MiSTer rewrite, built with `GF_WITH_HDOSD=ON`), which
   links it shared rather than carrying a static copy. It pulls host-rustc, host-corrosion

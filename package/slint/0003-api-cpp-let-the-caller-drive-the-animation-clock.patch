@@ -1,6 +1,6 @@
-From 4a409a014660a8227082f2c0942170ff07310b15 Mon Sep 17 00:00:00 2001
+From d581122e0b4f0131d2fbc26b8d3c3850b9589738 Mon Sep 17 00:00:00 2001
 From: "Michael C. Ferguson" <michael.christopher.ferguson@gmail.com>
-Date: Tue, 6 Oct 2026 18:02:29 -0500
+Date: Mon, 16 Nov 2026 12:48:34 -0600
 Subject: [PATCH] api/cpp: let the caller drive the animation clock
 
 Add slint_hdosd_set_scene_time(ms), which advances animations and timers
@@ -15,7 +15,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  1 file changed, 19 insertions(+)
 
 diff --git a/api/cpp/platform.rs b/api/cpp/platform.rs
-index 3f367f0..c9fa06e 100644
+index 37c1300..a217ba8 100644
 --- a/api/cpp/platform.rs
 +++ b/api/cpp/platform.rs
 @@ -330,6 +330,25 @@ pub extern "C" fn slint_platform_update_timers_and_animations() {
@@ -27,15 +27,15 @@ index 3f367f0..c9fa06e 100644
 +#[unsafe(no_mangle)]
 +pub extern "C" fn slint_hdosd_set_scene_time(ms: u64) {
 +    use i_slint_core::animations::{CURRENT_ANIMATION_DRIVER, Instant};
-+    std::thread_local!(static BASE: core::cell::Cell<Option<u64>> = const { core::cell::Cell::new(None) });
++    std::thread_local!(static BASE: core::cell::Cell<Option<Instant>> = const { core::cell::Cell::new(None) });
 +    let base = BASE.with(|b| {
 +        b.get().unwrap_or_else(|| {
-+            let now = CURRENT_ANIMATION_DRIVER.with(|d| d.current_tick().0);
++            let now = CURRENT_ANIMATION_DRIVER.with(|d| d.current_tick());
 +            b.set(Some(now));
 +            now
 +        })
 +    });
-+    let tick = Instant(base + ms);
++    let tick = base + core::time::Duration::from_millis(ms);
 +    CURRENT_ANIMATION_DRIVER.with(|d| d.update_animations(tick));
 +    i_slint_core::timers::TimerList::maybe_activate_timers(tick);
 +    i_slint_core::properties::ChangeTracker::run_change_handlers();

@@ -205,6 +205,24 @@ verified no-op — `brcm/BCM20702A1-0b05-17cb.hcd` is byte-identical at
 stock). So this only unblocks *future* firmware updates; it changed nothing in
 the image.
 
+<a id="readme-version-badges"></a>
+### README version badges ride along with their pins
+
+The Buildroot, 6.18 kernel and RT kernel badges at the top of `README.md` show
+their versions as plain shields.io text. To keep them current, `README.md` is a
+second `managerFilePatterns` entry of the same three managers (`buildroot/buildroot`,
+`kernel-longterm-6.18`, `kernel-rt-7.3`), with one more `matchStrings` entry each
+that matches the badge URL. Each badge therefore extracts as the same dependency
+as its pin, and Renovate rewrites it in the same branch and PR. Verified by a
+local `--dry-run=extract` report: `README.md` yields one dependency per manager,
+with the same `currentValue` as the `Makefile` and defconfig pins.
+
+If you change a badge's label or move the 6.18 line to a new LTS, change that
+manager's README `matchStrings` entry in the same commit. If the pattern stops
+matching, the badge silently stops bumping. Version strings must contain no
+`-`, which shields.io would read as a field separator. `allowedVersions` already
+rules out `-rc` tags on the RT line.
+
 ## What is deliberately NOT managed, and why
 
 - **`package/xow-firmware`** — pins two Microsoft Windows Update driver

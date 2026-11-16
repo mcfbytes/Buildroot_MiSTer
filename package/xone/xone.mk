@@ -47,7 +47,7 @@
 # are ALL already native features of dlundqvist/xone -- this fork's own
 # community independently grew equivalent functionality. Full citation:
 # docs/patch-provenance.md §3.5.
-XONE_VERSION = f2aa9fe01103d7600553b505b298ff0bd47ff280
+XONE_VERSION = 30317da0e6ddedefdedde780d8b40be0dc7118ce
 XONE_SITE = $(call github,dlundqvist,xone,$(XONE_VERSION))
 XONE_LICENSE = GPL-2.0+
 # Top-level LICENSE is the FSF's standard GPLv2 text; every source file's own

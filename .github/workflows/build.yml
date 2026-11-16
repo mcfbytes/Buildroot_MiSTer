@@ -39,11 +39,15 @@ name: Build
 #    branch-protection check forever. `gate` is a DENYLIST, not an allowlist:
 #    an allowlist fails silently (forgotten path -> green, untested image);
 #    the denylist only fails toward building. See docs/ci.md#gate-vs-paths-ignore.
+#
+# 3. Draft PRs skip the image build (gate again); ready_for_review builds them,
+#    converted_to_draft cancels a running build. See docs/ci.md#draft-skip.
 on:
   push:
     branches:
       - master
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, converted_to_draft]
   workflow_dispatch:
 
 # Cancel a superseded run for the same ref (e.g. a new push to an open PR)
@@ -81,8 +85,16 @@ jobs:
           EVENT: ${{ github.event_name }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           BEFORE: ${{ github.event.before }}
+          DRAFT: ${{ github.event.pull_request.draft }}
         run: |
           set -euo pipefail
+
+          # Draft PRs never merge, so their pushes need no 3h build. docs/ci.md#draft-skip
+          if [ "$EVENT" = "pull_request" ] && [ "${DRAFT:-}" = "true" ]; then
+            echo "build_needed=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Draft PR -- skipping the image build. Mark it ready for review to build it."
+            exit 0
+          fi
 
           # Denylist: only paths that provably cannot affect a compile are
           # skipped (docs/*, *.md, LICENSE, .editorconfig, .gitignore, and the
@@ -349,7 +361,7 @@ jobs:
                 echo "::error::The gate asked for a build and lint-config was skipped anyway. That is a workflow bug, not a docs change."
                 rc=1
               else
-                echo "lint-config: documentation-only change, nothing to lint."
+                echo "lint-config: documentation-only change or draft PR, nothing to lint."
               fi
               ;;
             *)
@@ -364,7 +376,7 @@ jobs:
               ;;
             skipped)
               if [ "$BUILD_NEEDED" != "true" ]; then
-                echo "build: documentation-only change, no build needed."
+                echo "build: documentation-only change or draft PR, no build needed."
               elif [ "$LINT_RESULT" != "success" ]; then
                 echo "build: skipped because lint-config did not succeed -- the needs-cascade, already failed above."
               else

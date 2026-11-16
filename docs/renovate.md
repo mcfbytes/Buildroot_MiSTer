@@ -522,7 +522,7 @@ default left in place by accident.
 
 `build.yml` (P4.1) triggers on `pull_request` with no branch filter (`push` is scoped to
 `master` — see `docs/ci.md#push-trigger-scope`) — so a Renovate PR (like any other PR)
-automatically runs the full
+automatically runs the full (draft PRs excepted: [ci.md#draft-skip](ci.md#draft-skip))
 two-stage Buildroot build, `scripts/ci-tests.sh` (the P3.12 parity suite),
 and the ABI/SONAME checker. For the kernel specifically, this is the whole
 mechanized point (PLAN.md §13): a patch-apply break in any of the carried
@@ -545,6 +545,22 @@ This is flagged, not silently worked around, because reproducibility.yml's
 manual-only trigger was a considered cost trade-off from P4.3, and
 overriding it here would be a scope-creep decision this task shouldn't make
 unilaterally.
+
+<a id="azcopy-rebase-hold"></a>
+## Parked: the azcopy bump (PR #273) has `rebaseWhen: never`
+
+azcopy 10.34.1 and later require go >= 1.27.3, but the pinned Buildroot ships
+Go 1.27.2. So hash-sync case 7 cannot vendor the bump, and lint stays red on
+the stale hash until Buildroot bumps Go. Renovate rebased the PR on every master
+merge anyway, and each rebase restarted CI. A second azcopy `packageRules` entry
+in `renovate.json` sets `rebaseWhen: never`, so Renovate leaves that branch
+alone, even when a newer azcopy is released. The PR is also a draft, which
+`build.yml` now skips ([ci.md#draft-skip](ci.md#draft-skip)).
+
+**To release it:** once `BUILDROOT_VERSION` pins a Buildroot whose
+`package/go/go.mk` has `GO_VERSION` >= 1.27.3, delete that rule and mark #273
+ready for review. To refresh it once without removing the hold, tick the rebase
+checkbox in the PR body.
 
 ## Unverified / what to check on first run
 

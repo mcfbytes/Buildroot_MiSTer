@@ -1167,6 +1167,31 @@ and the thing that is safe to mark required is the `status` job at the
 bottom, which always reports (see
 [`#status-job-rationale`](#status-job-rationale)).
 
+<a id="draft-skip"></a>
+### Draft PRs skip the image build
+
+A draft PR can't be merged, so a 3h build of each push to it buys nothing.
+Renovate rebases its open PRs whenever master moves, so a parked bump such as
+#273 (azcopy, blocked on Buildroot's Go) started a new build after every merge.
+
+- `gate` returns `build_needed=false` for a `pull_request` event whose PR is a
+  draft, before it looks at the diff. `lint-config` and `build` then skip, and
+  `status` reports green ("documentation-only change or draft PR"), the same
+  path a docs-only PR takes. The required check still reports, so nothing
+  wedges.
+- `pull_request` lists its types explicitly: the defaults (`opened`,
+  `synchronize`, `reopened`) plus `ready_for_review`, which builds the PR as
+  soon as it leaves draft, and `converted_to_draft`, whose run replaces and so
+  cancels (via `concurrency`) any build still running when the PR is parked.
+- To build a draft anyway: `gh workflow run build.yml --ref <branch>`
+  (`workflow_dispatch` is not a `pull_request` event, so the draft check does
+  not apply).
+
+Renovate-side, the parked PR also has `rebaseWhen: never`
+([docs/renovate.md#azcopy-rebase-hold](renovate.md#azcopy-rebase-hold)).
+Converting a Renovate PR to draft does not stop Renovate pushing to it, so
+skipping drafts here is what stops the builds.
+
 <a id="gate-denylist"></a>
 ### The gate is a denylist, not an allowlist
 

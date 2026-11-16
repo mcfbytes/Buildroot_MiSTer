@@ -2879,13 +2879,13 @@ there is nothing to disable; the OOT-WiFi story for RT is in
 `docs/rt-beta-kernel.md` §4.) The two overrides (version, patch dir) are the
 ONE allowlisted redefinition in `scripts/check-config-fragments.sh` (§11).
 
-⚠ 7.2-rc4 booted and ran MiSTer on real hardware (2026-07-20), and 7.2-rc7
-again on 2026-08-14; the currently pinned 7.2 FINAL line has NOT been booted.
+⚠ Every RT pin from 7.2-rc4 (2026-07-20) through 7.2 final, the 7.2.y releases
+and the current 7.3 line has booted and run MiSTer on real hardware.
 Every version bump re-opens that question — the variant is beta precisely
 because the pin moves faster than hardware testing. That is now a slower
-clock than it was: as of 2026-08-17 this pin tracks the 7.2.y line, not
-mainline, so the next bump is a stable point release rather than the next
--rc. See `docs/rt-beta-kernel.md` for status, design, and the open TODOs.
+clock than it was: since 2026-08-17 the pin tracks a stable line (7.2.y,
+then 7.3.y from 2026-10-19), not mainline, so the next bump is a point release
+rather than the next -rc. See `docs/rt-beta-kernel.md` for status, design, and the open TODOs.
 
 Do not confuse the two fragment layers: `configs/mister_rt.fragment` is
 Buildroot config (`BR2_*`); `board/mister/de10nano/linux-rt.fragment` (named

@@ -79,7 +79,7 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | 36 | `0042-hid-playstation-stock-lightbar-led-names` | portable-as-is / shared | **included** | LED-class/HID only. |
 | 37 | `0043-dts-uio-doorbells` *(retired 2026-11-13: folded into the shared DE10 `0072`)* | board-specific / de10-only *(beta)* | **excluded** | Eight `generic-uio` nodes on Cyclone V GIC SPI 48–55; DP-9 adopts Agilex-native idioms instead. `CONFIG_CMDLINE_EXTEND` does not exist on arm64. |
 | 38 | `0044-dts-uio-fpga-regions` *(retired 2026-11-13: folded into the shared DE10 `0072`)* | board-specific / de10-only *(beta)* | **excluded** | Cyclone V lwhps2fpga/f2sdram apertures; depends on the `mem=511M` bootarg. |
-| 39 | `0045-uio-writecombine` *(shared DE10 6.18 + RT since 2026-11-13)* | **portable-as-is** / de10-only | **excluded** | Generic and arch-independent, and it would *work* on arm64 — but per DP-9 it has nothing to attach to until a DE25 GHRD exists. Audit §3.2(b)/§7 Q10 keeps "split the generic half to shared/upstream" open as an owner decision; if that is taken, this becomes a candidate for this directory. |
+| 39 | `0045-uio-writecombine` *(shared DE10 6.18 + RT since 2026-11-13)* | **portable-as-is** / de10-only | **included 2026-11-17** | Generic and arch-independent. Symlinked in when the DE25 DTS gained the MiSTer `/mister` group (`docs/dts-mister-fpga-interface.md` §7): `ddr-aperture` needs the write-combined map, and a plain UIO map on arm64 is Device memory. Applies at `-F0` on 7.4-rc3 (offsets only). |
 | 40 | `0046-dts-ramoops` | board-specific / de10-only *(beta)* | **excluded** | Every number derives from `mem=511M`, MiSTer's `0x1FFFF000` mailbox and ARM32's HIGHMEM model. The *capability* is worth more on DE25, but the arithmetic must be re-derived (DRAM at `0x80000000`, `svcbuffer@0` already reserved, no HIGHMEM on arm64). |
 | — | `0047-btusb-mercusys-ma530-2c4e-0115` | *post-audit (added 2026-09-02)* | **excluded**, then **retired 2026-09-21** (deleted from the DE10 series once `linux-6.18.53` took the same commit as stable backport `0f7f58ea6299`) | Not in the audit; it is a **backport of a mainline commit that is already in v7.2**. Its own header says "DELETE THIS PATCH the moment the kernel pin leaves 6.18.y for 7.2 or newer — at that point the ID is in-tree and re-adding it would collide." This board is on 7.2.3 (7.2.2 when this row was written), so the ID is already present. (It is likewise absent from `linux-patches-beta/series`.) |
 | — | `0021` | — | n/a | No such patch; the DE10 series has never had one. |
@@ -125,15 +125,15 @@ runs against upstream; and it would not apply at v7.4 anyway.
 | | |
 |---|---|
 | Audit rows | 40 |
-| Included from the audit | **30** (32 `portable-as-is` + `shared` rows, minus the two retired on 2026-09-12 — `0040`, `0041`) |
-| Excluded from the audit | **8** — 7 `de10-only` (`0001` `0003` `0004` `0043` `0044` `0045` `0046`) + `0002` (`portable-with-rework`, deferred) |
+| Included from the audit | **31** (`0045` since 2026-11-17, plus 32 `portable-as-is` + `shared` rows, minus the two retired on 2026-09-12 — `0040`, `0041`) |
+| Excluded from the audit | **7** — 6 `de10-only` (`0001` `0003` `0004` `0043` `0044` `0046`) + `0002` (`portable-with-rework`, deferred); `0045` moved to included 2026-11-17 |
 | Post-audit patches considered | 6 (`0047` excluded — already upstream at 7.2, and retired 2026-09-21 when 6.18.53 took it too; `0048`, `0049` included — 2026-09-11; `0050` excluded — 7.2.3 already carries mainline's own plugged read-ahead, 2026-09-11; `0051` excluded — a revert of a 6.18.y-only backport defect 7.x never had, 2026-09-14; `0052` excluded — DesignWare MMC hook, this board is Cadence SDHCI, 2026-09-21; `0053` excluded — 7.x has no `exfat_dir_readahead()` to bound, 2026-09-21) |
 | dwc2 series `0054`–`0066` (#205) | 13 considered, **3** included (`0056`, `0060`, `0061`); 10 held: the descriptor-DMA set and `0058`/`0059`/`0062` wait for hardware qualification (`docs/dwc2-usb-irq.md`) |
 | rtw88 `0067` (2026-09-30) | 1 considered, **1** included |
 | dwc2 `0068` (2026-10-19, fork #114) | 1 considered, **1** included |
 | dwc2 `0069` (2026-11-10, fork #115) | 1 considered, **1** included |
 | DE25-local patches | **0** (`0101` and `0102` both dropped 2026-11-17) |
-| **Total applied here** | **38** (six of them DE25-local 7.4 copies) |
+| **Total applied here** | **39** (six of them DE25-local 7.4 copies) |
 
 ## Note for the DE25 DTS
 

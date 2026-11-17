@@ -2636,16 +2636,23 @@ dead". The kernel side of it comes from the fragment (8250 + 8250_DW +
 bootargs, which is phase 2 — so a first boot may need `console=ttyS0,115200`
 passed by hand.
 
-`BR2_TARGET_GENERIC_HOSTNAME="de25"`,
-`BR2_TARGET_GENERIC_ISSUE="Welcome to MiSTer DE25-Nano (developer OS)"`.
-
-`BR2_TARGET_GENERIC_ROOT_PASSWD=""` — empty = passwordless root, the same
-posture as the DE10 image. On this board it is additionally the only way in:
-there is no network provisioning, no `authorized_keys`, and no per-device SSH
-host-key machinery yet (ADR 0015 is a DE10 rootfs-overlay feature and is not
-carried here).
+**Superseded 2026-11-17 (owner decision: the DE25 mirrors the DE10's userspace).** The DE25
+defconfig no longer sets a hostname, issue or getty; it takes the DE10's board files **by
+reference** — `rootfs-overlay` (so `/etc/hostname` = `MiSTer`, the DE10 `inittab` with its
+`ttyS0` agetty), `users.table`, `busybox.fragment`, and `post-build.sh` (so root's password is the
+DE10's stock-parity one, and `/MiSTer.version` is written) followed by the DE25's own
+`post-build.sh`, which only checks every DTS UIO name has a `/dev/mister` rule. eudev, bash as
+`/bin/sh`, the locale and tzinfo lines are the DE10's too. The prose below this note in §6.8
+describes the earlier bare image.
 
 ### 6.8 Packages — none in this fragment; the shared firmware set from `image-common`
+
+> **2026-11-17:** the DE25 now selects `BR2_PACKAGE_MISTER_USERSPACE` and `_DRIVERS` as well as
+> `_FIRMWARE` (plus the non-selectable `ZLIB_NG`/`TAR` lines), at the DE10's 512 MiB rootfs.
+> Two out-of-tree drivers needed 7.4 build fixes, both version-guarded so the DE10's 6.18 and
+> 7.3 builds compile exactly as before: `package/rtl8852cu-morrownr/0002` (`ndo_do_ioctl` gone)
+> and `package/xone/0001` (`snd_card_free_on_error()` gone). Still not carried: `zaparoo-scanout`
+> (a DE10 kmod), the RT variant, the stage-1 initramfs. The paragraphs below are the history.
 
 BusyBox is Buildroot's own default (`BR2_PACKAGE_BUSYBOX` is `default y` in
 `package/busybox/Config.in`) and so does not appear as a line; it is the

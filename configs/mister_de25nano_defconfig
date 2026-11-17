@@ -5,15 +5,13 @@
 # (scripts/check-defconfigs.sh asserts it); rationale per line in
 # docs/buildroot-config.md §6.
 #
-# BARE DEVELOPER OS: no MiSTer binaries, no DE10 userspace (rule 5 in
-# docs/buildroot-config.md -- the DE10 profiles BR2_PACKAGE_MISTER_USERSPACE /
-# _DRIVERS are adopted here only by owner decision). It shares the firmware
-# profile (BR2_PACKAGE_MISTER_FIRMWARE) with the DE10 and nothing else. No
-# stage-1 initramfs yet (ADR 0029 D11): the one-line switch is enabling the
-# linux extension BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS here.
-#
-# Passwordless root (BR2_TARGET_GENERIC_ROOT_PASSWD "") is Buildroot's default
-# and so leaves no line here; it is deliberate (ADR 0015).
+# Userspace MIRRORS THE DE10 (owner decision 2026-11-17): the same profiles
+# (BR2_PACKAGE_MISTER_USERSPACE / _DRIVERS / _FIRMWARE) and the DE10's own
+# board files by reference -- rootfs overlay, users table, busybox fragment and
+# post-build.sh (so root's password is the DE10's too). Only the hardware
+# differs: kernel, DTS, TF-A, U-Boot and the image. Still no MiSTer binaries
+# (no aarch64 Main_MiSTer exists) and no stage-1 initramfs yet (ADR 0029 D11):
+# that switch is enabling BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS here.
 #
 # U-Boot rides Buildroot's own BR2_TARGET_UBOOT_LATEST_VERSION pin (2026.07
 # under Buildroot 2026.08) instead of a custom version + a board-local hash
@@ -29,11 +27,14 @@ BR2_TOOLCHAIN_BUILDROOT_CXX=y
 BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/patches"
 BR2_DOWNLOAD_FORCE_CHECK_HASHES=y
 BR2_REPRODUCIBLE=y
-BR2_TARGET_GENERIC_HOSTNAME="de25"
-BR2_TARGET_GENERIC_ISSUE="Welcome to MiSTer DE25-Nano (developer OS)"
+BR2_ROOTFS_DEVICE_CREATION_DYNAMIC_EUDEV=y
 BR2_ROOTFS_MERGED_USR=y
-BR2_TARGET_GENERIC_GETTY_PORT="ttyS0"
-BR2_TARGET_GENERIC_GETTY_BAUDRATE_115200=y
+BR2_SYSTEM_BIN_SH_BASH=y
+BR2_GENERATE_LOCALE="en_US.UTF-8"
+BR2_TARGET_TZ_INFO=y
+BR2_ROOTFS_USERS_TABLES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/users.table"
+BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/rootfs-overlay"
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/post-build.sh $(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/post-build.sh"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/post-image.sh"
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_VERSION=y
@@ -44,9 +45,12 @@ BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de
 BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/common/linux-mister.fragment"
 BR2_LINUX_KERNEL_DTS_SUPPORT=y
 BR2_LINUX_KERNEL_CUSTOM_DTS_PATH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/socfpga_agilex5_de25nano.dts"
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/busybox.fragment"
+BR2_PACKAGE_ZLIB_NG=y
+BR2_PACKAGE_TAR=y
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
-BR2_TARGET_ROOTFS_EXT2_SIZE="256M"
+BR2_TARGET_ROOTFS_EXT2_SIZE="512M"
 BR2_TARGET_ARM_TRUSTED_FIRMWARE=y
 BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION=y
 BR2_TARGET_ARM_TRUSTED_FIRMWARE_CUSTOM_VERSION_VALUE="v2.15.0"
@@ -68,3 +72,5 @@ BR2_PACKAGE_HOST_MTOOLS=y
 BR2_PACKAGE_HOST_UBOOT_TOOLS=y
 BR2_PACKAGE_HOST_UBOOT_TOOLS_FIT_SUPPORT=y
 BR2_PACKAGE_MISTER_FIRMWARE=y
+BR2_PACKAGE_MISTER_DRIVERS=y
+BR2_PACKAGE_MISTER_USERSPACE=y

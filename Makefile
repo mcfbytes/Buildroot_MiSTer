@@ -22,7 +22,7 @@
 # GPG-clearsigned release manifest (`make buildroot-showsig`) by
 # scripts/hash-sync-buildroot.sh -- never from a downloaded tarball. Keep both
 # lines exactly this shape: four scripts and renovate.json parse them.
-BUILDROOT_VERSION  ?= 2026.08.1
+BUILDROOT_VERSION  ?= 2026.08.2
 BUILDROOT_SHA256   ?= 38a6c152490096018720a9ade379ee1e571c9bf5f93a3657a166566945a98b0d
 
 ROOT_DIR   := $(CURDIR)

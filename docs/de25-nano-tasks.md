@@ -280,7 +280,7 @@ verification on Fable, environment prep on Haiku.
 | 1 | D1.2 implement | `scripts/lib/board-expectations.sh`; `check-kernel-defconfig-sync.sh` + `buildroot-build/action.yml` table-driven, DE10 default byte-identical | **DONE** `1f9374c` — §5.6 checks 1/2/3/5 run; no-arg and BOARD=de10nano byte-identical; `bogus` exits 2 |
 | 2 | D2.1 | `configs/mister_de25nano_defconfig`, `board/mister/de25nano/linux.fragment`, `make de25` family, external.mk initramfs-hook guard | **DONE** `6dd5604` — toolchain 8 min; **full build green**: `Image` 41.9 MB, ext4 rootfs, 34/34 patches applied at -F0, both carried patches compiled. Kernel is arm64 `defconfig` + fragment (1,481 modules, 90 MB) — a diet is wave-2 work |
 | 3 | D2.3 desk half | `board/mister/de25nano/socfpga_agilex5_de25nano.dts` + `docs/de25-dts-rationale.md`; dtc + dtbs_check | **DONE** `d8ad032`+`ae86dbe` — dtc 0 warnings; dtbs_check 5 (all the fpga-mgr binding gap); **SMMU shipped disabled** after the Fable review (see below); `socfpga_agilex5_de25nano.dtb` (17,138 B) built through Buildroot via `BR2_LINUX_KERNEL_CUSTOM_DTS_PATH` — note the `arm64/intel/…` include-prefix form, because Buildroot copies a custom DTS into the `dts/` root, not `dts/intel/` |
-| 4 | patch series | `board/mister/de25nano/linux-patches/` (shared symlinks + 0101 sdhci-cadence 40-bit mask + 0102 svc match) | **DONE** `e47cb3e`+`6f50981` — 32 symlinks (3 to the 7.x-anchored beta copies, load-bearing) + 0101/0102; 0002 audio and 0047 excluded (README maps every row) |
+| 4 | patch series | `board/mister/de25nano/linux-patches/` (shared symlinks + 0101 sdhci-cadence 40-bit mask + 0102 svc match; **0102 dropped 2026-11-17**, wave 6) | **DONE** `e47cb3e`+`6f50981` — 32 symlinks (3 to the 7.x-anchored beta copies, load-bearing) + 0101/0102; 0002 audio and 0047 excluded (README maps every row) |
 | 5 | D4 ADR | `docs/decisions/0029-de25-implementation-path.md` (Proposed) | **DONE** `f156140` — Proposed; four source inconsistencies resolved explicitly; open decisions listed |
 | 6 | ledger §6.5 | `lint.yml` board-agnostic, fails loudly on an empty set | **DONE** `6f55523` — discovery + empty-set guard; de10nano file set unchanged, verified by running both steps |
 
@@ -527,6 +527,40 @@ Branch `feat/de25-prehw-verify`. Evidence is from a from-scratch `make de25` on 
 | DU7's relative-`O=` finding | Fixed in the wrapper (`override O := $(abspath $(O))`); `make O=output-de25 printvars` now evaluates the real tree |
 | CI | `de25-build.yml`, `workflow_dispatch` only ([`ci.md#de25-manual-lane`](ci.md#de25-manual-lane)). D1.2 (a board parameter for `buildroot-build`) is deliberately **not** done: the manual lane does not use the action |
 
+## Wave 6 — 2026-11-17 (pre-hardware): vendor-kernel comparison, FPGA path fixed in firmware
+
+Working tree on `master`. A source comparison of Terasic's and Altera's kernels with mainline
+7.3.4 and v7.4-rc1, TF-A v2.15.0 and U-Boot 2026.07. Record:
+[`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md); decision:
+[ADR 0034](decisions/0034-de25-fpga-service-path.md) (Proposed). No kernel was built and
+nothing ran on hardware.
+
+| Item | Result |
+|---|---|
+| Why mainline could not program the fabric | Two address-handling mismatches in BL31, independent of the SMMU **[V]** |
+| TF-A patch `0002` | Added. BL31 builds for `agilex5` and `agilex`; host harness passes **[V]**; not run on hardware |
+| Service node | Now `intel,agilex-svc`; kernel patch `0102` dropped. Series is 39 patches, applies with no fuzz **[V]** |
+| SD | Default speed at 25 MHz in **both** U-Boot and Linux; U-Boot was reaching high-speed timing before this **[V from source]** |
+| DMA coherency | `dma-coherent` removed from `mmc0` and `gmac0` for first boot |
+| Kernel config | Five temporary PHY drivers added; `MEDIA_SUPPORT` contradiction removed; `STRICT_DEVMEM`, RSU and hwmon stated explicitly. 494 asked-for symbols, 0 dropped **[V]** |
+| FPGA load trigger | Drafted as an external module, compile-checked, **not landed** |
+
+**First bench session, in this order** (details and the outcome table are in
+[`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8):
+
+| # | Where | What | Settles |
+|---|---|---|---|
+| T0 | U-Boot prompt | Register reads (JTAG ID, revision-A bit, SDM remap, SMMU reset state) and the SD reset-survival check | Which FPGA shape is primary; whether 7.3.4 can use the SD slot |
+| T1 | U-Boot prompt | `fpga load` of a phase-2 RBF at `0x82000000` or above | Whether the SDM reaches DDR with the SMMU untouched |
+| T2 | Linux | First boot: SD, Ethernet, PHY ID, `dd` round trip | The first-boot shape; which PHY driver to keep |
+| T3 | Linux | A load through the patched BL31 | TF-A patch `0002` and ADR 0034 |
+| T4 | Linux | Repeat loads, timing, warm reboot | Reliability |
+| T5 | Linux | SMMU-on leg | Only if T0, T1 or T3 says so |
+
+**Needed before the session:** a phase-2 RBF that matches the phase-1 image in QSPI. None is
+archived, and the documents disagree on whether the factory image is HPS-first
+([`de25-boot-chain.md`](de25-boot-chain.md) §7b notes).
+
 ## What to do next — 2026-08-22
 
 D0 and D1 are done; the opening move this section used to describe has been executed. The live
@@ -538,6 +572,7 @@ Remaining, in unblock order:
 1. **Hardware session** on a borrowed board (QSPI at factory): factory SPL boots our FIT → serial
    login → SD under the 25 MHz cap → `dd` the card clean → lift to 50 MHz → the §2.6 fabric
    test, SMMU-off first.
+   **2026-11-17:** the order is now T0–T5 (wave 6 above); the §2.6 test is superseded.
 2. ~~**`scripts/test-initramfs.sh` aarch64 path** (`qemu-system-aarch64 -M virt`) and the aarch64
    initramfs itself, which the two-stage layout will need.~~ **DONE 2026-09-06** (wave 3).
    What it surfaced, and what the same PR fixed: **patch 0031 (exFAT Samsung symlinks) Oopsed
@@ -554,7 +589,8 @@ Remaining, in unblock order:
    after the rig, still on a pre-rewrite RT 7.2.3, panicked on the Arcade Organizer's first
    symlink (ADR 0002 §8b). Hardware boot of the fixed RT kernel still owed.
 3. **Owner decisions still open**: a Renovate manager for the DE25 kernel pin; upstream
-   submission of 0101/0102; patch 0002 (audio). Hardware is expected after the owner's vacation
+   submission of 0101/0102 *(2026-11-17: moot — `0102` is dropped and v7.4 supersedes `0101`;
+   the open upstream question is now TF-A patch `0002`)*; patch 0002 (audio). Hardware is expected after the owner's vacation
    (ordered on return).
    **2026-09-14:** the DE25 U-Boot's remaining *desk* work (the §7 QSPI-audit CI check, the
    redundant custom version pin now that Buildroot 2026.08 bundles 2026.07, FIT cross-tree

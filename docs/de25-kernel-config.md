@@ -333,7 +333,7 @@ worse than one that panics loudly.
 ## 4. The DE25 base — what is on, and why
 
 Section numbers match the banners in `board/mister/de25nano/linux.config`.
-51 setting lines.
+60 setting lines as of 2026-11-17 (51 when this section was first written).
 
 | § | Group | Notes |
 |---|---|---|
@@ -344,12 +344,13 @@ Section numbers match the banners in `board/mister/de25nano/linux.config`.
 | 5 | reset | `RESET_SIMPLE`. The board DTS gives `mmc0` `resets = <&rst SDMMC_RESET>` and the rstmgr is `altr,stratix10-rst-mgr`, matched by `drivers/reset/reset-simple.c:137` — **not** `reset-socfpga.c`, which is `default ARM && ARCH_INTEL_SOCFPGA`, i.e. the DE10's 32-bit path. With no reset provider `mmc0` probe-defers forever with nothing in dmesg naming the reason. |
 | 6 | sysmgr, SRAM | `MFD_ALTERA_SYSMGR` — dwmac-socfpga reads the PHY interface mode through `altr,sysmgr-syscon`, so gmac0 does not come up without it. `SRAM` for `ocram@0` (`mmio-sram`). |
 | 7 | console | the 8250/8250_DW group on **uart1** (uart0 is the SoCDK's). `=y`, never `=m`: a console that is a module does not exist at panic time. |
-| 8 | SD boot | `MMC` → `MMC_SDHCI` → `MMC_SDHCI_PLTFM` → `MMC_SDHCI_CADENCE`, all `=y` because there is **no initramfs** on this board, so a driver that is a module cannot be loaded before the root filesystem it is needed to reach exists. |
-| 9 | IOMMU | `ARM_SMMU_V3=y` kept even though the board DTS ships `&smmu { status = "disabled"; }` — so the SMMU-on leg of the §2.6 fabric test is a one-line DTS change with **no kernel rebuild** ([`de25-dts-rationale.md`](de25-dts-rationale.md) §4). |
-| 10 | Ethernet MAC | `STMMAC_ETH` + `STMMAC_PLATFORM` + `DWMAC_SOCFPGA`, all `=y`. `DWMAC_SOCFPGA` is `default ARCH_INTEL_SOCFPGA` but tristate, so it would follow `STMMAC_ETH` to `=m` without these lines. |
-| 11 | FPGA stack | `FPGA` + `FPGA_BRIDGE` + `FPGA_REGION` + `OF_FPGA_REGION` + `FPGA_MGR_STRATIX10_SOC` + `INTEL_STRATIX10_SERVICE` + `FW_LOADER` + **`OF_OVERLAY`**; `INTEL_STRATIX10_RSU` off. See §4.1 below. |
+| 8 | SD boot | `MMC` → `MMC_SDHCI` → `MMC_SDHCI_PLTFM` → `MMC_SDHCI_CADENCE`, all `=y` because there is **no initramfs** on this board, so a driver that is a module cannot be loaded before the root filesystem it is needed to reach exists. The controller is an SD6HC run through the SD4HC driver: §4.2. |
+| 9 | IOMMU | `ARM_SMMU_V3=y` kept even though the board DTS ships `&smmu { status = "disabled"; }` — so the SMMU-on fallback is a DTS change with **no kernel rebuild** ([`de25-dts-rationale.md`](de25-dts-rationale.md) §4). |
+| 10 | Ethernet MAC | `STMMAC_ETH` + `STMMAC_PLATFORM` + `DWMAC_SOCFPGA`, all `=y`. `DWMAC_SOCFPGA` is `default ARCH_INTEL_SOCFPGA` but tristate, so it would follow `STMMAC_ETH` to `=m` without these lines. Plus a **temporary** PHY driver set: §4.3. |
+| 11 | FPGA stack | `FPGA` + `FPGA_BRIDGE` + `FPGA_REGION` + `OF_FPGA_REGION` + `FPGA_MGR_STRATIX10_SOC` + `INTEL_STRATIX10_SERVICE` + `FW_LOADER` + **`OF_OVERLAY`**; `INTEL_STRATIX10_RSU` and `SENSORS_ALTERA_SOCFPGA_HWMON` off. See §4.1 below. |
 | 12 | low-speed IP | `GPIO_DWAPB`, `I2C_DESIGNWARE_CORE`/`_PLATFORM`, `DW_WATCHDOG`, and the SPI group (`SPI`, `SPI_DESIGNWARE`, `SPI_DW_MMIO`, `SPI_SPIDEV`, `SPI_MEM` off). |
 | 13 | USB controller | `USB_DWC2` + `USB_DWC2_HOST`. Verified against the dtsi, not assumed: `usb0@10b00000` is `compatible = "snps,dwc2"` with a `usb-nop-xceiv` phy (`socfpga_agilex5.dtsi:161-163,483-492`) — **dwc2, not dwc3, not xhci**. |
+| 14 | `/dev/mem` policy | `STRICT_DEVMEM=y`, a sentinel for the arm64 default. See §5.1. |
 
 ### 4.1 The two traps in the FPGA group, restated
 
@@ -362,18 +363,76 @@ kernel missing that line is silently non-functional for core loading: no error,
 no warning, no reconfiguration ([`de25-fpga-reconfig.md`](de25-fpga-reconfig.md)
 §4.1, tagged **[V]** there).
 
-**`INTEL_STRATIX10_RSU` is off as a posture choice, not an oversight.** It drives
-SDM commands that rewrite the QSPI boot firmware. `de25-boot-chain.md`'s
-posture-1 contract is that the factory QSPI image is never written by anything we
-ship — the QSPI seam is permanent on this board and an interrupted write is a
-brick with no recovery path. Not shipping the driver is strictly stronger than
-relying on there being no `intel,stratix10-rsu` DT node.
+**`INTEL_STRATIX10_RSU` is off as a posture choice, not an oversight.**
+`de25-boot-chain.md`'s posture-1 contract is that the factory QSPI image is never
+written by anything we ship — the QSPI seam is permanent on this board and an
+interrupted write is a brick with no recovery path. RSU is the kernel's interface
+to the SDM's update commands, so it is not built.
+
+**Corrected 2026-11-17: Kconfig is the only gate.** This paragraph used to say that
+not shipping the driver is stronger than relying on there being no
+`intel,stratix10-rsu` DT node. There is no such node, and none is needed: the
+service driver creates the `stratix10-rsu` platform device itself at probe
+(7.3.4 `drivers/firmware/stratix10-svc.c:2099`). With the symbol on, the driver
+would bind on every boot.
+
+**`SENSORS_ALTERA_SOCFPGA_HWMON` is off for a different reason.** Mainline has an
+SDM temperature and voltage driver, and it too is instantiated by the service
+driver with no DT node. It chooses its channel table from the service node's
+compatible and knows only Stratix 10 and Agilex 7 at 7.3.4
+(`drivers/hwmon/socfpga-hwmon.c:444-447`). Our board DTS describes the service
+node as `intel,agilex-svc`, so the driver would report through the Agilex 7 table.
+v7.4 adds an Agilex 5 table, keyed on `intel,agilex5-svc`, which we do not use
+with the SMMU off. Leave it off until the service compatible is revisited
+([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §6.3).
 
 `FPGA_BRIDGE=y` is required even though **no bridge driver is used** — the
 Cyclone V `fpga_bridge0..3` shape has no Agilex analogue and must not be
 transliterated — purely because `FPGA_REGION depends on FPGA_BRIDGE`.
 `FPGA_MGR_SOCFPGA` and `SOCFPGA_FPGA_BRIDGE` are **Cyclone V / Arria 10 only**
 and must never appear in this file.
+
+### 4.2 The SD controller is an SD6HC run through the SD4HC driver
+
+The block at `mmc@10808000` is a Cadence SD6HC. Mainline 7.3.4's `sdhci-cadence`
+is an SD4HC driver with no SD6HC code, so `MMC_SDHCI_CADENCE` binds it through a
+local compatible and never programs its PHY. Linux runs on the PHY state U-Boot
+left. That is why the board DTS and the U-Boot DTS both hold the card at default
+speed, and why no `cdns,phy-*` property may be added to the Linux node
+([`de25-dts-rationale.md`](de25-dts-rationale.md) §3, [U12]). v7.4 splits the
+driver and adds real SD6HC support under the same Kconfig symbol.
+
+### 4.3 The temporary PHY driver set
+
+No tree names the Ethernet PHY fitted to this board. The shared fragment builds
+`MARVELL_PHY` and `MICREL_PHY`. The DE25 base adds five more, **marked temporary
+in the file**: `REALTEK_PHY`, `AT803X_PHY`, `DP83867_PHY`, `MICROSEMI_PHY`,
+`VITESSE_PHY`. Those five are the gigabit copper PHY drivers Terasic's own config
+builds in (`=y`) besides Micrel (`de25-nano.config` in `terasic/linux-socfpga`,
+branch `de25-nano-6.12.11-lts`). That config builds Marvell, Broadcom and a few
+others as modules; a part from that second group would need its own line. Its
+other built-in PHY drivers are left out as a judgement **[I]**: Aquantia and
+Marvell 10G are multi-gigabit parts, Marvell 88Q2xxx is automotive, DP83TD510 is
+single-pair 10 Mbit/s, the Rockchip driver is for an SoC-internal PHY, and
+`FIXED_PHY` is not a PHY chip.
+
+- **Why it matters.** With a matching driver, `phy-mode = "rgmii"` is applied to
+  the PHY, which is how the vendor kernel runs it. With only the generic driver
+  the PHY keeps its strap defaults, which may or may not match the board.
+- **How to prune.** On first boot, `cat /sys/bus/mdio_bus/devices/*/phy_id` and
+  `readlink /sys/class/net/eth0/phydev/driver`. Keep the one driver that bound and
+  delete the rest. If it is Marvell or Micrel, delete all five.
+- **Resolved cost.** The five lines turn on exactly those five drivers plus one
+  helper, `QCOM_NET_PHYLIB`.
+
+### 4.4 Clock gates are whatever U-Boot left
+
+Agilex 5 gate clocks have no enable or disable operation in mainline's driver, so
+the kernel neither turns a gate on at `clk_prepare_enable()` nor off at
+`clk_disable_unused()` ([`de25-dts-rationale.md`](de25-dts-rationale.md) §3,
+`mmc0` `clocks` row). The gate state the bootloader leaves is final.
+`clk_ignore_unused` is therefore unnecessary on this board, and a peripheral
+whose gate the bootloader left closed will not work however its node is written.
 
 ---
 
@@ -393,7 +452,32 @@ or reachable by default, so each needs saying.
 | `PCI` | no host bridge is wired and none is in the DTS. Load-bearing for the shared Wi-Fi set: it is what makes every `RTW88_*E` / `BRCMFMAC_PCIE` / ath10k-PCIe sibling unreachable. |
 | `VIRTUALIZATION` | `default y` on arm64; nothing here runs guests. |
 | `COMPAT` | 32-bit EL0. Buildroot builds one ABI and it is aarch64. |
-| `DRM` + `FB` + `MEDIA_SUPPORT` | no display path exists on the DE25 in wave 1, and DRM alone is ~40 MB of modules. |
+| `DRM` + `FB` | no display path exists on the DE25 in wave 1, and DRM alone is ~40 MB of modules. |
+
+**`MEDIA_SUPPORT` is no longer in this list (corrected 2026-11-17).** The base
+used to say `# CONFIG_MEDIA_SUPPORT is not set`, but the shared fragment sets
+`MEDIA_SUPPORT=m` for the Sinden camera's UVC stream and the fragment wins. The
+resolved value has been `=m` since that fragment change, and the pair produced a
+`merge_config.sh` "redefined" warning. The base line is deleted.
+
+**`STRICT_DEVMEM` is on, by arm64's default, and is now written down.**
+`STRICT_DEVMEM` is `default y` on arm64 (`lib/Kconfig.debug`); `IO_STRICT_DEVMEM`
+has no default and stays off. In practice:
+
+- device registers can be read through `/dev/mem`, including ranges a driver has
+  claimed — the bench register reads rely on this;
+- System RAM cannot be read or mapped through `/dev/mem`; a `no-map` reserved
+  region can.
+
+On the DE10 the resolved value is `# CONFIG_STRICT_DEVMEM is not set`, and
+Main_MiSTer depends on that because it maps shared windows through `/dev/mem`
+([`abi-contract.md`](abi-contract.md) C-2). No DE10 config file asks for it:
+`STRICT_DEVMEM` is simply not `default y` on 32-bit ARM (`abi-contract.md` X4).
+So the two boards differ by architecture default, not by a line anyone wrote,
+and there is no DE10 setting to copy. The DE25 image ships no MiSTer binaries,
+so the secure default is kept and the choice is left to the Main_MiSTer port:
+write `# CONFIG_STRICT_DEVMEM is not set` here, which would be a new, deliberate
+line, or keep it on and give each shared window a `no-map` reserved-memory node.
 
 ### 5.2 DE10 symbols deliberately **not** put in the shared fragment
 
@@ -428,6 +512,27 @@ reader can overturn it with evidence rather than rediscover it.
   enable them.
 * **`PINCTRL`** — Agilex 5 pinmux is done by the factory SPL; mainline has no
   Agilex 5 pinctrl driver and the DTS has no pin nodes.
+* **`UIO`** — off, as on every DE25 config so far. The DE10 uses
+  `UIO_PDRV_GENIRQ` for fabric doorbells and apertures; the DE25 equivalent waits
+  for a fabric design to describe (DP-9). Terasic's config builds both as modules.
+
+(§2's rule lists `PL330` among on-chip IP names. That is the DE10's DMA
+controller; the Agilex 5's is the DesignWare AXI DMAC above.)
+
+### 5.4 Vendor-only symbols that mainline does not have
+
+These exist only in the vendor trees. None exists in mainline 7.3.4, so none can
+be set here, and a line naming one would be a silent no-op. Terasic's
+`de25-nano.config` turns on the first three rows:
+
+| Vendor symbol | What it is | Our position |
+|---|---|---|
+| `OF_CONFIGFS` | configfs overlay loader, the vendor's userspace FPGA trigger | not carried; a small external module instead ([`de25-implementation-path.md`](de25-implementation-path.md) §7) |
+| `ALTERA_SOCFPGA_CONFIG`, `ALTERA_SOCFPGA_FCS_HAL` | sysfs front end and crypto service layer over the SDM, including QSPI-write and fuse-counter commands | not carried; they are the opposite of posture 1 |
+| `SENSORS_SOC64` | the vendor's SDM hwmon driver, bound by a DT child | mainline's equivalent is `SENSORS_ALTERA_SOCFPGA_HWMON` (§4.1) |
+| `FPGA_MGR_DEBUG_FS` | debugfs image load; off in Terasic's config too | not carried |
+
+`INTEL_STRATIX10_RSU` is `=m` in the vendor config and off in ours.
 
 ---
 
@@ -588,6 +693,21 @@ in the 32-bit RT config are not DE25 concerns: `PROC_SYSCTL` was folded into
 `SYSCTL`, and ARM `ATAGS` went behind `EXPERT` (the DE10 boots by device tree).
 Not run on hardware.
 
+**RE-VERIFIED AT 7.3.4, 2026-11-17**, in a scratch tree with host tools (no
+Buildroot build, no kernel compiled): `merge_config.sh -m` then `olddefconfig`
+for arm64, before and after that day's `linux.config` change.
+
+| | before | after |
+|---|---|---|
+| asked-for symbols (base + fragment) / dropped | 488 (54 + 434) / **0** | 494 (60 + 434) / **0** |
+| `merge_config.sh` "redefined" warnings | **1** (`MEDIA_SUPPORT`) | **0** |
+| resolved difference | — | `REALTEK_PHY`, `AT803X_PHY`, `DP83867_PHY`, `MICROSEMI_PHY`, `VITESSE_PHY` and `QCOM_NET_PHYLIB` become `=y`; nothing else changes |
+
+So the 2026-10-19 note above, "no `merge_config.sh` warnings" and `MEDIA_SUPPORT`
+`not set`, stopped being true when the shared fragment gained `MEDIA_SUPPORT=m`.
+`STRICT_DEVMEM=y`, `INTEL_STRATIX10_RSU` off and `SENSORS_ALTERA_SOCFPGA_HWMON`
+off are the same before and after; the new lines only state them.
+
 Four candidates were removed during authoring because they did *not* survive,
 and each removal is a finding:
 
@@ -629,7 +749,7 @@ failure mode that is otherwise silent.
 4. **`grep -c '=m' <tree>/.config`** and the installed `/lib/modules` size.
    A large jump means an upstream `default` flipped somewhere the minimal
    defconfig does not name — the exact failure the wave-1 config had wholesale.
-5. **Check the five §5.1 exclusions are still `not set`** in the resolved config.
+5. **Check the §5.1 exclusions are still `not set`** in the resolved config.
    `EFI` in particular gates ACPI transitively; if upstream ever changes what
    selects `ARCH_SUPPORTS_ACPI`, the ACPI menu comes back with no warning.
 6. **Confirm `RESET_SIMPLE` is still `y`.** Its `default` clause names
@@ -638,6 +758,19 @@ failure mode that is otherwise silent.
 7. **Confirm the sentinels resolved to the value asked for**, not merely that
    they are present: `OF_OVERLAY`, `USB`, `HID`, `USB_HID`, `INPUT`, `WLAN`,
    `SECCOMP` (off), `MODULE_COMPRESS_XZ`.
+8. **DE25, added 2026-11-17 — re-read the service driver's match table**
+   (`drivers/firmware/stratix10-svc.c`). From v7.4 each compatible carries driver
+   data: `intel,agilex5-svc` requires the SMMU, and `intel,agilex-svc` gains a
+   warm-reboot PSCI notifier. Decide the service compatible and the SMMU together
+   ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §6.3).
+9. **DE25 — the SD6HC driver.** v7.4 splits `sdhci-cadence` and adds
+   `altr,agilex5-sd6hc`. Patch `0101` and the SD4HC shim go; the `mmc0` node is
+   rewritten. Check whether the dtsi has gained an `mmc` node.
+10. **DE25 — confirm RSU, hwmon and any FCS symbol are still off** in the resolved
+    config, and check whether the service driver has started creating further
+    child devices on its own. It already creates RSU and hwmon without a DT node;
+    an upstream FCS client would arrive the same way, gated only by Kconfig.
+11. **DE25 — prune the temporary PHY set** (§4.3) if the PHY ID has been read.
 
 ## 11. CI wiring
 

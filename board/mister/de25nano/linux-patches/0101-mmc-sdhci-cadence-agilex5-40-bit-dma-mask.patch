@@ -60,9 +60,17 @@ dma-coherent is already declared by nine other mmc bindings
 Agilex 5 peripheral behind the same SMMU.
 
 Mainline currently ships no Agilex 5 mmc node, so nothing in tree
-changes.  Carried locally against Linux 7.2.2 for the DE25-Nano pending
-upstream submission; it is an upstream candidate as-is, and whether and
-when to post it to linux-mmc is the maintainer's call.
+changes.
+
+Status, 2026-11-17 (base Linux 7.3.4).  The block is a Cadence SD6HC,
+not an SD4HC; "intel,agilex5-sd4hc" is a local binding shim that runs it
+on the SD4HC driver.  With the SMMU disabled, which is how the DE25-Nano
+device tree ships, this mask changes nothing (all DRAM is below 4 GiB).
+The patch is kept for an SMMU-on test leg and for its binding hunk.  It
+is no longer an upstream candidate: Linux v7.4 adds "altr,agilex5-sd6hc"
+with the same 40-bit mask in sdhci-cadence-core.c, and that entry
+replaces this patch when the kernel pin moves.  See
+docs/de25-vendor-kernel-delta.md.
 
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---

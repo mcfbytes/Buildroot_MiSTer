@@ -364,6 +364,12 @@ the mismatch is QSPI-side. Release discipline that keeps this impossible:
   and a **device tree that instantiates the SDM service node**, which mainline Agilex 5 does not
   ship (§2 step 6) **[V]**. Nobody should read "the driver is there" as "a bigger flash makes
   this a software toggle".
+  **Corrected 2026-11-17:** the third item is out of date and was never an RSU gate. Mainline's
+  dtsi has shipped the service node since 7.x, our board DTS makes it bind, and RSU needs no
+  node of its own: the service driver creates the `stratix10-rsu` device at probe (7.3.4
+  `drivers/firmware/stratix10-svc.c:2099`). What keeps RSU out of our kernel is
+  `# CONFIG_INTEL_STRATIX10_RSU is not set` and nothing else
+  ([`de25-kernel-config.md`](de25-kernel-config.md) §4.1). The first two items stand.
 - **The board is recoverable at a bench, and the payload to recover it with is published [V].**
   *(Amended: the synthesis pass's "you must have an image to write, and Terasic publishes none"
   was refuted by all three lenses, by opening the archive.)* The USB-Blaster III is on-board
@@ -426,6 +432,30 @@ confirms a choice above or names a trap; none is verified by us **[V there, U he
 | F4 | The HPS MAC is unfused and **random on every boot** (`NET_RANDOM_ETHADDR` in the factory config); a persistent MAC has to be provisioned by the OS | first-boot MAC provisioning, the DE10's `u-boot.txt` `ethaddr` idea |
 | F5 | Unsigned, locally compiled bitstreams are accepted by the SDM (no VAB); full reconfiguration ~3 s SDM time, ~8 s end to end with settle windows; repeated switching works only with those windows | §7 row 15, `de25-fpga-reconfig.md` §5–§6 |
 | F6 | An "HPS-first launcher" flash image that holds the fabric in reset gives a dark board with zero serial; the recovery is reflashing the correct image over JTAG | §6 recovery; §7 row 14 |
+
+**Notes added 2026-11-17** ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md)):
+
+- **Source.** F1–F6 are from the non-public port these documents call "the PORT", as reported
+  on 2026-09-14. A second source now exists: the public port at
+  `github.com/ahmadexp/MiSTer-DE25-Nano`, which runs Terasic's 6.12.11 vendor kernel. It
+  agrees with F5 (unsigned cores load; repeated full reconfiguration works) and adds one
+  finding: with peripherals translated by the SMMU, the SMMU command queue stops after a full
+  fabric load, so it translates only the SDM's stream and runs everything else untranslated and
+  non-coherent. All of it is vendor-kernel evidence.
+- **F1 and F2 pull against each other on what the factory image is.** §2 step 2 describes the
+  factory QSPI image as HPS-first; F2 calls it "fully-configured". Nobody has run
+  `quartus_pfg -i` on the factory JIC, which would say. It matters for any test that loads a
+  phase-2 bitstream, because that file must match the phase-1 image (row 15).
+- **F1 is now also a test.** `fpga load` at the U-Boot prompt is not a product path, and F1 is
+  why. It is, however, the cheapest way to find out whether the SDM can read DDR with the SMMU
+  untouched, because it sends the same SMCs Linux would. Expect a failed attempt to need a
+  power cycle.
+- **F3 applies to boots after a JTAG load of a full `.sof`**, not to QSPI cold boots. Our image
+  ships with the SMMU disabled and SD DMA treated as non-coherent, which is the conservative
+  side of F3's warning.
+- **BL31 carries two local patches** as of this date: the UART1 console patch, and a fix to the
+  Agilex 5 FPGA-config address handling ([`de25-uboot.md`](de25-uboot.md) §8). Neither touches
+  QSPI.
 
 ## 8. Resolved questions (D0.1 close-out)
 

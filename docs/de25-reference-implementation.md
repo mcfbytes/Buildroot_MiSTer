@@ -28,6 +28,27 @@ this document was to feed now lives in
 [`de25-implementation-path.md`](de25-implementation-path.md), which supersedes it as the
 decision-bearing document; this file remains the **record of what the reference repos contain**.
 
+**Notes added 2026-11-17**, from the vendor-kernel comparison
+([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md)). The body below is unchanged.
+
+- **Provenance.** This file records "the PORT" as it stood in August 2026. It was not re-read
+  for the 2026-11-17 study. That study read a different source, the public port at
+  `github.com/ahmadexp/MiSTer-DE25-Nano`, which runs Terasic's 6.12.11 vendor kernel with the
+  configfs overlay loader. Its findings are in the new document and are vendor-kernel evidence.
+- **`STRICT_DEVMEM`.** The finding below says we would inherit that divergence "only if the DE25
+  config turns it on". It is on: `STRICT_DEVMEM` is `default y` on arm64, and the DE25 config
+  now says so explicitly ([`de25-kernel-config.md`](de25-kernel-config.md) §5.1). The same
+  finding says the DE10 config "sets" it off; no DE10 config file has that line. It is off there
+  by arm32's default ([`abi-contract.md`](abi-contract.md) X4).
+- **The 300 ms and 720 ms timeouts.** True of 6.18-class kernels, as the finding says. Mainline
+  7.3.4 raised both to 5000 ms (`include/linux/firmware/intel/stratix10-svc-client.h:71-72`), so
+  that failure shape does not carry over to our pin. The four-buffer pool of 512 KiB is
+  unchanged.
+- **Why the vendor driver adds `0x80000000`.** Not established here. It compensates for two
+  address checks in BL31, which we now patch in BL31 instead.
+- **The trigger.** A module that calls `fpga_mgr_load()` directly is now preferred over one that
+  applies an overlay ([`de25-implementation-path.md`](de25-implementation-path.md) §7).
+
 **Nothing here is adopted.** The owner's standing instruction governs: this is reference material,
 and every divergence from our plan is the owner's decision, not a recommendation. Where a leg's wording
 drifts toward advocacy, that is an artifact of the missing neutrality pass.

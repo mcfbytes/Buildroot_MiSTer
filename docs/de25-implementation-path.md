@@ -8,6 +8,13 @@ records the disagreement and how it was settled; §10 records exactly what was c
 under challenge, and what nobody has verified. Claims are tagged **[V]** (read from a named source)
 / **[U]** (unverified, with the missing input named).
 
+**Updated 2026-11-17, still with no hardware touched.** A source comparison of the vendor
+kernels, mainline 7.3.4 and v7.4-rc1, TF-A v2.15.0 and U-Boot 2026.07 settled several things this
+document left open and reversed two of its choices. The record is
+[`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) and
+[ADR 0034](decisions/0034-de25-fpga-service-path.md). Where a section below is affected it
+carries a dated note; the original text is kept as the record. The kernel pin is now 7.3.4.
+
 Cross-refs: [`de25-boot-chain.md`](de25-boot-chain.md) §5, §7, §8.3, §8.5;
 [`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §3.1, §4.1, §4.2;
 [`de25-patch-portability.md`](de25-patch-portability.md);
@@ -49,6 +56,18 @@ record now records which of its claims survived this pass); [ADR 0027](decisions
 
 Neither finding changes a decision. Finding 1 changes the kernel pin. Finding 2 changes what we
 claim, what confidence we attach, and what the first hardware session must measure.
+
+> **Finding 2, resolved from source (2026-11-17).** The mainline path was blocked, and the
+> cause is now known: it is BL31's Agilex 5 address handling, not the kernel and not the SMMU.
+> BL31 rejects the buffer window it advertises through `FPGA_CONFIG_GET_MEM`, and it returns
+> completion addresses with `0x80000000` subtracted, so the kernel cannot match them. Both hold
+> in every SMMU mode. The vendor's `+0x80000000` exists to satisfy exactly those two checks.
+> We now fix both in BL31 (TF-A patch `0002`) and describe the service node as
+> `intel,agilex-svc`; no behavioural kernel patch is carried. The observed `RECONFIG_REQUEST`
+> timeout is a separate matter: it came from a 6.18-class driver with a 300 ms request timeout,
+> and 7.3.4 waits 5000 ms. Trace and line citations:
+> [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §3. Confidence in the mainline
+> path is now **medium, pending hardware** — the remaining unknowns are silicon facts (§8 Q11).
 
 ---
 
@@ -185,6 +204,13 @@ whole subtree, they must be met deliberately.
 
 ### 2.2 The independent empirical check — what it proves, and what it does not
 
+> **Provenance note (2026-11-17).** Everything this section and §7 cite from "the PORT" is as it
+> was recorded in August 2026. It was not re-read for the 2026-11-17 study. A *different*
+> source, the public port at `github.com/ahmadexp/MiSTer-DE25-Nano`, was read for that study. It
+> runs **Terasic's 6.12.11 vendor kernel**, built with `CONFIG_OF_CONFIGFS=y`, and loads cores
+> through configfs overlays. Its observations are evidence about the hardware under a vendor
+> kernel; none of them is evidence about a mainline driver.
+
 The PORT's board boots from SD on real DE25 silicon. Its `drivers/mmc/host/sdhci-cadence.c` is
 **byte-identical to stock 6.18.44** (`diff -q` → identical, re-run this pass) **[V]**, and its
 `mmc0` declares `compatible = "intel,agilex5-sd4hc", "cdns,sd4hc"`
@@ -279,11 +305,18 @@ State it plainly, because it is the difference between a plan and a hope:
 | Question | Status | Evidence |
 |---|---|---|
 | Does a fallback compatible make `/sys/class/fpga_manager/fpga0` and `/sys/class/fpga_region/region0` appear, with stock drivers? | **Very likely yes** | OF core mechanism [V]; same idiom proven on this silicon for `sdhci-cadence` [V]; the PORT's board reaches probe with only string additions [V] |
-| Does mainline's `stratix10-svc` actually **program an Agilex 5 fabric**? | **Not established. One observed failure.** | Mainline svc hands the SDM raw `gen_pool` physical addresses with no IOMMU mapping and no offset (`linux:drivers/firmware/stratix10-svc.c:277,458,785-807,1007`) [V]. Terasic's vendor svc adds `+0x80000000`, attaches an IOMMU domain, and *disables the SDM remapper* for `intel,agilex5-svc` [V]. Mainline has none of this at 6.18.44 or v7.2 [V]. The single mainline-path attempt on hardware timed out on `RECONFIG_REQUEST` and wedged the board [V] |
+| Does mainline's `stratix10-svc` actually **program an Agilex 5 fabric**? | **Not with stock TF-A, in any SMMU mode — established from source 2026-11-17; patched in BL31, untested on hardware.** Original entry: *Not established. One observed failure.* | Mainline svc hands the SDM raw `gen_pool` physical addresses with no IOMMU mapping and no offset (`linux:drivers/firmware/stratix10-svc.c:277,458,785-807,1007`) [V]. Terasic's vendor svc adds `+0x80000000`, attaches an IOMMU domain, and *disables the SDM remapper* for `intel,agilex5-svc` [V]. Mainline has none of this at 6.18.44 or v7.2 [V]. The single mainline-path attempt on hardware timed out on `RECONFIG_REQUEST` and wedged the board [V] |
 
 **Confidence: high on binding; low on end-to-end reconfiguration through stock mainline drivers.**
 The PORT's board is **not** evidence that mainline svc can program this fabric — its own working
 reconfigurations ran on Terasic's vendor 6.12.11 kernel, which has all of the above.
+
+> **Superseded 2026-11-17.** The four-step test below would have failed at step 3 on stock
+> firmware for a reason that has nothing to do with the SMMU, so step 4's comparison would have
+> told us nothing. The test order is now T0–T5 in
+> [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8: register reads and
+> `fpga load` at the U-Boot prompt first, then Linux first boot, then a Linux load through the
+> patched BL31, with SMMU-on as the fallback leg. The steps below are kept as the record.
 
 **The on-hardware test that settles it, and it is cheap:**
 
@@ -340,6 +373,11 @@ Ang Tien Sung / Khairul Anuar Romli, Altera; via Dinh Nguyen), **561 lines**, ma
 > translated stream; see [`de25-dts-rationale.md`](de25-dts-rationale.md) §4. (2) The svc
 > compatible is **not** overridden; mainline's `intel,agilex5-svc` is kept and carried patch
 > `0102` makes it bind (ADR 0029 D8). The listing is kept as the record of the node set.
+>
+> **Point (2) reversed on 2026-11-17 ([ADR 0034](decisions/0034-de25-fpga-service-path.md)).**
+> The svc compatible **is** overridden to `"intel,agilex-svc"`, as the listing below shows, and
+> `0102` is dropped. Point (1) stands: the SMMU ships disabled. The reason given for it was
+> incomplete — see [`de25-dts-rationale.md`](de25-dts-rationale.md) §4.1.
 
 
 ```dts
@@ -647,6 +685,26 @@ now viable if p2 ends up exFAT. The 4 GiB FAT32 per-file cap is irrelevant to a 
 
 ## 7. The residual scope question — the minimal kernel-side trigger
 
+> **Updated 2026-11-17.** The recommendation changes from option (a) below to a smaller module:
+> one that calls `fpga_mgr_load()` directly instead of applying an overlay.
+>
+> | | Overlay-applying module (option (a)) | Direct-load module (now preferred) |
+> |---|---|---|
+> | Kernel API | `of_overlay_fdt_apply()` | `of_fpga_mgr_get()`, `fpga_mgr_lock()`, `fpga_mgr_load()` |
+> | Touches the live device tree | yes, on every load | no |
+> | Needs a `.dtbo` per core | yes | no — a firmware name |
+> | Completion timeout | from the overlay's `config-complete-timeout-us` | set by the module; it must be non-zero or `stratix10-soc` fails at once |
+> | Concurrency | whatever the overlay core allows | `fpga_mgr_lock()` returns `-EBUSY` |
+>
+> Describing the fabric's devices with an overlay stays possible as a separate step. A draft of
+> the direct-load module, compile-checked against 7.3.4 and **not in the tree**, is in
+> [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) Appendix A.
+>
+> Option (b), `OF_CONFIGFS`, is the one choice that needs no new userspace interface, because
+> the vendor image and the public vendor-kernel port already drive it. It stays rejected for the
+> reason given below: it is a permanent fork of `drivers/of` for something upstream declined.
+> The provenance note in §2.2 applies to every PORT citation in this section.
+
 Decision 2 says we make the hardware available and Main_MiSTer does the loading. The honest problem
 is that **mainline provides no userspace entry point at all**, so "available" is not achievable with
 zero non-mainline code. This section states the options and their costs. It does **not** design a
@@ -710,16 +768,19 @@ mainline exposes no writable fpga-manager attribute, has no configfs overlay loa
 
 | # | Open question | Why it matters | How it is settled |
 |---|---|---|---|
-| 1 | **Can mainline's `stratix10-svc` actually program an Agilex 5 fabric?** | The headline risk. A fallback-matched fpga-mgr probes cleanly and then fails to program — the worst failure mode, and it has been **observed once on real silicon** [V]. Terasic's vendor svc does IOMMU attach, an IOVA carveout, a `+0x80000000` SDM address offset and an `INTEL_SIP_SMC_SDM_REMAPPER_CONFIG` remapper bypass under `intel,agilex5-svc`; mainline passes raw `gen_pool` physical addresses and has none of it at 6.18.44 **or v7.2** [V]. | **§2.6's four-step hardware test — do it first.** In parallel, read TF-A `plat/intel/soc/agilex5` SIP handlers against `include/linux/firmware/intel/stratix10-smc.h`, and diff Terasic's `stratix10-svc.c` against mainline's to size a port if step 3 fails. Confidence today: **low**. |
+| 1 | **Can mainline's `stratix10-svc` actually program an Agilex 5 fabric?** *(2026-11-17: not with stock TF-A; the TF-A read this row asks for is done and the cause is BL31's address handling, patched by TF-A `0002`. What remains is the hardware run — T1 and T3 in [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8. Confidence: medium, pending hardware.)* | The headline risk. A fallback-matched fpga-mgr probes cleanly and then fails to program — the worst failure mode, and it has been **observed once on real silicon** [V]. Terasic's vendor svc does IOMMU attach, an IOVA carveout, a `+0x80000000` SDM address offset and an `INTEL_SIP_SMC_SDM_REMAPPER_CONFIG` remapper bypass under `intel,agilex5-svc`; mainline passes raw `gen_pool` physical addresses and has none of it at 6.18.44 **or v7.2** [V]. | **§2.6's four-step hardware test — do it first.** In parallel, read TF-A `plat/intel/soc/agilex5` SIP handlers against `include/linux/firmware/intel/stratix10-smc.h`, and diff Terasic's `stratix10-svc.c` against mainline's to size a port if step 3 fails. Confidence today: **low**. |
 | 2 | Does an authored `mmc0` fault `arm-smmu-v3` `F_TRANSLATION` on a 7.x base, and is the cause a DMA-mask width? | **Leading hypothesis, newly evidenced:** mainline takes `DMA_BIT_MASK(64)` (`sdhci.c:4117-4123`) where Terasic's vendor driver caps this controller at 40 bits via `SDHCI_QUIRK2_40_BIT_DMA_MASK` — a quirk absent from mainline at 6.18.44, v7.2 and `master` [V]. Under SMMU translation, top-down IOVA allocation above the controller's wired address bits truncates → "input address caused fault". This is a **vendor-vs-mainline driver delta, so it does not go away on a newer kernel.** | Boot **five** ways: `iommus` present/absent × `dma-coherent` present/absent, **plus** a fifth leg capping mmc0's addressing (`dma-ranges` / `bus_dma_limit` in DT, or a locally applied 40-bit mask) with the SMMU on. Watch dmesg for `F_TRANSLATION`; measure `dd`/`hdparm` to separate working ADMA from forced PIO. **If the fifth leg fixes it, the mainline-first remedy is a one-entry `sdhci-cadence` upstream patch** (`intel,agilex5-sd4hc` + a 40-bit mask), which removes the PIO throughput cost for everyone. No public evidence exists either way **[V, searched: zero agilex5-specific hits; no smmu/iommu commit in the last 100 on `socfpga-6.18.20-lts`]**. |
-| 3 | Is overriding svc's compatible to `intel,agilex-svc` while keeping `iommus = <&smmu 10>` functionally equivalent? | Safe against **mainline**, which branches on neither string [V]. Not safe as a general assumption: the binding's `allOf` *requires* `iommus` for the agilex5 string, and the vendor driver makes that string the switch for IOMMU attach + remapper bypass, hard-failing `-ENODEV` without it [V]. | Confirm `iommus` is honoured by the generic `of_dma_configure()` path independent of the matched compatible (`drivers/of/device.c`, `drivers/iommu/of_iommu.c`), then verify on-device that svc buffers in `service_reserved` are SDM-reachable. Folded into Q1's test. |
-| 4 | Has Khairul's fpga-mgr series landed anywhere we would ship? | The binding is absent from v7.2 **and** `master`, nine months after the v6 posting (2025-11-18) — long enough to suspect it stalled. Until it lands, our two-string form warns under `dtbs_check` (§2.5). | Fetch the lore thread for a maintainer "Applied" from Xu Yilun or Dinh Nguyen; grep linux-next's `socfpga_agilex5.dtsi` for `fpga-region`. Re-check on every kernel bump. |
+| 3 | Is overriding svc's compatible to `intel,agilex-svc` while keeping `iommus = <&smmu 10>` functionally equivalent? *(2026-11-17: on 7.3.4, yes — the match table has no driver data. From v7.4 the strings differ on purpose: `intel,agilex5-svc` requires the SMMU, `intel,agilex-svc` keeps the physical path and gains a warm-reboot PSCI notifier. The override now ships.)* | Safe against **mainline**, which branches on neither string [V]. Not safe as a general assumption: the binding's `allOf` *requires* `iommus` for the agilex5 string, and the vendor driver makes that string the switch for IOMMU attach + remapper bypass, hard-failing `-ENODEV` without it [V]. | Confirm `iommus` is honoured by the generic `of_dma_configure()` path independent of the matched compatible (`drivers/of/device.c`, `drivers/iommu/of_iommu.c`), then verify on-device that svc buffers in `service_reserved` are SDM-reachable. Folded into Q1's test. |
+| 4 | Has Khairul's fpga-mgr series landed anywhere we would ship? *(2026-11-17: the driver's match table is unchanged at v7.4-rc1, and the binding still warns at 7.3.4 — five warnings, re-measured.)* | The binding is absent from v7.2 **and** `master`, nine months after the v6 posting (2025-11-18) — long enough to suspect it stalled. Until it lands, our two-string form warns under `dtbs_check` (§2.5). | Fetch the lore thread for a maintainer "Applied" from Xu Yilun or Dinh Nguyen; grep linux-next's `socfpga_agilex5.dtsi` for `fpga-region`. Re-check on every kernel bump. |
 | 5 | Does mainline TF-A v2.15.0's Agilex 5 BL31 boot this board, and does it handle >2 MB reconfiguration? | The reference board needed non-stock ATF buffer-size fixes. Stock ATF is untested here, and it is the other half of Q1's SMC contract. | D2.2 hardware pass: build stock v2.15.0 `bl31.bin`, package into `u-boot.itb`, boot under the factory SPL; separately exercise the >2 MB fabric-reconfigure path. |
 | 6 | Does `# CONFIG_SPL is not set` build clean and still emit `u-boot.itb`? | Reasoned from the Kconfig graph only. | A desk build of v2026.07 + our fragment; check for `u-boot.itb` and no fatal errors. |
 | 7 | Which filesystem for p2, and therefore does the kernel live on p1 or p2? | Decision 3 fixes partition count and p1 only. U-Boot can now read either **[V]**, so this is a project decision, not a capability gap. | Owner decision, informed by the DE10 two-partition precedent and what else p2 must hold. |
 | 8 | Do our 33 portable-as-is patches apply cleanly on **aarch64** at 7.2? | Verified at 7.2 on ARM32 with 40/40 and zero fuzz; the touched files are arch-generic C, so transfer is likely but unproven. | First DE25 Buildroot build with the shared series symlinked at a 7.2 pin. |
 | 9 | Are `Thejayman77/retroDE*` and `GM-Benji/agilex5-linux-amp` relevant parallel efforts? | Possible prior art for MiSTer cores on this SoC. | One short follow-up leg: inspect for board DTS or fpga-manager plumbing. |
-| 10 | Does upstream ever adopt the vendor's Agilex 5 svc behaviour? | If it does, `stratix10_svc_drv_match` gains per-compatible meaning and §2.1's "fallback is free" argument stops holding. This is falsifier (3) in its realised form. | Diff both match tables and `grep` for `iommu|REMAPPER|dma_addr_offset` in `stratix10-svc.c` on **every** kernel bump. Add to the bump checklist. |
+| 10 | Does upstream ever adopt the vendor's Agilex 5 svc behaviour? *(2026-11-17: **yes, in v7.4.** `stratix10_svc_drv_match` has per-compatible data there; see [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §3.5 and §6.3. The 7.4 pin move is a decision point.)* | If it does, `stratix10_svc_drv_match` gains per-compatible meaning and §2.1's "fallback is free" argument stops holding. This is falsifier (3) in its realised form. | Diff both match tables and `grep` for `iommu|REMAPPER|dma_addr_offset` in `stratix10-svc.c` on **every** kernel bump. Add to the bump checklist. |
+| 11 | *(added 2026-11-17)* Which silicon revision is fitted, is the revision-A workaround bit set, and does the SMMU reset to bypass or abort? | They decide whether the SDM can reach DDR with the SMMU off — the shape we ship — or whether the SMMU-on fallback becomes primary. | Test T0: five register reads at the U-Boot prompt ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8). |
+| 12 | *(added 2026-11-17)* Does the SD6HC PHY state U-Boot programs survive Linux's SDHCI reset at probe? | Mainline 7.3.4 has no SD6HC driver and inherits that state. If the reset clears it, 7.3.4 cannot use the SD card and the SD6HC driver (in v7.4) is needed before first boot. | Test T0, the reset step. |
+| 13 | *(added 2026-11-17)* Track two upstream series now merged in v7.4: the Agilex 5 service support and the Cadence SD6HC driver. | They replace our TF-A-side stopgap's kernel half (optionally) and patch `0101` plus the SD4HC shim (necessarily). | Re-read both at the 7.4 pin move; the dtsi still has no `mmc` node at v7.4-rc1. |
 
 ---
 
@@ -751,6 +812,17 @@ mainline exposes no writable fpga-manager attribute, has no configfs overlay loa
 | `de25-reference-implementation.md` §3 (mmc0/SMMU) | "a real kernel-version regression, not a DT gap" | **Not established.** The 6.12 baseline is Terasic's **vendor** tree, whose `sdhci-cadence` carries a 40-bit DMA-mask quirk that exists nowhere in mainline **[V]**. Vendor-vs-mainline driver delta; mainline 6.12 never tested. The fault therefore travels forward to 6.19/7.2, and 6.18 is not implicated as a version. Recorded in that document's own verification record. |
 | `de25-readiness-ledger.md` row 12 | U-Boot env→QSPI write, mechanism **[U]** | Promote to **[V, code-traced]**: the *load* path alone writes a UBI layout volume to a blank QSPI partition; the guard is `# CONFIG_ENV_IS_IN_UBI is not set`, not "don't call `saveenv`" (§6.2). |
 | `de25-patch-portability.md` (patch 3 rationale) | "Agilex 5 has a different clkmgr with no in-tree driver at all in 6.18.44" | Correct, and **understated** — it is a boot blocker for the whole board on 6.18, not just context for a cpufreq patch. Landed upstream in v6.19. |
+
+**Corrections owed by this document, found 2026-11-17** ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md)):
+
+| Where | Claim | Correction |
+|---|---|---|
+| §0 Finding 2, §2.6, §8 Q1 | The `RECONFIG_REQUEST` timeout "is exactly the failure shape the vendor code predicts" | It is not. The vendor code compensates for BL31's handling of buffer addresses, which bites at the first *data* submit, after the request has succeeded. The observed timeout was on a driver with a 300 ms request timeout; 7.3.4 has 5000 ms. |
+| §2.6 step 4, §3.1 | SMMU state is "the most likely discriminator" for programming | Not on stock firmware: it fails either way. With the BL31 patch, SMMU-off is the shape expected to work on 7.3.4. |
+| §2.2 | The PORT's SD boot shows "an unpatched mainline driver" working on Agilex 5 | It shows the SD4HC driver *binding* to what is an SD6HC block and running on PHY state left by the bootloader. The driver programs no PHY here. |
+| §3 table, `smmu` row | v7.2 has the node disabled, `master` enabled | Still accurate, and now material: at our 7.3.4 pin the node is **enabled**, so `status = "disabled"` in our board file is a divergence from mainline. |
+| §3.1, §8 Q3 | Keep `intel,agilex5-svc` and carry `0102` | Reversed (ADR 0034). |
+| §7 | Recommend the overlay-applying module | Superseded by the direct-load module (§7 note). |
 
 **Corrections applied to this document's own earlier draft**, listed so the change is auditable:
 

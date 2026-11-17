@@ -109,6 +109,7 @@ checker rejects any image that looks like DE10 layout lore transplanted (a `0xA2
 | Toolchain, kernel, DTS, root filesystem, card image | build green from one defconfig; the DTS is documented node by node against Terasic's, Altera's, and mainline's trees ([`de25-dts-rationale.md`](de25-dts-rationale.md)) |
 | U-Boot + TF-A | built from mainline, pinned by Buildroot; FIT layout matches the factory loader's contract; every flash-writing path compiled out and asserted at build time ([`de25-uboot.md`](de25-uboot.md)) |
 | BL31 console | moved to the header UART (a one-line carried patch, matching what Terasic ships), so secure-firmware messages and crashes are visible at bring-up instead of going to an unwired port |
+| FPGA loading from Linux | fixed in BL31 by a second carried patch so the kernel needs no DE25-specific change; built and harness-checked, not run on hardware ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md)) |
 | Reproducibility | the FIT and BL31 are byte-identical across three clean builds on this machine [V]; the only difference against the incremental tree was the toolchain's git-describe banner |
 | Stage-1 initramfs (two-stage card) | built for aarch64, QEMU-tested [V] |
 | Hardware | none yet; first-boot serial checklist written ([`de25-sdcard.md`](de25-sdcard.md) §6, [`de25-uboot.md`](de25-uboot.md) §11) |
@@ -156,6 +157,15 @@ point is applying a device-tree overlay against an FPGA region **[V, `de25-fpga-
 The mainline kernel has the drivers but no Agilex 5 device-tree nodes for them; ours adds them
 **[V]**.
 
+**Updated 2026-11-17.** A source comparison of Terasic's kernel with mainline found why the
+mainline path could not have worked as shipped: the fault is in the firmware (BL31), which
+rejects the buffer addresses a mainline kernel sends. The vendor kernel works around that in
+its driver. We fix it in BL31 instead, so the kernel stays vanilla 7.3.4 with no
+DE25-specific patch that anything depends on. Built and checked off the board; **not yet run
+on hardware**. The full comparison is
+[`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md), and the decision is
+[ADR 0034](decisions/0034-de25-fpga-service-path.md).
+
 What is known from another DE25-Nano port that runs this path on real hardware:
 
 - **Unsigned, locally compiled bitstreams are accepted** by the factory SDM: bitstream
@@ -166,7 +176,10 @@ What is known from another DE25-Nano port that runs this path on real hardware:
   **[V there, U for us]**. MiSTer switches cores dozens of times a session, so this is the number
   to beat and the behaviour to harden ([`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §6).
 - **Do not load cores from U-Boot.** `fpga load` from the bootloader wedged the SDM on that
-  port and was retired; load from Linux **[V there]**.
+  port and was retired; load from Linux **[V there]**. That stays the product rule. As a bench
+  diagnostic, though, one `fpga load` at the U-Boot prompt is the first test we will run: it
+  shows whether the configuration manager can read DDR without the SMMU, before Linux is
+  involved ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8).
 - **A fabric-unconfigured ("HPS-first") flash image is fragile**: it produced a fatal bus error
   on warm reboots there. A flash image that configures a full design at every reset was stable.
   Our posture keeps Terasic's factory (fully configured) image in flash, which is the stable
@@ -219,8 +232,9 @@ What is still unknown for *our* model specifically:
 | [`de25-dts-rationale.md`](de25-dts-rationale.md) | every device-tree node and why |
 | [`de25-kernel-config.md`](de25-kernel-config.md) | the kernel configuration and its diet |
 | [`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) | how the fabric is reprogrammed on Agilex 5, latency, the open questions |
+| [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) | what Terasic's and Altera's kernels do that mainline does not, what we carry instead, and the first-bench test order |
 | [`de25-implementation-path.md`](de25-implementation-path.md) | the decisions behind the current shape |
 | [`de25-reference-implementation.md`](de25-reference-implementation.md) | what was learned from another port's working board |
 | [`de25-nano-plan.md`](de25-nano-plan.md) / [`de25-nano-tasks.md`](de25-nano-tasks.md) | the readiness plan and the task history |
 | [`de25-readiness-ledger.md`](de25-readiness-ledger.md) | every place the DE10's assumptions are baked into scripts and CI |
-| [ADR 0027](decisions/0027-de25-nano-multi-board-readiness.md), [ADR 0029](decisions/0029-de25-implementation-path.md) | the governing decisions |
+| [ADR 0027](decisions/0027-de25-nano-multi-board-readiness.md), [ADR 0029](decisions/0029-de25-implementation-path.md), [ADR 0034](decisions/0034-de25-fpga-service-path.md) | the governing decisions |

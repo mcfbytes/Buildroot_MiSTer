@@ -10,6 +10,19 @@ relevant lines read — the patch, the provenance record, or `output/build/linux
 *source-reading* claim only: **nothing in this document has been compiled for aarch64 and
 nothing has been run on Agilex 5 silicon.**
 
+**DE25-local patches, as of 2026-11-17.** This audit covers the DE10's series. The DE25 has
+also carried two patches of its own, which are not rows in §2:
+
+| Patch | State | Why |
+|---|---|---|
+| `0101-mmc-sdhci-cadence-agilex5-40-bit-dma-mask` | carried, **optional** | Not needed to boot: with the SMMU disabled the mask changes nothing. Kept for an SMMU-on leg and for its binding hunk. No longer an upstream candidate — Linux v7.4 adds `altr,agilex5-sd6hc` with the same 40-bit mask. |
+| `0102-firmware-stratix10-svc-match-agilex5-svc` | **dropped** | Replaced by one line in the board DTS (`compatible = "intel,agilex-svc"`). Its premise was contradicted by TF-A's source, and v7.4 gives the string SMMU-required semantics. |
+
+So no DE25-specific kernel patch is load-bearing. The record is
+[`board/mister/de25nano/linux-patches/README.md`](../board/mister/de25nano/linux-patches/README.md);
+the reasoning, and the list of vendor changes deliberately not carried, is
+[`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §4 and §6.
+
 **Cross-refs:** [`de25-nano-plan.md`](de25-nano-plan.md) §5 (the ~28/~8 estimate this
 reconciles against) and §6 DP-9/DP-10 · [ADR 0027](decisions/0027-de25-nano-multi-board-readiness.md)
 · [`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §7–§8 (D0.2 — authoritative on

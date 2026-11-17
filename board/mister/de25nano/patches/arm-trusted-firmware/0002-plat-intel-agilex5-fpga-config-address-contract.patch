@@ -1,0 +1,150 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Tue, 17 Nov 2026 12:00:00 -0600
+Subject: [PATCH] plat: intel: agilex5: make the FPGA-config address contract
+ round-trip
+
+On Agilex 5, BL31 cannot be driven through FPGA_CONFIG_WRITE by a caller
+that uses the buffer BL31 itself advertises:
+
+1. INTEL_SIP_SMC_FPGA_CONFIG_GET_MEM returns 0x80400000..0x82000000
+   (INTEL_SIP_SMC_FPGA_CONFIG_ADDR / _SIZE), but intel_fpga_config_write()
+   rejects every address below BL31_LIMIT (0x82000000) through
+   is_address_in_ddr_range(). Every buffer inside the advertised window
+   returns INTEL_SIP_SMC_STATUS_REJECTED. On Agilex 7 the window is
+   0x400000..0x2000000 and BL31_LIMIT is 0x81000, so the two agree there.
+
+2. intel_smmu_hps_remapper_init() subtracts DRAM_BASE from the buffer
+   address before it is stored, and FPGA_CONFIG_COMPLETED_WRITE returns
+   the stored value. A caller that submitted physical address P gets
+   P - 0x80000000 back and cannot match it to the buffer it sent.
+
+Linux's stratix10-svc legacy path (every kernel up to v7.3, and the
+"intel,agilex-svc" / "intel,stratix10-svc" match entries after that)
+does exactly this: it builds its pool from GET_MEM, submits physical
+addresses and looks completions up by the same value. With (1) the first
+data submit is rejected; with only (1) fixed, (2) leaves every buffer
+locked and the FPGA manager spins.
+
+Accept a buffer that lies wholly inside the GET_MEM window, and return
+the caller's own address from COMPLETED_WRITE.
+
+The second half is conditional. Altera's downstream kernels and Linux
+v7.4's "intel,agilex5-svc" path submit IOVA + 0x80000000 and expect the
+bare IOVA back, and both announce themselves by requesting remapper
+bypass (INTEL_SIP_SMC_FCS_SDM_REMAPPER_CONFIG, x1 = 1) at probe. Record
+that request -- independently of the JTAG-ID gate that decides whether
+the remap registers are written -- and keep today's return value for
+those callers. Like g_remapper_bypass, the record is never cleared
+before the next reset. U-Boot's "fpga load" only counts non-zero
+completions and is unaffected either way.
+
+The acceptance change is not conditional. A bypass caller's buffer that
+lies wholly in 0x80400000..0x81ffffff after the offset (an IOVA of
+0x400000..0x1ffffff) used to be rejected and is now accepted. Those are
+valid addresses in such a caller's IOVA space, which ends at 0x20000000.
+
+is_address_in_ddr_range() itself is not widened, so no other SMC gains
+access below BL31_LIMIT, and 0x80000000..0x803fffff (BL31 itself) stays
+rejected.
+
+Provenance
+----------
+Origin:       this repo. Found by reading v2.15.0 against Linux 7.3.4's
+              drivers/firmware/stratix10-svc.c and drivers/fpga/
+              stratix10-soc.c; docs/de25-vendor-kernel-delta.md section 3
+              has the trace.
+Author:       this repo.
+Upstream:     Candidate. Not submitted; whether and when is the owner's
+              call. v2.12.0 (Terasic's base) and TF-A master carry the
+              same two behaviours.
+Why carried:  without it mainline Linux cannot program the Agilex 5
+              fabric through BL31 in any SMMU configuration, and the
+              alternative is a carried kernel patch.
+Verified:     [V] applies at -F0 to v2.15.0 after 0001; bl31.bin builds
+              for PLAT=agilex5 and PLAT=agilex (aarch64 gcc 15.2), with
+              __BL31_END__ unchanged at 0x800178c0; a host harness of the
+              patched functions passes the accept/reject and round-trip
+              cases listed in docs/de25-vendor-kernel-delta.md.
+              [U] any behaviour on hardware -- no DE25-Nano has run this
+              image.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ plat/intel/soc/common/socfpga_sip_svc.c | 37 +++++++++++++++++++++++--
+ 1 file changed, 35 insertions(+), 2 deletions(-)
+
+diff --git a/plat/intel/soc/common/socfpga_sip_svc.c b/plat/intel/soc/common/socfpga_sip_svc.c
+--- a/plat/intel/soc/common/socfpga_sip_svc.c
++++ b/plat/intel/soc/common/socfpga_sip_svc.c
+@@ -34,6 +34,8 @@
+ static bool bridge_disable;
+ #if PLATFORM_MODEL == PLAT_SOCFPGA_AGILEX5
+ static uint32_t g_remapper_bypass;
++/* Set once a caller asks for remapper bypass, whatever the silicon. */
++static bool g_remapper_bypass_requested;
+ #endif
+ 
+ /* RSU static variables */
+@@ -152,6 +154,15 @@
+ 				current_block++;
+ 				*buffer_addr_completed =
+ 					fpga_config_buffers[i].addr;
++#if PLATFORM_MODEL == PLAT_SOCFPGA_AGILEX5
++				/*
++				 * No bypass request: the caller sent a physical
++				 * address, and the stored one lacks DRAM_BASE.
++				 */
++				if (!g_remapper_bypass_requested) {
++					*buffer_addr_completed += DRAM_BASE;
++				}
++#endif
+ 				return 0;
+ 			}
+ 		}
+@@ -328,14 +339,32 @@
+ 	return true;
+ }
+ 
++#if PLATFORM_MODEL == PLAT_SOCFPGA_AGILEX5
++/*
++ * The window INTEL_SIP_SMC_FPGA_CONFIG_GET_MEM advertises lies below
++ * BL31_LIMIT. INTEL_SIP_SMC_FPGA_CONFIG_SIZE is its end address.
++ */
++static bool is_fpga_config_get_mem_window(uint64_t addr, uint64_t size)
++{
++	return (addr >= INTEL_SIP_SMC_FPGA_CONFIG_ADDR) &&
++	       (addr < INTEL_SIP_SMC_FPGA_CONFIG_SIZE) &&
++	       (size <= (INTEL_SIP_SMC_FPGA_CONFIG_SIZE - addr));
++}
++#endif
++
+ static uint32_t intel_fpga_config_write(uint64_t mem, uint64_t size)
+ {
+ 	int i;
++	bool addr_ok;
+ 
+ 	intel_fpga_sdm_write_all();
+ 
+-	if (!is_address_in_ddr_range(mem, size) ||
+-		is_fpga_config_buffer_full()) {
++	addr_ok = is_address_in_ddr_range(mem, size);
++#if PLATFORM_MODEL == PLAT_SOCFPGA_AGILEX5
++	addr_ok = addr_ok || is_fpga_config_get_mem_window(mem, size);
++#endif
++
++	if (!addr_ok || is_fpga_config_buffer_full()) {
+ 		return INTEL_SIP_SMC_STATUS_REJECTED;
+ 	}
+ 
+@@ -807,6 +836,10 @@
+ 
+ int intel_smmu_hps_remapper_config(uint32_t remapper_bypass)
+ {
++	if (remapper_bypass == 0x01) {
++		g_remapper_bypass_requested = true;
++	}
++
+ 	/* Read out the JTAG-ID from boot scratch register */
+ 	if (is_agilex5_A5C0() || is_agilex5_A5C4()) {
+ 		if (remapper_bypass == 0x01) {

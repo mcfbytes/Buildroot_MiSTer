@@ -2,6 +2,9 @@
 
 **Status:** Proposed (2026-09-02) — the nine decisions below were taken by @mcfbytes between
 2026-08-19 and 2026-08-22 during D0/D1; this ADR formalises them for acceptance and makes no new one.
+**Amended by:** [ADR 0034](0034-de25-fpga-service-path.md) (2026-11-17) — D8 reversed, D9's test
+replaced, D10 kept with its evidence corrected. Notes are at each decision; the original text stands
+as the record.
 **Extends:** [ADR 0027](0027-de25-nano-multi-board-readiness.md). **Supersedes nothing.** Each
 decision refines an ADR 0027 disposition point (DP-x) or Decision — mapped in the index table; where
 no DP covers one, this ADR says so rather than back-fitting a DP.
@@ -184,6 +187,12 @@ nor clocks, and is carried locally (0102) pending an owner decision on upstream 
 
 ### D8 — Fix mainline's unbindable Agilex 5 svc node upstream, one match-table line
 
+> **Reversed by [ADR 0034](0034-de25-fpga-service-path.md) (2026-11-17).** The fallback named
+> below is now what ships: the board DTS sets `intel,agilex-svc` and `0102` is dropped. Two
+> things changed. BL31's Agilex 5 code does not serve the Agilex SMC contract unchanged, which
+> was `0102`'s premise. And Linux v7.4 added the string to the match table with driver data
+> that requires the SMMU, which D10 turns off.
+
 **Decision.** Mainline ships an Agilex 5 `/firmware/svc` node whose `compatible` matches no driver on
 any released kernel through v7.2 or `master`. We **carry the one-line match-table fix locally**
 (`board/mister/de25nano/linux-patches/0102`) and keep mainline's own `intel,agilex5-svc` compatible
@@ -206,6 +215,13 @@ when 0102 is submitted upstream is an owner decision (see "Decisions deliberatel
 
 ### D9 — A vendor `stratix10-svc` carry is a hardware-gated escape hatch, not a plan
 
+> **Amended by [ADR 0034](0034-de25-fpga-service-path.md) (2026-11-17).** The decision stands:
+> no vendor service-driver carry. The TF-A read this section says nobody had done is done. It
+> found that mainline could not program the fabric on stock BL31 in any SMMU mode, so the
+> §2.6 test below would have failed for a reason unrelated to its hypothesis. The fix is a
+> BL31 patch, and the test is replaced by T0–T5 in
+> [`de25-vendor-kernel-delta.md`](../de25-vendor-kernel-delta.md) §8. `0102` no longer exists.
+
 **Decision.** Carrying Terasic's `stratix10-svc.c` behaviour is permitted **only if** on-hardware
 testing proves mainline `svc` cannot program the fabric, and only for capability critical to running
 MiSTer — and the same bar applies to any vendor-kernel behaviour: it must buy a real win on something
@@ -227,6 +243,16 @@ critical, not merely be what the vendor happens to do.
 - **Re-open if.** The test passes — the hatch closes and D5 holds unqualified on the svc layer.
 
 ### D10 — The SMMU ships disabled; DMA isolation is a non-goal
+
+> **Kept by [ADR 0034](0034-de25-fpga-service-path.md) (2026-11-17), evidence corrected.**
+> "SMMU-on cannot program the fabric on a mainline kernel" is true at 7.3.4 but is not the
+> whole story: read from source, with stock BL31 SMMU-off could not either, and
+> `iommu.passthrough=1` would not change that, because BL31's range check rejects the buffer
+> before any DMA happens. None of this has been run on a board. With TF-A patch `0002`,
+> SMMU-off is the shape expected to work. This section's re-open
+> condition, an IOMMU-aware upstream service driver, is met from Linux v7.4; the decision is
+> re-examined at that pin move. At 7.3.4 mainline's dtsi enables the SMMU node, so disabling it
+> is now a divergence from mainline as well as from the vendor trees.
 
 **Decision (owner, 2026-09-02).** The board device tree leaves the Agilex 5 `arm,smmu-v3` at
 `status = "disabled"`, every `iommus` reference stays in the tree but is inert, and this is the

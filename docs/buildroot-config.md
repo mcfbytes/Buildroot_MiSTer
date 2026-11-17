@@ -2563,11 +2563,12 @@ the DE25-Nano board file, authored on mainline's `socfpga_agilex5.dtsi` (it
 `#include`s the dtsi out of the kernel tree, so a custom path does not mean a
 from-scratch device tree). Node set and every per-line justification:
 `docs/de25-dts-rationale.md`; the node set itself is
-`docs/de25-implementation-path.md` §3.1. Depends on the two carried patches in
-`board/mister/de25nano/linux-patches` (0101 sdhci-cadence 40-bit mask +
-binding, 0102 intel,agilex5-svc match). Ships with the SMMU disabled for wave
-1 — see the rationale §4 for why the SMMU-on shape cannot program the fabric
-on mainline. CUSTOM_DTS_PATH and INTREE_DTS_NAME are alternatives, not
+`docs/de25-implementation-path.md` §3.1. Uses one DE25-local kernel patch from
+`board/mister/de25nano/linux-patches`, 0101 (sdhci-cadence 40-bit mask +
+binding), for its binding hunk; 0102 (the intel,agilex5-svc match) was dropped
+on 2026-11-17 when the board file took `intel,agilex-svc`. Ships with the SMMU
+disabled — see the rationale §4 and `docs/de25-vendor-kernel-delta.md`; the
+fabric path depends on TF-A patch 0002, not on a kernel patch. CUSTOM_DTS_PATH and INTREE_DTS_NAME are alternatives, not
 complements; mainline's socdk board file was the placeholder before D2.3
 landed and is not the DE25-Nano (no mmc0, fpga-mgr or fpga-region). The
 Makefile asserts the .dtb by GLOB, not by name, for exactly this reason.

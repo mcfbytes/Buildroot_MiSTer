@@ -1,6 +1,6 @@
 # DE25-Nano kernel patch series — what is here and why
 
-**Base:** mainline Linux **7.3**, aarch64 (Agilex 5). See
+**Base:** mainline Linux **7.3.4**, aarch64 (Agilex 5). See
 [`docs/de25-implementation-path.md`](../../../../docs/de25-implementation-path.md) §5 for the
 version pin.
 
@@ -107,8 +107,15 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 
 | # | Patch | Why |
 |---|---|---|
-| 101 | `0101-mmc-sdhci-cadence-agilex5-40-bit-dma-mask` | Gives `intel,agilex5-sd4hc` its own `of_device_id` entry whose driver data installs a 40-bit DMA mask via the existing `sdhci_ops->set_dma_mask` hook. Addresses `docs/de25-implementation-path.md` §8 Q2 (the leading hypothesis for the mmc0/`arm-smmu-v3` `F_TRANSLATION` fault): mainline takes `DMA_BIT_MASK(64)` where the controller drives only 40 address bits. Its binding hunk also completes `Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml` for this integration — the new compatible string, `clocks` widened to 2 with `clock-names` (`biu`, `ciu`), and `iommus`/`dma-coherent` declared — which is what makes the DE25 `mmc0` node dtbs_check-clean (`docs/de25-dts-rationale.md` §2.4). Upstreamable as-is; carried locally pending submission. |
-| 102 | `0102-firmware-stratix10-svc-match-agilex5-svc` | One-line match-table addition so mainline's `intel,agilex5-svc` DT node (shipped in `socfpga_agilex5.dtsi`, listed in the binding, matched by no driver) actually binds. `docs/de25-implementation-path.md` §3.1 bullet 2. Removes the need for a DTS-side compatible override. Upstreamable as-is; carried locally pending submission. |
+| 101 | `0101-mmc-sdhci-cadence-agilex5-40-bit-dma-mask` | **Optional: not needed to boot.** Gives `intel,agilex5-sd4hc` its own `of_device_id` entry whose driver data installs a 40-bit DMA mask via the existing `sdhci_ops->set_dma_mask` hook. With the SMMU disabled, as the board DTS ships, the mask changes nothing (all DRAM is below 4 GiB); it matters only on an SMMU-on leg (`docs/de25-implementation-path.md` §8 Q2). Kept for that leg and for its binding hunk, which completes `Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml` for this integration — the new compatible string, `clocks` widened to 2 with `clock-names` (`biu`, `ciu`), and `iommus`/`dma-coherent` declared — and is what keeps the DE25 `mmc0` node dtbs_check-clean (`docs/de25-dts-rationale.md` §2.4). **Not an upstream candidate:** Linux v7.4 adds `altr,agilex5-sd6hc` with the same 40-bit mask, and that entry replaces this patch when the pin moves ([`docs/de25-vendor-kernel-delta.md`](../../../../docs/de25-vendor-kernel-delta.md) §6). |
+
+`0102-firmware-stratix10-svc-match-agilex5-svc` was **dropped on 2026-11-17**. The board DTS
+now sets `/firmware/svc`'s compatible to `intel,agilex-svc`, which the stock driver matches, so
+the match-table line is not needed. Three reasons, all in
+[`docs/de25-vendor-kernel-delta.md`](../../../../docs/de25-vendor-kernel-delta.md) §3–§4: its
+commit message claimed Agilex 5 speaks the same SMC protocol as Agilex, which BL31's source
+contradicts; Linux v7.4 gives `intel,agilex5-svc` SMMU-required semantics, so a bare match entry
+runs against upstream; and it would not apply at v7.4 anyway.
 
 ### Counts
 
@@ -122,8 +129,8 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | rtw88 `0067` (2026-09-30) | 1 considered, **1** included |
 | dwc2 `0068` (2026-10-19, fork #114) | 1 considered, **1** included |
 | dwc2 `0069` (2026-11-10, fork #115) | 1 considered, **1** included |
-| DE25-local patches | **2** (`0101`, `0102`) |
-| **Total applied here** | **40** |
+| DE25-local patches | **1** (`0101`; `0102` dropped 2026-11-17) |
+| **Total applied here** | **39** |
 
 ## Note for the DE25 DTS
 
@@ -149,9 +156,9 @@ schema previously lacked, so the node may carry all of them and stay clean:
 Nothing here is made mandatory, so the in-tree `cdns,sd4hc` boards are unaffected — verified:
 `uniphier-ld20-ref.dtb` and `elba-asic.dtb` both build `CHECK_DTBS=y`-clean with the patch applied.
 
-`0102` means the DTS does **not** need to override `/firmware/svc`'s compatible to
-`"intel,agilex-svc"`; mainline's `"intel,agilex5-svc"` now binds directly, and the binding's
-`allOf` requirement that `iommus` be present for that string continues to hold.
+With `0102` gone, the DTS **does** override `/firmware/svc`'s compatible to
+`"intel,agilex-svc"`. That string is in the stock match table and in the binding's enum; the
+binding requires `iommus` only for `intel,agilex5-svc`, and the inherited `iommus` stays valid.
 
 ## Verification
 
@@ -206,3 +213,10 @@ the 6.18 original. `-N` found no patch already present in 7.3. `make de25` build
 image (98 modules, `modules.dep` populated); all 481 symbols asked for by `linux.config` plus
 `common/linux-mister.fragment` survive `olddefconfig`; `test-initramfs.sh --board de25nano` passes
 8/8. Not run on hardware.
+
+RE-VERIFIED AT 7.3.4 (2026-11-17), after dropping `0102`. `apply-patches.sh` on a pristine
+`linux-7.3.4` extract: **39/39 applied, 0 hunks with fuzz, 0 rejects**;
+`scripts/lint-kernel-patches.sh` passes. `0101`'s diff is unchanged (commit message only).
+`dtbs_check` on the board DTB at 7.3.4 + this series (dtschema 2026.9) leaves the same **5**
+`fpga-mgr` two-string warnings before and after the `intel,agilex-svc` change, and none about
+the `svc` node's own properties or `mmc@10808000`. No kernel was built for this change, and nothing was run on hardware.

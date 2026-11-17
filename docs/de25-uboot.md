@@ -89,6 +89,7 @@ SPL's own config, from the same public branch: `SPL_FIT_SIGNATURE=y` with no key
 | `board/mister/de25nano/uboot-dts/socfpga_agilex5_de25nano.dts` | U-Boot board device tree (§5) |
 | `board/mister/de25nano/uboot-dts/socfpga_agilex5_de25nano-u-boot.dtsi` | U-Boot additions: `stdout-path`, mmc caps, FIT tweaks (§5, §6) |
 | `board/mister/de25nano/patches/uboot/0001-configs-socfpga_soc64-guard-mtdids-mtdparts-env.patch` | the one carried U-Boot patch (§8) |
+| `board/mister/de25nano/patches/arm-trusted-firmware/0001-…uart1.patch`, `0002-…fpga-config-address-contract.patch` | the two carried TF-A patches (§8) |
 | `board/mister/de25nano/patches/arm-trusted-firmware/arm-trusted-firmware.hash` | TOFU hash for the v2.15.0 git tarball |
 | `Makefile` (`de25` recipe) | post-build assertions for `images/bl31.bin` and `images/u-boot.itb` |
 
@@ -283,7 +284,7 @@ the whole justification; everything else in our board file follows from keeping 
 | `/memory` | `<0 0x80000000 0 0x40000000>` (1 GiB) | §4.4. Node name has **no** unit address because `fdtdec_setup_mem_size_base()` looks it up by the literal path `/memory` **[V `lib/fdtdec.c:1084`]** |
 | `osc1` | `clock-frequency = <25000000>` | the SoC dtsi declares the fixed clock with no rate; the whole tree, including the UART divisor, hangs off it |
 | `&uart1` | `status = "okay"` + `bootph-all` | the dtsi ships it disabled; `socfpga_agilex5-u-boot.dtsi` marks `&uart0` `bootph-all`, not uart1, and without the marking there is no pre-relocation console — the exact window a bring-up failure would be diagnosed in |
-| `&mmc` | `okay`, `no-mmc`, `no-sdio`, `disable-wp`, `bus-width = <4>`, `cap-sd-highspeed`, `max-frequency = <50000000>`, `bootph-all` | see below |
+| `&mmc` | `okay`, `no-mmc`, `no-sdio`, `disable-wp`, `bus-width = <4>`, `max-frequency = <25000000>`, `sdhci-caps-mask` hiding capability bit 21, `bootph-all` | see below (this row listed `cap-sd-highspeed` and 50 MHz until 2026-11-17; the file has been at 25 MHz since 2026-09-14) |
 
 ### 5.1 The `&mmc` block — board facts vs SoC facts, treated differently
 
@@ -323,9 +324,22 @@ socdk's, which are the only Agilex 5 SD timings anyone has run on silicon, are `
 board wiring, so they transfer. We now copy the `sd-ds` and `sd-hs` stanzas verbatim, with the
 source named in the file.
 
-**Speed: default speed only, 25 MHz.** `cap-sd-highspeed` is **not** set and `max-frequency` is
-`<25000000>`, so U-Boot proper never leaves DS mode — the slowest and most forgiving SD timing there
-is. The cost is nothing that matters: 4-bit DS is about 12.5 MB/s, so the 20 MB `Image` costs under
+**Speed: default speed only, 25 MHz.** `max-frequency` is `<25000000>` and
+`sdhci-caps-mask = <0x00000000 0x00200000>` hides the controller's high-speed capability, so U-Boot
+proper never leaves DS mode — the slowest and most forgiving SD timing there is.
+
+> **Corrected 2026-11-17.** This paragraph used to say that leaving `cap-sd-highspeed` out was
+> what kept U-Boot in DS mode. It was not. U-Boot's SDHCI core turns on high speed from the
+> controller's own capability register, whatever the device tree says
+> **[V `drivers/mmc/sdhci.c:977-978`]**; the same function applies `sdhci-caps-mask` first
+> **[V `:871-875`]**. So until the mask
+> was added, U-Boot switched the card to high-speed timing at 25 MHz and programmed the `sd-hs`
+> PHY values. Found by reading, not on hardware. It matters because **Linux 7.3.4 cannot program
+> this PHY at all**: it runs on whatever state U-Boot leaves, so both stages must end in the same
+> mode ([`de25-dts-rationale.md`](de25-dts-rationale.md) §3 and [U3], [U12]). The Linux board
+> DTS now masks the same bit.
+
+The cost is nothing that matters: 4-bit DS is about 12.5 MB/s, so the 20 MB `Image` costs under
 two seconds, once, per boot. The `sd-hs` values are still declared so that lifting the cap is a
 one-line change rather than a research task.
 
@@ -342,9 +356,17 @@ otherwise, and the order of attack is:
    independent check, because it exercises the kernel's driver rather than U-Boot's.
 
 **Lifting it, once a full `dd` of the card reads clean under Linux and U-Boot has booted reliably a
-few times:** re-add `cap-sd-highspeed;` and set `max-frequency = <50000000>;` in
-`socfpga_agilex5_de25nano-u-boot.dtsi`. That is the whole change — the `sd-hs` PHY block it needs is
-already there. Re-test a cold boot and a `Retrieving file:` of the kernel before keeping it. Going
+few times** *(procedure rewritten 2026-11-17)*. Change both stages in the same commit, one step at
+a time:
+
+1. **High-speed timing, still 25 MHz.** Delete the `sdhci-caps-mask` line in
+   `socfpga_agilex5_de25nano-u-boot.dtsi`. In the Linux board DTS, drop bit 21 from the caps mask
+   (`0x0020ff00` → `0x0000ff00`) and re-add `cap-sd-highspeed;`.
+2. **50 MHz.** Set `max-frequency = <50000000>;` in both files.
+
+The `sd-hs` PHY block U-Boot needs is already there. Re-test a cold boot, a `Retrieving file:` of
+the kernel, and a full `dd` under Linux after each step. Lifting only one stage leaves Linux
+running a mode the PHY was not programmed for. Going
 beyond 50 MHz means UHS, which means a `vqmmc` regulator, which means establishing the DE25's real
 1.8 V switch GPIO on hardware — a different and much larger job.
 
@@ -629,12 +651,47 @@ assert.
 
 ---
 
-## 8. The carried patches — one U-Boot, one TF-A
+## 8. The carried patches — one U-Boot, two TF-A
+
+*(Heading said "one TF-A" until 2026-11-17.)*
 
 TF-A carries `patches/arm-trusted-firmware/0001-plat-intel-agilex5-route-bl31-console-to-uart1.patch`
 (2026-09-14): two macro values, boot and crash console to UART1, the header UART. Terasic's own
 BL31 makes exactly this change (§2). Visibility only; `bl31.bin` and `u-boot.itb` hashes in §5b
-are from the patched build.
+are from the build with this patch alone.
+
+**The second TF-A patch (2026-11-17):**
+`patches/arm-trusted-firmware/0002-plat-intel-agilex5-fpga-config-address-contract.patch`. It is
+what lets a vanilla kernel program the fabric. One file, `plat/intel/soc/common/socfpga_sip_svc.c`,
+Agilex 5 only:
+
+| Change | Why |
+|---|---|
+| `FPGA_CONFIG_WRITE` also accepts a buffer inside the window `FPGA_CONFIG_GET_MEM` advertises | Stock BL31 rejects every address below `0x82000000`, which is that whole window. A mainline kernel allocates only from it |
+| `FPGA_CONFIG_COMPLETED_WRITE` returns the address the caller submitted | Stock BL31 returns it with `0x80000000` subtracted. A mainline kernel matches completions by exact address |
+| …unless a caller has requested SDM-remapper bypass | Vendor kernels and Linux v7.4's `intel,agilex5-svc` path submit `IOVA + 0x80000000` and expect the IOVA back. They always request bypass first, so the value they get back is the stock one. The request is remembered until reset. One thing does change for them: a submission that falls inside the advertised window is now accepted where stock rejected it, which is harmless ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §4.1) |
+
+Nothing about what the SDM is told changes: BL31 still rebases the address and still programs the
+remapper exactly as before. The trace is in
+[`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §3.2 and the decision in
+[ADR 0034](decisions/0034-de25-fpga-service-path.md).
+
+- **Verified by:** a BL31 build for `agilex5` with zero warnings, a build for `agilex` to show the
+  shared file still compiles there, and a host-side harness that drives the three patched functions
+  through the mainline, vendor and out-of-range cases. **Not run on hardware.**
+- **Not rebuilt through Buildroot.** The §5b hashes predate this patch. `bl31.bin` changes, and so
+  does the `u-boot.itb` that wraps it; re-record §5b at the next `make de25`.
+- **Known and left alone:** `intel_fpga_config_start()` calls the remapper helper with a zero
+  argument, which makes BL31 read-modify-write the word at physical address 0. That is stock
+  v2.15.0 behaviour, it is outside what this patch needs, and it is reported in
+  [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §3.2.
+- **Upstreamable**, not submitted. Sending it is the owner's call.
+
+**`fpga load` as a bench diagnostic.** U-Boot's own FPGA load sends the same SMCs with a raw DDR
+address, and is not affected by either mismatch as long as the image is loaded at or above
+`0x82000000` and below `0xA0000000` (the SDM addresses 29 bits past the DDR base). `CMD_FPGA` is in
+our build. It is not a product path ([`de25-boot-chain.md`](de25-boot-chain.md) §7b F1), but one
+load at the prompt is test T1 in [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8.
 
 The U-Boot one:
 
@@ -851,7 +908,7 @@ in the same commit.
 
 3. **The `&mmc` block (§5.1)** — socdk's silicon-validated PHY timings, but default speed only at
    25 MHz. It is the first knob to turn if the card misbehaves, and §5.1 has both the diagnosis
-   order and the one-line lift back to 50 MHz high speed. Faster than that needs the DE25's real
+   order and the two-step lift back to 50 MHz high speed (both stages together, since 2026-11-17). Faster than that needs the DE25's real
    vqmmc GPIO, which is a hardware-session observation.
    Disposition (2026-09-14): &mmc at 25 MHz as shipped.
 

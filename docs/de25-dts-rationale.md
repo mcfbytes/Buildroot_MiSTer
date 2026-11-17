@@ -2,7 +2,25 @@
 
 The file this document justifies is
 [`board/mister/de25nano/socfpga_agilex5_de25nano.dts`](../board/mister/de25nano/socfpga_agilex5_de25nano.dts),
-a **mainline** board device tree for the Terasic DE25-Nano on Linux 7.2.x.
+a **mainline** board device tree for the Terasic DE25-Nano on Linux 7.3.x.
+
+> **Updated 2026-11-17** after the vendor-kernel comparison in
+> [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md). Five things changed in the
+> board file, and the sections below say where:
+>
+> 1. `/firmware/svc` is now `compatible = "intel,agilex-svc"` and kernel patch `0102` is gone
+>    (§3 "The svc node", [ADR 0034](decisions/0034-de25-fpga-service-path.md)).
+> 2. §4's claim that SMMU-off is the one shape in which mainline can program the fabric was
+>    wrong as written. With stock TF-A it fails in **every** SMMU mode; the fix is in BL31 (§4.1).
+> 3. `dma-coherent` is removed from `mmc0` and deleted on `gmac0` for first boot (§4.5).
+> 4. `mmc0` runs default speed only: `cap-sd-highspeed` is gone and the caps mask clears bit 21
+>    (§3 `mmc0` rows, [U3]).
+> 5. The long comment blocks moved out of the DTS into this document; the file now carries
+>    one- and two-line comments only.
+>
+> The pin is 7.3.4. **Line citations into `linux-7.2.2` in §1–§3 were not re-anchored** and are
+> still labelled 7.2.2; anything cited as 7.3.4 was read for this update. The `dtbs_check` and
+> structural results in §2 were re-run at 7.3.4 and are restated in §2.6.
 
 The device tree is the highest-risk file on a new board: a wrong value here does not fail the
 build, it fails the *board*, and several of the specific mistakes available on this SoC are
@@ -81,6 +99,9 @@ make ARCH=arm64 HOSTCC=gcc CHECK_DTBS=y intel/socfpga_agilex5_de25nano.dtb   # w
 dtc -I dtb -O dts -o de25nano.decompiled.dts \
     arch/arm64/boot/dts/intel/socfpga_agilex5_de25nano.dtb
 ```
+
+*(The listing above is the 7.2.2 run and names `0102`, which no longer exists. The 2026-11-17
+re-run in §2.6 applied the whole DE25 series with `patch -F0` and built the same target.)*
 
 `make ARCH=arm64 defconfig` is **not** usable here (no aarch64 compiler on the host), and is not
 needed: `allnoconfig` satisfies kbuild, and the `%.dtb` rule does not depend on `CC`.
@@ -285,6 +306,33 @@ Node statuses, read back out of the blob with `fdtget`: `serial@10c02100` okay,
 okay (with `max-frequency = <0x17d7840>` = 25 000 000), `spi@108d2000` (qspi) disabled,
 `watchdog@10d00200`…`watchdog@10d00600` okay, `nand-controller@10b80000` disabled.
 
+### 2.6 Re-run at 7.3.4 (2026-11-17)
+
+Run on a pristine `linux-7.3.4` with the DE25 patch series applied (39 patches, `0102` no longer
+among them), dtschema 2026.9, before and after the 2026-11-17 board-file change.
+
+- **`dtc`** with the kernel's `W=1` check set: **0 warnings** before and after.
+- **`dtbs_check`**: the same **5** `fpga-mgr` two-string warnings before and after. The only
+  textual difference is that two of them now name the parent as `svc (intel,agilex-svc)`. No
+  warning concerns the `svc` node's own properties, and none concerns `mmc@10808000`.
+- **Decompiled blob, before against after** — the whole difference:
+
+```
+ svc {
+-        compatible = "intel,agilex5-svc";
++        compatible = "intel,agilex-svc";
+ ethernet@10810000 {
+-        dma-coherent;
+ mmc@10808000 {
+-        cap-sd-highspeed;
+-        dma-coherent;
+-        sdhci-caps-mask = <0x2000 0xff00>;
++        sdhci-caps-mask = <0x2000 0x20ff00>;
+```
+
+Every `iommus` phandle in the §2.5 coverage table is still present. The listing at the top of
+§2.5 is the 7.2.2 blob and shows the old svc compatible.
+
 ---
 
 ## 3. Node-by-node
@@ -310,15 +358,15 @@ file is named.
 | `base_fpga_region: fpga-region` | TERASIC + ALTERA `.dtsi`; absent from MAINLINE at every base | **authored** | Implementation path §3.1. `compatible = "fpga-region"`, `#address-cells`/`#size-cells` = 2, `fpga-mgr = <&fpga_mgr>`. `fpga-region.yaml` requires exactly `compatible` + `fpga-mgr`; both present. |
 | `fpga-bridges`, any bridge node | — | **deliberately absent** | The Cyclone V `fpga_bridge0..3` shape has no Agilex analogue and must not be transliterated ([`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §4.2). |
 | `config-complete-timeout-us` | — | **deliberately absent** | It belongs on the per-core **overlay**, not the base region ([`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §4.3). `of-fpga-region.c` reads it from the overlay's target node. |
-| `/firmware/svc` `compatible` | MAINLINE | **kept unchanged** (`intel,agilex5-svc`) | See "The svc node" below. Earlier drafts of implementation-path §3.1 called for overriding this to `intel,agilex-svc`; that is now the *fallback*, not the plan. |
-| `/firmware/svc` `method`, `memory-region`, `iommus` | MAINLINE | **kept, inherited** | Not restated in the board file. `method = "smc"` is required or `get_invoke_func()` fails probe `-ENXIO`; `iommus` is *required by the binding* for the agilex5 string (`intel,stratix10-svc.yaml`'s `allOf`), and is inert as shipped (§4.3). **`memory-region` is dead on mainline** — see [U9]: the driver uses whatever BL31 answers to `FPGA_CONFIG_GET_MEM` (`stratix10-svc.c:865-876`, `:952-960`) and never consults the `service_reserved` `no-map` region. |
+| `/firmware/svc` `compatible` | — | **overridden** to `intel,agilex-svc` (2026-11-17) | See "The svc node" below. Until 2026-11-17 the file kept mainline's `intel,agilex5-svc` and carried `linux-patches/0102` to make it bind. |
+| `/firmware/svc` `method`, `memory-region`, `iommus` | MAINLINE | **kept, inherited** | Not restated in the board file. `method = "smc"` is required or `get_invoke_func()` fails probe `-ENXIO`. `iommus` is required by the binding only for the agilex5 string; it stays legal under `intel,agilex-svc` and is inert as shipped (§4.3). **`memory-region` is not read by the driver** — it uses whatever BL31 answers to `FPGA_CONFIG_GET_MEM` (7.3.4 `stratix10-svc.c:919-923,1010`). [U9] is now closed from source: BL31 answers `0x80400000`, inside `service_reserved`. |
 | `fpga_mgr` child | TERASIC/ALTERA (single string) | **changed** | Two-string fallback `"intel,agilex5-soc-fpga-mgr", "intel,agilex-soc-fpga-mgr"`. Binds the **stock** driver: `s10_of_match[]` (`drivers/fpga/stratix10-soc.c:448-452`) carries no `.data` and never branches on which entry matched, and OF matching walks the whole list. Costs a transient dtbs_check warning (§2.5 of the implementation path); avoids a carried match-table line forever. |
 | `altr,smmu_enable_quirk` on svc / fpga_mgr | TERASIC | **dropped** | Vendor-live, mainline-inert: `grep -rn smmu_enable_quirk` over mainline 7.2.2 → zero hits. It gates SDM DMA setup in *Terasic's* `stratix10-svc.c`; carrying it onto a mainline driver does nothing. Its existence is evidence for implementation-path §2.6, not a property to copy. |
 | `interrupts`/`interrupt-parent` on svc | TERASIC | **dropped** | Not in `intel,stratix10-svc.yaml`, not read by mainline's `stratix10-svc.c`. |
-| `hwmon` / `temp_volt` child of svc | TERASIC + PORT | **dropped** | `compatible = "intel,soc64-hwmon"` exists nowhere in mainline (`drivers/hwmon/`, `Documentation/devicetree/bindings/hwmon/` → zero hits at 7.2.2). The whole `&temp_volt { voltage { … } temperature { … } }` block — 60 lines in both references — binds nothing. Revisit if an SDM hwmon driver lands. |
+| `hwmon` / `temp_volt` child of svc | TERASIC + PORT | **dropped** | `compatible = "intel,soc64-hwmon"` exists nowhere in mainline, so the whole `&temp_volt { … }` block binds nothing. **Corrected 2026-11-17:** mainline does have an SDM hwmon driver, `socfpga-hwmon`. It needs no DT node — the svc driver creates its device — and it picks its channel table from the svc compatible (7.3.4 `drivers/hwmon/socfpga-hwmon.c:444-447`). Under `intel,agilex-svc` that would be the Agilex 7 table, so `CONFIG_SENSORS_ALTERA_SOCFPGA_HWMON` stays off ([`de25-kernel-config.md`](de25-kernel-config.md) §5.1). |
 | `fcs-hal` / `fcs-crypto` children | TERASIC | **dropped** | `intel,agilex5-soc-fcs-hal` likewise absent from mainline. |
-| `&smmu` status | all three set `okay` | **changed → `disabled`** | The one design divergence from every reference. Mainline's svc layer hands the SDM **raw physical addresses** and never calls `iommu_map`/`dma_map`, while the inherited `iommus = <&smmu 10>` puts the svc device on a *translated* default domain — so SMMU-on cannot program the fabric on a mainline kernel. Full trace in §4.1. Also MAINLINE 7.2's own default. Every `iommus` property in the tree is kept and goes inert (§4.3), so the SMMU-on leg of the §2.6 test is a one-line change. |
-| **`mmc0`** — `compatible` | TERASIC + PORT | **kept exactly** | `"intel,agilex5-sd4hc", "cdns,sd4hc"`, vendor string **first**. That order is the `items: [enum, const]` form `0101` adds to `cdns,sdhci.yaml`, and with `0101` the first entry wins and installs the 40-bit DMA mask. ALTERA's `"altr,agilex5-sd6hc","cdns,sd6hc"` is unusable: `cdns,sd6hc` exists nowhere in mainline (implementation path §4.1). A lone `cdns,sd4hc` would still bind — `sdhci_cdns_probe()` falls back to `&sdhci_cdns_drv_data` when `of_device_get_match_data()` returns NULL (`sdhci-cadence.c:561-563`) — but **silently without the mask**, which is the §8 Q2 failure. |
+| `&smmu` status | all three set `okay` | **changed → `disabled`** | The one design divergence from every reference, **and from mainline 7.3.4**, whose dtsi enables the node (`socfpga_agilex5.dtsi:379-388` has no `status`; the 7.2 dtsi had it disabled). Owner decision ADR 0029 D10, kept by ADR 0034. The reasoning is in §4, corrected 2026-11-17. Every `iommus` property in the tree is kept and goes inert (§4.3), so the SMMU-on fallback is a small change. |
+| **`mmc0`** — `compatible` | TERASIC + PORT | **kept exactly** | `"intel,agilex5-sd4hc", "cdns,sd4hc"`, vendor string **first**. That order is the `items: [enum, const]` form `0101` adds to `cdns,sdhci.yaml`, and with `0101` the first entry wins and installs the 40-bit DMA mask. **The block is in fact a Cadence SD6HC** — U-Boot, Altera 6.18 and Linux v7.4 all bind it as `altr,agilex5-sd6hc` / `cdns,sd6hc`. Mainline 7.3.4 has no SD6HC code at all, so this compatible is a deliberate shim onto the SD4HC driver, which works only because that driver never touches the PHY here (see the `cdns,phy-*` row). A lone `cdns,sd4hc` would still bind — `sdhci_cdns_probe()` falls back to `&sdhci_cdns_drv_data` when `of_device_get_match_data()` returns NULL — but without the mask and with four `dtbs_check` warnings. At the 7.4 pin the node is rewritten for the real driver ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §6.3). |
 | `mmc0` `reg`, `interrupts` | TERASIC + ALTERA + PORT (identical) | **kept** | `0x10808000 0x1000`, `GIC_SPI 96 IRQ_TYPE_LEVEL_HIGH`. |
 | `mmc0` node name | — | **changed** | `mmc@10808000`, not the references' `mmc0@10808000`. Generic node name per `mmc-controller.yaml`; the vendor name is not a legal generic-node name and buys nothing. |
 | `mmc0` `resets` | TERASIC + PORT | **kept** | `<&rst SDMMC_RESET>`. Inert on this board — `sdhci-cadence` takes the reset only under `MMC_CAP_HW_RESET` (eMMC) — but correct hardware description. ALTERA's three-entry list (`COMBOPHY_RESET`, `SDMMC_OCP_RESET`) targets their SD6HC rewrite. |
@@ -327,17 +375,18 @@ file is named.
 | `mmc0` `#address-cells`/`#size-cells` | all three | **dropped** | The node has no children. Pure `avoid_unnecessary_addr_size` noise. |
 | `mmc0` `clocks` + `clock-names` | all three (identical) | **kept, both entries** | `<&clkmgr AGILEX5_L4_MP_CLK>, <&clkmgr AGILEX5_SDMCLK>` / `"biu", "ciu"`. Mainline only ever uses index 0 — `devm_clk_get_enabled(dev, NULL)` (`sdhci-cadence.c:557`) — and on Agilex 5 the second is inert anyway: gate clocks register with `agilex_gateclk_ops` (`clk-gate-s10.c:279`, defined `:117`), which has **no `.enable`/`.disable`**, so `clk_prepare_enable()` is a no-op *and* `clk_disable_unused()` cannot turn `sdmclk` off. Kept because it is the truthful hardware description, it matches all three references including the one that boots, and the binding — not the DT — is what needs widening (§2.4). |
 | `mmc0` `iommus` | all three | **kept, inert as shipped** | `&smmu` is disabled, so `of_iommu_xlate()` returns `-ENODEV` and mmc0 DMAs physically. Kept because it is correct hardware description and mandatory the moment `&smmu` is flipped to `okay`. See §4.3. |
-| `mmc0` `dma-coherent` | all three | **kept, with [U2] re-opened** | Corroborated by MAINLINE's own `nand` node (`socfpga_agilex5.dtsi:315`). But the vendors assert it under SMMU-**on**, where cacheability comes from the STE/`IOMMU_CACHE` attributes rather than from this property, so their evidence does not transfer to the shipped SMMU-off shape. Must be re-verified by data-integrity test, not inherited. See §4.5. |
+| `mmc0` `dma-coherent` | all three | **removed (2026-11-17)** | First boot treats the SD controller as non-coherent. See §4.5. |
 | `mmc0` `bus-width = <4>`, `disable-wp` | all three | **kept** | 4-bit microSD, no write-protect switch wired. |
-| `mmc0` `cap-sd-highspeed` | TERASIC + ALTERA (PORT drops it) | **kept** | Dropping it would be theatre, not caution: `sdhci.c:4572` sets `MMC_CAP_SD_HIGHSPEED` from the capability register's `SDHCI_CAN_DO_HISPD` (bit 21) **regardless of DT**, and our `sdhci-caps-mask` does not clear that bit. `max-frequency` above is the property that actually constrains the bus. If a bench test ever needs genuine default-speed-only, the real lever is widening the caps mask to `<0x00002000 0x0020ff00>`. |
+| `mmc0` `cap-sd-highspeed` | TERASIC + ALTERA (PORT drops it) | **removed (2026-11-17)** | High speed is enabled from **two** independent places: `mmc_of_parse()` sets `MMC_CAP_SD_HIGHSPEED` from this property (7.3.4 `drivers/mmc/core/host.c:350`), and `sdhci.c:4572` sets it from capability bit 21. The earlier text here named only the second and kept the property as harmless; with the bit masked, the property alone would still enable high speed. Both are now off, so the card stays at default speed — the mode U-Boot leaves the PHY in ([U3], [U12]). |
 | `mmc0` `no-1-8-v` | TERASIC + PORT | **kept** | 3.3V-only signalling. Also the reason we can safely omit ALTERA's `vqmmc-supply` level-shifter regulator (below). |
 | `mmc0` `no-sdio` | TERASIC + PORT | **kept** | SD card slot only; MiSTer WiFi is USB. |
 | `mmc0` `sd-uhs-sdr50` | TERASIC | **dropped** | Contradicts `no-1-8-v` in the same node: every UHS mode needs 1.8V signalling, which `MMC_CAP2_NO_1_8_V` bars. Inert, and confusing to leave in. |
-| `mmc0` `sdhci-caps` / `sdhci-caps-mask` | TERASIC (ALTERA has a wider mask) | **kept, TERASIC's values** | **Live on mainline and probably load-bearing.** `__sdhci_read_caps()` (`drivers/mmc/host/sdhci.c:4161-4186`) applies them to `SDHCI_CAPABILITIES{,_1}`; the uint64 is `<caps1 caps>`. `0xc800` in caps bits 15:8 sets the base clock to `0xc8` = 200 MHz, and `sdhci_cdns_ops` has **no `.get_max_clock`**, so a zero base-clock field would fail probe outright with `"Hardware doesn't specify base clock frequency"` / `-ENODEV` (`sdhci.c:4448-4462`). Both vendors set it; treated as load-bearing rather than decorative. The caps1 mask clears bit 13 (`SDHCI_USE_SDR50_TUNING`). ALTERA masks `0x2007`, additionally removing SDR50/SDR104/DDR50 — moot under `no-1-8-v`. |
-| `mmc0` 40 × `cdns,phy-*` / `cdns,hrs*` | TERASIC + PORT | **dropped** | **Dead devicetree on a mainline driver.** `sdhci-cadence`'s property table knows only eleven `cdns,phy-input-delay-*` / `cdns,phy-dll-delay-*` names (`sdhci-cadence.c:108-119`); not one of the forty is among them. Implementation path §2.2 makes the same call, and notes the consequence: the port's working SD path already runs on the driver's **default** PHY configuration, which is what we inherit. |
+| `mmc0` `sdhci-caps` / `sdhci-caps-mask` | TERASIC (ALTERA has a wider mask) | **kept; mask widened (2026-11-17)** | **Live on mainline and probably load-bearing.** `__sdhci_read_caps()` (7.3.4 `drivers/mmc/host/sdhci.c:4161-4174`) applies them to `SDHCI_CAPABILITIES{,_1}`; the uint64 is `<caps1 caps>`. `0xc800` in caps bits 15:8 sets the base clock to `0xc8` = 200 MHz, and `sdhci_cdns_ops` has **no `.get_max_clock`**, so a zero base-clock field would fail probe with `"Hardware doesn't specify base clock frequency"`. The caps1 mask clears bit 13 (`SDHCI_USE_SDR50_TUNING`), TERASIC's value. The caps mask is now `0x0020ff00`: TERASIC's `0xff00` plus bit 21 (`SDHCI_CAN_DO_HISPD`), which is ours. ALTERA masks `0x2007` in caps1, additionally removing SDR50/SDR104/DDR50 — moot under `no-1-8-v`. |
+| `mmc0` 40 × `cdns,phy-*` / `cdns,hrs*` | TERASIC + PORT | **dropped — and must stay dropped** | `sdhci-cadence`'s property table knows only eleven `cdns,phy-input-delay-*` / `cdns,phy-dll-delay-*` names (`sdhci-cadence.c:108-119`); not one of the forty is among them, so they would be dead. The eleven it does know must not be added either: they would make the SD4HC driver run its own PHY write handshake against an SD6HC block. With none present the driver leaves the PHY alone, and Linux runs on the state U-Boot programmed ([U12]). |
 | `mmc0` `vmmc-supply` / `vqmmc-supply` + `sd_emmc_power` / `sd_io_1v8_reg` regulators | ALTERA only | **dropped** | Would mean authoring a `regulator-fixed` and a `regulator-gpio` (on `portb 3`) that no other reference has and no bench test has exercised. Under `no-1-8-v` the level shifter never has to switch, and U-Boot's own SD boot from the same card demonstrates the hardware default is the 3.3V state. Adding an untested GPIO-driven regulator to the SD path is precisely the change that turns a working boot into a non-booting one. Flagged §7 U4. |
-| `mmc0` `max-frequency` | PORT `25000000` (ALTERA `200000000`; TERASIC none) | **taken from PORT** | **First-boot risk control.** Mainline's `sdhci-cadence` programs **none** of the 40 `cdns,phy-*` values the vendor trees carry, so Linux inherits whatever PHY state U-Boot left rather than configuring it. The only boot of this board on a **mainline** sdhci-cadence driver — PORT, `socfpga_agilex5_de25_nano.dts:110-126` — reached that state only after dropping high-speed advertisement and capping the clock at 25 MHz, following corrupted SD SCR reads. Start where the one working data point is; lift once a sustained `dd` is clean ([U3]). ALTERA's `200000000` is a no-op ceiling. |
+| `mmc0` `max-frequency` | PORT `25000000` (ALTERA `200000000`; TERASIC none) | **`25000000`** | **First-boot risk control.** Mainline 7.3.4 programs none of the SD6HC PHY, so Linux inherits whatever PHY state U-Boot left. Our U-Boot runs default speed at 25 MHz with the default-speed PHY values ([`de25-uboot.md`](de25-uboot.md) §5.1), so Linux is held to the same mode and clock. The PORT reached a working SD only at this cap, per the earlier record. Lift in step with U-Boot ([U3]). ALTERA's `200000000` is a no-op ceiling. |
 | `&gmac0` `status`, `phy-mode`, `phy-handle`, `max-frame-size` | all three (identical) | **kept** | `phy-mode = "rgmii"`, **not** `"rgmii-id"`: ALTERA's file states the TX/RX delays are on the PCB, so asking the PHY for internal delay too would double it — the same trap as the DE10's `gmac1` ([`dts-comparison.md`](dts-comparison.md) §3.2). |
+| `&gmac0` `dma-coherent` | MAINLINE dtsi (`socfpga_agilex5.dtsi:611`) | **deleted (2026-11-17)** | `/delete-property/ dma-coherent;` in the board file. Same first-boot rule as `mmc0`: §4.5. `usb0` has no `dma-coherent` in mainline, so after this change no enabled DMA master claims coherency. |
 | `&gmac0` `mdio0` node name | all three **and MAINLINE's own socdk** (`socfpga_agilex5_socdk.dts:51`) | **kept** | Does not match `mdio.yaml`'s `$nodename` pattern, but it is what the in-tree board uses, so the shape is upstream's, not ours — and dtbs_check does not in fact flag it. Cosmetic at runtime: `stmmac_of_get_mdio()` (`stmmac_platform.c:295-318`) finds the node by scanning children for `compatible = "snps,dwmac-mdio"`, never by name. |
 | `ethernet-phy@0 { reg = <1>; }` | all three | **changed → `ethernet-phy@1`** | A unit-address/`reg` mismatch that dtc reports under `-Wunit_address_vs_reg`. PHY address **1** is the real value (all three agree on `reg`); only the unit address was wrong. Provably a no-op — `of_mdiobus_register()` addresses the PHY from `reg`. See §5 D3. |
 | `&gmac1`, `&gmac2` | — | **left disabled** | One RJ45 on this board; MAINLINE's default is disabled. |
@@ -352,35 +401,53 @@ file is named.
 | `mister_fb`, `ascal_scratch`, `x86ram`, `mister_fb_mem` reserved regions | PORT only | **dropped** | ADR 0027 scopes wave 1 to a bare developer OS with **no MiSTer binaries**. These describe a fabric/Main_MiSTer memory map that does not exist yet, and `de25-reference-implementation.md` already flags the port's 2 GiB assumption underneath `x86ram@b0000000` as unverified. |
 | `&i2c1`'s vendor `status` whitespace, `&mmc` label | — | n/a | We define our own label `mmc0`; the references' `&mmc` label lives in a `.dtsi` we do not patch. |
 
-### The svc node — a dependency, stated plainly
+### The svc node — described as `intel,agilex-svc`
 
-We keep MAINLINE's `compatible = "intel,agilex5-svc"` exactly as the `.dtsi` ships it, with its
-inherited `iommus = <&smmu 10>` (which the binding's `allOf` **requires** for that string), and
-add only the `fpga_mgr` child.
-
-That string is in `intel,stratix10-svc.yaml`'s enum but has **never** been in
-`stratix10_svc_drv_match[]` — not at 6.18.44, not at 7.2.2, not at `master`. On a stock kernel
-the node is therefore **inert**: `stratix10_svc_init()`'s `of_platform_populate()` skips it, no
-service device is created, and the `fpga_mgr` child has nothing to attach to. Because it is a
-lone compatible with no fallback string, the OF core cannot rescue it either.
-
-**This DTS therefore depends on `linux-patches/0102`**, which adds the one match-table line (or
-on the equivalent landing upstream — it is a one-line upstream fix and worth sending).
-
-**Fallback if `0102` is ever dropped:** re-add the override that earlier drafts of
-implementation-path §3.1 called for —
+**Changed 2026-11-17 ([ADR 0034](decisions/0034-de25-fpga-service-path.md)).** The board file
+overrides one property of the inherited node and adds the `fpga_mgr` child:
 
 ```dts
 &{/firmware/svc} {
-	compatible = "intel,agilex-svc";	/* in the match table AND in the enum */
-	...
+	compatible = "intel,agilex-svc";
+	fpga_mgr: fpga-mgr { … };
 };
 ```
 
-— which binds the stock driver and is schema-clean. Mainline branches on neither string
-(implementation path §8 Q3), so the two are equivalent *against mainline*; they stop being
-equivalent the moment anyone ports the vendor's agilex5-specific svc behaviour, which is why
-keeping the SoC-accurate string plus a one-line patch is the better shape.
+`method`, `memory-region` and `iommus = <&smmu 10>` are inherited unchanged.
+
+**What it replaced.** Until this change the file kept mainline's `intel,agilex5-svc` and carried
+`linux-patches/0102`, a one-line match-table addition, because that string is in the binding's
+enum but was in no driver's match table at 7.3.4 or earlier. The override was the documented
+fallback. It is now the plan, for three reasons:
+
+1. **The string selects behaviour, and we need the Agilex behaviour.** Our BL31 (with TF-A patch
+   `0002`) serves the physical-address SMC contract (§4.1). From Linux v7.4,
+   `intel,agilex5-svc` means something else: probe fails `-ENODEV` unless an IOMMU domain is
+   attached, and buffers are IOVAs. With `&smmu` disabled that string would stop probing.
+   `intel,agilex-svc` keeps the physical path on every kernel version.
+2. **`0102` was wrong about the protocol.** Its message said Agilex 5 speaks the Agilex SMC
+   protocol unchanged. BL31's Agilex 5 code handles addresses differently
+   ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §3.2).
+3. **One fewer kernel patch.** On 7.3.4 the match table carries no driver data, so the stock
+   driver runs identical code for either string.
+
+**What it costs.** One node names the wrong SoC family. `socfpga-hwmon` would therefore select
+the Agilex 7 channel table, so that driver is kept off. On 7.4 and later the node also gets a
+PSCI notifier that offlines secondary CPUs on a warm reboot only.
+
+**Schema.** `intel,agilex-svc` is in the binding's enum; `iommus` is required only for the
+agilex5 string and stays legal here (7.3.4 `intel,stratix10-svc.yaml:34-37,70-79`). No new
+`dtbs_check` warning (§2.6).
+
+**Three structural constraints** ride on this subtree and are all satisfied by mainline's node
+shape, which we inherit: the node must literally be named `svc` (7.3.4 `stratix10-soc.c:474`),
+its parent must literally be named `firmware` (7.3.4 `stratix10-svc.c:2201`), and `method` must
+be present or probe fails.
+
+**The `fpga_mgr` child keeps its two-string form**, `"intel,agilex5-soc-fpga-mgr",
+"intel,agilex-soc-fpga-mgr"`. The stock driver binds through the second string (7.3.4
+`stratix10-soc.c:451-454`; unchanged at v7.4-rc1). It still costs the five `dtbs_check` warnings
+of §2.2.
 
 ### Console UART — a documented deviation
 
@@ -449,67 +516,70 @@ One consequence worth carrying: **all DRAM lives in `0x8000_0000..0xBFFF_FFFF`, 
 
 ## 4. The SMMU / `mmc0` decision (implementation path §8 Q2 and §8 Q1)
 
-> **Status: owner decision, ADR 0029 D10 (2026-09-02).** SMMU-off is the intended
-> configuration, not a wave-1 expedient: DMA isolation is a non-goal for this image (the DE10's
-> Cyclone V has no SMMU, so this is parity, not a regression), and SMMU-off is the precondition
-> for mainline `svc` to program the fabric at all. Re-open only if upstream `svc` grows
-> IOMMU-aware buffer handling, or the SMMU-off fabric test fails on hardware.
+> **Status: owner decision, ADR 0029 D10 (2026-09-02), kept by
+> [ADR 0034](decisions/0034-de25-fpga-service-path.md) (2026-11-17).** The SMMU ships disabled.
+> DMA isolation is a non-goal for this image (the DE10's Cyclone V has no SMMU, so this is
+> parity, not a regression). D10's re-open condition — upstream `svc` growing IOMMU-aware buffer
+> handling — **is met from Linux v7.4**, so the decision is re-examined at that pin move.
 
+**Decision: `&smmu { status = "disabled"; }`.** This diverges from all three references and from
+mainline 7.3.4, whose dtsi enables the node. Every `iommus` property in the tree is kept and is
+inert.
 
-**Decision: `&smmu { status = "disabled"; }` for wave 1** — MAINLINE 7.2's own default, and a
-deliberate divergence from all three references, which set it `okay`. **`mmc0` keeps both
-`iommus = <&smmu 5>` and `dma-coherent`**, and so does every other master in the tree; with the
-SMMU off those `iommus` properties are simply inert.
+**Corrected 2026-11-17.** This section used to argue that SMMU-on cannot work on mainline and
+that SMMU-off is the only shape that can. The first half still holds at 7.3.4. The second half
+was wrong as written: **with stock TF-A v2.15.0, mainline cannot program the fabric in any SMMU
+mode**, because of two address-handling mismatches in BL31. By the same reading,
+`iommu.passthrough=1` would not help either. This is read from source and has not been run on a
+board. §4.1 has the corrected account.
 
-An earlier revision of this document had this the other way round — SMMU on, with SMMU-off
-offered as an "escape hatch". **That framing was inverted and is corrected here.** SMMU-on is
-not a working configuration on mainline; SMMU-off is the only one that can be.
+### 4.1 What actually blocks the mainline path, and what was done
 
-### 4.1 Why SMMU-on cannot work on a mainline kernel
+Full trace with line citations: [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §3.
+In short, at 7.3.4:
 
-Traced through `linux-7.2.2` source, not inferred:
-
-| Step | Where | What it does |
+| Step | Kernel | BL31 v2.15.0 on Agilex 5 |
 |---|---|---|
-| 1 | `drivers/firmware/stratix10-svc.c:865-869` | Takes the shared-buffer address straight out of the `INTEL_SIP_SMC_FPGA_CONFIG_GET_MEM` SMC return (`res.a1`/`res.a2`) |
-| 2 | `:956` | `devm_memremap()`s that **physical** address |
-| 3 | `:1873-1876` | `gen_pool_virt_to_phys()` — the pool hands out **physical** addresses; `:1780` copies one into `pdata->paddr` |
-| 4 | `:607` (`COMMAND_RECONFIG_DATA_SUBMIT` → `INTEL_SIP_SMC_FPGA_CONFIG_WRITE`), `:655` (FCS) | Passes that raw physical address to the SDM as SMC argument `a1` |
-| 5 | whole file | `grep -c 'iommu_map\|dma_map_single\|dma_alloc'` → **0** |
+| 1 | Asks for a buffer window with `FPGA_CONFIG_GET_MEM` and builds a pool of **physical** addresses over it (`stratix10-svc.c:919-923,1010`) | Answers `0x80400000`, ending at `0x82000000` |
+| 2 | Submits each buffer's physical address with `FPGA_CONFIG_WRITE` (`:626-629`) | **Rejects** every address below `BL31_LIMIT` = `0x82000000` — the whole window it advertised |
+| 3 | Gets no callback for a rejected data submit (`:833-851`); the FPGA manager times out after 5 s | — |
+| 4 | Looks completed addresses up by exact match (`:321-332`) | Returns each address with `0x80000000` **subtracted** |
+| 5 | No buffer is ever unlocked; over 2 MiB the write loop spins (`stratix10-soc.c:256,296-297`) | — |
 
-Meanwhile the svc device inherits `iommus = <&smmu 10>` from the MAINLINE dtsi, and
-`arm_smmu_def_domain_type()` (`drivers/iommu/arm/arm-smmu-v3/arm-smmu-v3.c:4294-4304`) returns
-`0` for anything that is not a PCI device — so the IOMMU core applies the build default,
-`IOMMU_DEFAULT_DMA_STRICT` (`drivers/iommu/Kconfig:100,111`), i.e. a **translated** domain over
-a page table nothing has populated. SID 10 therefore gets an S1-translate STE, and the physical
-addresses from step 4 are unmapped IOVAs. **The first `RECONFIG_DATA_SUBMIT` faults.**
+Steps 2 and 4 are firmware behaviour and do not depend on the SMMU. They are why the vendor
+driver adds `0x80000000` to an IOVA: the sum clears BL31's range check, and BL31's subtraction
+hands the IOVA back.
 
-That SDM traffic genuinely traverses the SMMU is not an assumption — it is precisely what
-Terasic's vendor `stratix10-svc.c` compensates for: an IOVA carveout plus explicit `iommu_map()`
-calls, a `+0x80000000` address offset, and an `INTEL_SIP_SMC_SDM_REMAPPER_CONFIG` remapper
-disable, none of which exists anywhere in mainline at 6.18.44, 7.2 or `master`. Their driver is
-the evidence *for* the mechanism, and its absence upstream is the evidence *against* SMMU-on.
+**With the SMMU on there is a further problem at 7.3.4**, the one this section originally
+described: the service device inherits `iommus = <&smmu 10>`, gets a translated default domain
+over an empty page table, and the physical addresses it submits are unmapped IOVAs. That part
+of the earlier analysis stands. From v7.4 the upstream driver handles it for the
+`intel,agilex5-svc` string.
 
-This also **sharpens implementation-path §8 Q1** and the one observed on-hardware failure it
-records: a `RECONFIG_REQUEST` timeout on the mainline path is exactly what steps 1–5 plus a
-translated default domain predict.
+**What was done.** TF-A patch `0002` makes BL31 accept the advertised window and return the
+caller's own address ([`de25-uboot.md`](de25-uboot.md) §8). The service node is described as
+`intel,agilex-svc` so the kernel keeps using that physical contract (§3, "The svc node").
 
-### 4.2 SMMU-off is the leg to test first — and it is not proven either
+**The observed `RECONFIG_REQUEST` timeout is not explained by this.** That failure
+(implementation path §2.6) happens before any data submit. It was seen on a 6.18-class driver
+whose request timeout was 300 ms; 7.3.4 waits 5000 ms (`stratix10-svc-client.h:71`).
 
-Stated honestly: SMMU-off removes the *identified* fault, it does not establish that mainline
-can program this fabric.
+### 4.2 Is the SMMU needed by the hardware? Probably not; unproven
 
-- **For**: it is the only shape in which the svc layer's own addressing is self-consistent; it
-  is MAINLINE 7.2's shipped default; and the closest supporting data point is the PORT's cold
-  boot with `iommu.passthrough=1` reaching a login prompt.
-- **Against**: Terasic's vendor driver *hard-fails* without the SMMU (its agilex5 probe path
-  returns `-ENODEV` absent `altr,smmu_enable_quirk`), and mainline never touches the SDM
-  remapper at all. Neither observation transfers cleanly, because the two drivers are doing
-  different things, but neither can be waved away.
+- **For SMMU-off:** BL31 has a mode that does not involve the SMMU. Unless a caller asks for
+  bypass, it programs the SDM address remapper with the DDR base and gives the SDM an address
+  relative to it. U-Boot's `fpga load` uses exactly that path with a raw DDR address, and never
+  enables the SMMU. An earlier port recorded successful U-Boot loads on this board; a later
+  note from the same source says a U-Boot load wedged the SDM
+  ([`de25-boot-chain.md`](de25-boot-chain.md) §7b F1).
+- **Against:** the vendor kernel refuses to run without the SMMU, and so does v7.4's driver for
+  the agilex5 string. Both are policy in a driver, not a statement about the hardware. What is
+  genuinely unknown is the silicon revision, the state of the revision-A workaround bit, and
+  whether the SMMU's reset state passes or aborts untranslated traffic ([U11]).
 
-**Test order for implementation-path §2.6 step 4: SMMU-off first, SMMU-on second.** §2.6
-currently presents the two legs as symmetric; they are not, and the ordering matters because a
-SMMU-on failure carries no information (it is predicted) while an SMMU-off failure is real news.
+**Test order.** Register reads and `fpga load` at the U-Boot prompt first, then Linux. See
+[`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8, which replaces the SMMU-off /
+SMMU-on ordering this section used to give.
 
 ### 4.3 Why every `iommus` property stays anyway
 
@@ -525,6 +595,11 @@ and `:4489` for linear ones), so under an enabled SMMU a master with no `iommus`
 not bypass — it **aborts**. The tree as shipped is correct for both configurations; only
 `&smmu`'s `status` selects between them.
 
+*(2026-11-17: true for every peripheral. For FPGA programming the SMMU-on shape needs two more
+things: the service node back on `intel,agilex5-svc`, and a kernel whose service driver maps
+its buffers — v7.4 or a backport. See
+[`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §6.3 and §8, test T5.)*
+
 ### 4.4 What this does to §8 Q2 (the `mmc0` DMA width)
 
 With the SMMU off, the §8 Q2 failure mode **cannot occur**: the mechanism is the IOVA allocator
@@ -536,24 +611,27 @@ translation there are no IOVAs. Every DRAM address on this board is inside
 survivable, and it is what makes the two-string compatible schema-clean — it is simply not
 load-bearing in the shipped configuration.
 
-### 4.5 `dma-coherent` — kept, with a caveat that is new
+### 4.5 `dma-coherent` — removed for first boot
 
-Kept, corroborated inside MAINLINE itself: the sibling `nand` controller on this same SoC
-carries `dma-coherent` in `socfpga_agilex5.dtsi:315`.
+**Changed 2026-11-17.** `mmc0` no longer has `dma-coherent`, and `&gmac0` deletes the property
+it inherits from mainline's dtsi. Until this change both were kept, with [U2] open.
 
-**The caveat the SMMU flip introduces:** all three vendor trees assert `dma-coherent` on `mmc0`
-with the SMMU **on**, where the cacheability of an access is determined by the STE / `IOMMU_CACHE`
-attributes rather than by the master's own `dma-coherent` property. Their evidence therefore does
-**not** transfer unchanged to the SMMU-off shape, and the mainline `nand` precedent — which is
-about the SoC's interconnect rather than about translation — is now doing more of the work than
-it was. The port's setup guide (`SETUP.md:139-142`) is a live warning in the same area: with
-`iommu.passthrough=1`, SDHCI ADMA "can corrupt early SD init" after a JTAG full-SOF load, which
-is an SMMU-off ADMA integrity failure whatever its root cause.
+- **The asymmetry decides it.** `dma-coherent` on a master that is not coherent corrupts data
+  silently. Leaving it off a master that is coherent is always correct and only slower, because
+  the kernel then does the cache maintenance itself.
+- **Nobody has measured the shape we ship.** Mainline and all three vendor trees assert the
+  property with the SMMU **on**. We run with it off.
+- **The only DE25 evidence for an untranslated shape is non-coherent.** The public vendor-kernel
+  port (`github.com/ahmadexp/MiSTer-DE25-Nano`) runs `gmac0` and the SD controller with no
+  translation and with `dma-coherent` deleted. U-Boot also treats its DMA as non-coherent. The
+  earlier port's setup notes recorded SD ADMA corruption under `iommu.passthrough=1` after a
+  JTAG load, which is a failure in exactly this area.
 
-So [U2] is **re-opened in the shipped shape**: the integrity check must be run with the SMMU off,
-not inherited from the vendors' SMMU-on configuration. If reads come back corrupt, **delete
-`dma-coherent` first** — treating a coherent master as non-coherent is always correct and merely
-slower; the converse silently corrupts.
+A first boot that corrupts the root filesystem is the hardest failure to diagnose, so the first
+boot does not take the risk. Restoring the property on each master is an A/B measurement after
+a clean first boot ([U2]), not a default.
+
+`usb0` has no `dma-coherent` in mainline, so nothing changes there.
 
 
 ## 5. Deliberate divergences from the reference files
@@ -569,8 +647,11 @@ D1–D6 are changes of *form*; the content drops are in §3.
 | D4 | `memory { … }` → **`memory@80000000 { … }`**, and 2 GiB → **1 GiB** | Unit address for dtc; size from the factory SPL DTB (§3, Memory). `memory@80000000` is still found by both consumers — Linux scans `device_type = "memory"`, and U-Boot's `fdt_fixup_memory_banks()` uses libfdt's `fdt_subnode_offset()`, whose name comparison accepts a trailing `@unit-address`. |
 | D5 | `model` `"SoCFPGA Agilex5 Terasic DE25-Nano"` → **`"Terasic DE25-Nano"`** | Cosmetic; the board's name rather than a compilation of SoC and board. |
 | D6 | `&watchdog4` loses `disable-over-current` | A watchdog has no over-current line. Copy-paste from `usb0`, propagated through all three trees. |
-| D7 | `&smmu` `okay` → **`disabled`** | The one *design* divergence, not a form one. Mainline's svc layer cannot work under a translated domain (§4.1). Also MAINLINE 7.2's own default. All `iommus` properties retained so the reverse is one line. |
-| D8 | `mmc0` gains **`max-frequency = <25000000>`** | PORT's value. The only mainline-driver boot of this board needed it; mainline programs none of the PHY timing the vendors declare (§3, `max-frequency` row). Lift once [U3] clears. |
+| D7 | `&smmu` `okay` → **`disabled`** | The one *design* divergence, not a form one, and a divergence from mainline 7.3.4's dtsi as well as from the references (§4). All `iommus` properties retained so the reverse is a small change. |
+| D8 | `mmc0` gains **`max-frequency = <25000000>`** | Mainline programs none of the SD6HC PHY, so Linux runs the mode and clock U-Boot ended in (§3, `max-frequency` row). Lift once [U3] clears, in both stages together. |
+| D9 | `/firmware/svc` `compatible` → **`intel,agilex-svc`** (2026-11-17) | Selects the physical-address SMC path our patched BL31 serves, on every kernel version; replaces kernel patch `0102` (§3, "The svc node"). |
+| D10 | `mmc0` and `gmac0` lose **`dma-coherent`** (2026-11-17) | Unmeasured with the SMMU off; non-coherent is always correct (§4.5). |
+| D11 | `mmc0` loses **`cap-sd-highspeed`**, and its caps mask gains bit 21 (2026-11-17) | Default speed only, matching U-Boot, because Linux cannot reprogram the PHY for another mode (§3). |
 
 ---
 
@@ -580,17 +661,18 @@ D1–D6 are changes of *form*; the content drops are in §3.
   compiles clean, validates against the bindings modulo two known binding gaps, and its
   load-bearing node names and phandles resolve. Every runtime claim is a citation into driver
   source, not an observation.
-- **That the fabric can be programmed.** Implementation path §8 Q1 is untouched by this file and
-  remains **low confidence**; the `fpga-region`/`fpga_mgr` nodes here are the *binding* half of
-  §2.6's four-step test, which is expected to pass, not the *programming* half, which is the
-  actual experiment.
-- **That `mmc0` DMAs correctly.** §4.4/§4.5 argue the shape is right and name the fallbacks;
-  [U2] (coherency, in the SMMU-off shape) and [U3] (clock cap) both stay open. §8 Q2's own
-  failure mode is out of reach in the shipped configuration, which is a change of exposure, not
-  a proof of correctness.
-- **That SMMU-off *works*.** §4.1 rules SMMU-on out from source. It does not follow that
-  SMMU-off succeeds — Terasic's vendor driver hard-fails without the SMMU, and mainline never
-  touches the SDM remapper. [U10] is the live question and §2.6 step 4 is the test.
+- **That the fabric can be programmed.** The `fpga-region`/`fpga_mgr` nodes here are the
+  *binding* half. The *programming* half was blocked in BL31 and is now patched there (§4.1);
+  that patch is verified by build and by a host harness only. Hardware tests T1 and T3 in
+  [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8 are the experiment.
+- **That `mmc0` works at all on 7.3.4.** Linux inherits the SD6HC PHY state from U-Boot and
+  resets the SDHCI block at probe. Whether that reset clears the PHY state is unknown ([U12]).
+  If it does, this kernel cannot use the card slot without the SD6HC driver.
+- **That `mmc0` DMAs correctly.** §4.5 takes the safe side on coherency; [U2] and [U3] record
+  what is given up. §8 Q2's failure mode is out of reach with the SMMU off, which is a change of
+  exposure, not a proof of correctness.
+- **That SMMU-off *works*.** §4.2 gives the reasons to expect it. [U10] and [U11] are the live
+  questions.
 - **PHY link.** `phy-mode = "rgmii"` with the delays on the PCB is ALTERA's claim, taken on
   their authority and cross-checked against the other two references. Not measured.
 
@@ -601,22 +683,24 @@ D1–D6 are changes of *form*; the content drops are in §3.
 | # | Question | Why it matters | How it is settled |
 |---|---|---|---|
 | ~~U1~~ | ~~Is the console really `uart1`?~~ | — | **Closed `[V]`.** The DE25 U-Boot tree sets `serial0 = &uart1` and `stdout-path = "serial0:…"` (Terasic's public branch, `github.com/terasic/u-boot-socfpga` @ `de25-nano-v2025.01`, `arch/arm/dts/socfpga_agilex5_de25_nano.dts:11`, `...-u-boot.dtsi`), and the PORT booted Linux on that console. Not to be re-litigated. |
-| **U2** | Is the SDMMC master really cache-coherent **with the SMMU off**? | `dma-coherent` on a non-coherent master is silent data corruption. The vendors' evidence is all SMMU-**on**, where cacheability comes from the STE/`IOMMU_CACHE` attributes, not this property — so it does not transfer to the shipped shape (§4.5). The port's setup guide (`SETUP.md:139-142`) records ADMA corrupting early SD init under `iommu.passthrough=1`. | Sustained `dd` read/write + checksum in the **shipped SMMU-off** configuration. If corrupt, delete `dma-coherent` first — the non-coherent treatment is always correct, merely slower. |
-| **U3** | Can the 25 MHz clock cap be lifted? | Shipped capped, following the only mainline-driver boot of this board. Mainline programs none of the 40 vendor `cdns,phy-*` values, so PHY state is whatever U-Boot left. | Once a sustained `dd` read/write is clean at 25 MHz, raise in steps (or delete `max-frequency`) and re-run. Watch for `unrecognised SCR structure version` / `-EINVAL` at init, which is the symptom the port hit. |
+| **U2** | Are the SDMMC and gmac0 masters cache-coherent **with the SMMU off**? | `dma-coherent` on a non-coherent master is silent data corruption. The vendors' evidence is all SMMU-**on**. The PORT's setup guide — the reference DE25 tree's, not the public port's, which has no such file — records ADMA corrupting early SD init under `iommu.passthrough=1` ([`de25-reference-implementation.md`](de25-reference-implementation.md), the "SD host needed capping at 25 MHz" finding). | **Shipped non-coherent since 2026-11-17** (§4.5), so first boot does not depend on the answer. To restore the property: a sustained `dd` round trip with checksum on SD, and a multi-GiB checksummed transfer on Ethernet, each run with and without it. |
+| **U3** | Can default speed and the 25 MHz cap be lifted? | Shipped at default speed, 25 MHz, in **both** U-Boot and Linux. Mainline 7.3.4 programs none of the SD6HC PHY, so Linux must run the mode U-Boot ended in; U-Boot programs different PHY values per mode. | After a clean sustained `dd` at default speed, climb one step at a time and **change both stages together**: (1) high-speed timing at 25 MHz — drop the bit-21 mask in both device trees and re-add `cap-sd-highspeed` to Linux; (2) 50 MHz in both. Watch for `unrecognised SCR structure version` / `-EINVAL` at init, the symptom the port hit. The real fix is the SD6HC driver at the 7.4 pin. |
 | **U4** | Does the SD I/O rail need ALTERA's `regulator-gpio` on `portb 3`? | ALTERA wires `vqmmc-supply` to a 1.8V/3.3V level shifter; we rely on `no-1-8-v` plus the boot-default state. | Only matters if UHS is ever wanted. Until then the shifter never switches. |
 | **U5** | `dr_mode` for `usb0` | Unset in all three references, so dwc2 reads OTG capability from the hardware. A MiSTer image wants host mode. | Observe `/sys/class/udc` and whether hubs enumerate; add `dr_mode = "host"` if OTG guesses wrong. |
 | **U6** | Should the root compatible say `terasic,de25-nano`? | Currently claims to be an SoCDK. Nothing on arm64 reads it, but it is wrong. | A one-line upstream patch to `Documentation/devicetree/bindings/arm/altera.yaml`, then a one-line DTS change. |
 | **U7** | Does `sdhci-caps`' 200 MHz base clock match the silicon? | If the capability register already reports a *different* non-zero base, we override a correct value with a vendor constant and every derived card clock is off — including the 25 MHz cap, which would really be 12.5 MHz if the true base were 100 MHz. | `cat /sys/kernel/debug/mmc0/ios` on first boot; compare `dmesg`'s reported max clock against a raw read of `SDHCI_CAPABILITIES` before the override. |
 | **U8** | Do the residual `fpga-mgr` binding warnings get fixed upstream? | Until then this DTB carries 5 warnings and a CI gate would have to allow-list them. | Watch Khairul's v6 fpga-mgr binding series (implementation path §8 Q4). The `mmc0` half is already closed by `0101`. Re-check on every kernel bump. |
-| **U9** | **Does BL31 hand back the svc buffer we think it does?** | `memory-region = <&service_reserved>` is **dead on mainline**: `stratix10-svc.c:865-876` takes the address from the `FPGA_CONFIG_GET_MEM` SMC and `:952-960` `memremap`s *that*, never consulting the `no-map` reserved region. If our `u-boot.itb`'s BL31 answers with a region other than `0x8000_0000 + 32 MiB`, the driver memremaps **live kernel RAM** and the SDM writes into it. | `dyndbg='file stratix10-svc.c +p'` on the kernel command line, then compare the driver's `"SM software provides paddr"` / `"reserved memory ... paddr"` debug line against `/proc/device-tree/reserved-memory/svcbuffer@0/reg`. Do this **before** the first reconfiguration attempt. |
-| **U10** | Can mainline's svc program the fabric at all, SMMU off? | §4.2. SMMU-on is ruled out by source; SMMU-off is unproven in both directions. | Implementation path §2.6 step 4, **run SMMU-off first**. A SMMU-on failure carries no information; a SMMU-off failure is real news. |
+| ~~U9~~ | ~~Does BL31 hand back the svc buffer we think it does?~~ **Closed from source 2026-11-17:** TF-A v2.15.0 answers `0x80400000` with length `0x1C00000` (`plat/intel/soc/agilex5/include/socfpga_plat_def.h:43-44`, `plat/intel/soc/common/socfpga_sip_svc.c:1962-1966`), which lies inside `service_reserved` (`0x80000000 + 0x2000000`, `no-map`). The debug-print check below is still worth one look on first boot. Original row follows. | `memory-region = <&service_reserved>` is **dead on mainline**: `stratix10-svc.c:865-876` takes the address from the `FPGA_CONFIG_GET_MEM` SMC and `:952-960` `memremap`s *that*, never consulting the `no-map` reserved region. If our `u-boot.itb`'s BL31 answers with a region other than `0x8000_0000 + 32 MiB`, the driver memremaps **live kernel RAM** and the SDM writes into it. | `dyndbg='file stratix10-svc.c +p'` on the kernel command line, then compare the driver's `"SM software provides paddr"` / `"reserved memory ... paddr"` debug line against `/proc/device-tree/reserved-memory/svcbuffer@0/reg`. Do this **before** the first reconfiguration attempt. |
+| **U10** | Can mainline's svc program the fabric, SMMU off, through the patched BL31? | §4.1–§4.2. With stock BL31 it could not, in any SMMU mode; the patch is verified by build and harness only. | Tests T1 (U-Boot `fpga load`) and T3 (Linux load) in [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8. |
+| **U11** | Silicon revision, the revision-A workaround bit, the SDM remap registers, and the SMMU's reset state | They decide whether BL31 programs the remapper and whether untranslated SDM and peripheral traffic passes an SMMU that Linux never enables. If `BOOT_SCRATCH_POR_1` bit 1 is set or `GBPA` resets to abort, the SMMU-on fallback becomes the primary path. | Test T0: `md.l` of `0x10D12210`, `0x10D1225C`, `0x10D12280`/`284`, `0x16000020`, `0x16000044` at the U-Boot prompt. |
+| **U12** | Does Linux's SDHCI reset at probe clear the SD6HC `HRS` and PHY registers U-Boot programmed? | If it does, 7.3.4 cannot use the SD card and the SD6HC driver is a first-boot requirement. No source says; the SD4HC precedent suggests the registers survive. | Test T0: dump `HRS`/PHY, write `0x01` to `0x1080822f`, dump again — at the U-Boot prompt, no Linux needed. |
 
 
 ## 8. Corrections owed to sibling documents
 
 | Document | Claim | Correction |
 |---|---|---|
-| [`de25-implementation-path.md`](de25-implementation-path.md) §3.1 | The authored node set overrides `/firmware/svc`'s compatible to `"intel,agilex-svc"` | Superseded. We keep MAINLINE's `"intel,agilex5-svc"` and carry `linux-patches/0102` (a one-line match-table addition) instead. The override is retained as the documented fallback. Rationale: the vendor treats the agilex5 string as semantic, so a kernel that will one day want that distinction should not have the DT lie about the SoC. |
+| [`de25-implementation-path.md`](de25-implementation-path.md) §3.1 | The authored node set overrides `/firmware/svc`'s compatible to `"intel,agilex-svc"` | Superseded. We keep MAINLINE's `"intel,agilex5-svc"` and carry `linux-patches/0102` (a one-line match-table addition) instead. The override is retained as the documented fallback. Rationale: the vendor treats the agilex5 string as semantic, so a kernel that will one day want that distinction should not have the DT lie about the SoC. **Reversed again 2026-11-17:** §3.1's override is what ships after all, and `0102` is dropped (see the row added below). |
 | [`de25-implementation-path.md`](de25-implementation-path.md) §2.5 | The two-string fpga-mgr form "warns" under `dtbs_check` | Confirmed and quantified: **five** warning lines, from **two** schemas (`intel,stratix10-svc.yaml` validating the child in place, and `intel,stratix10-soc-fpga-mgr.yaml` validating it standalone), plus the "failed to match any schema" summary. Simulating Khairul's v6 `oneOf`/`items` shape clears all five (§2.4). |
 | [`de25-reference-implementation.md`](de25-reference-implementation.md) (open question, line ~664) | "Does the DE25-Nano HPS actually have 2 GiB of DRAM? The port's memory node hard-codes `reg = <0 0x80000000 0 0x80000000>`…" | **Answered as far as any desk source can: every DE25 bootloader source says 1 GiB.** The port's Linux node over-claims 2×, and its `x86ram@b0000000 + 0x10000000` would sit past the top of RAM. Our node states 1 GiB — but see the row below: "1 GiB" is a vendor *declaration*, not a measurement. |
 | [`de25-boot-chain.md`](de25-boot-chain.md) §3 | "the factory SPL DTB's memory node reads `reg = <0x0 0x80000000 0x0 0x40000000>` = 1 GiB at 0x8000_0000 **[V SPL-dtb]**" | **The `[V]` overstates it.** That is a *constant in Terasic's U-Boot device tree* (Terasic's public branch, `github.com/terasic/u-boot-socfpga` @ `de25-nano-v2025.01`, `arch/arm/dts/socfpga_agilex5_de25_nano-u-boot.dtsi`, commented `/* 1GB */`), not a readout. The authoritative size comes from the IO96B controller at runtime: `drivers/ddr/altera/sdram_agilex5.c` derives `hw_size` from `io96b_ctrl->overall_size`, caps the DT value at it, and prints `DDR: Warning …` on mismatch. Downgrade to `[V, vendor DTS constant] / [U, hardware]` and capture U-Boot's `DDR:` lines on first boot. |
@@ -624,3 +708,8 @@ D1–D6 are changes of *form*; the content drops are in §3.
 | [`de25-implementation-path.md`](de25-implementation-path.md) §8 Q2 | The `mmc0` DMA-width question is the leading first-boot risk | Still real, but **not reachable in the shipped configuration**: with the SMMU off there are no IOVAs to truncate and all DRAM is below 4 GiB (§4.4). `linux-patches/0101` remains correct and wanted — it is what makes the SMMU-on leg survivable — but it is not load-bearing for first boot. The *actual* leading first-boot SD risk is PHY timing, which mainline does not program at all; hence the 25 MHz cap ([U3]). |
 | [`de25-implementation-path.md`](de25-implementation-path.md) §3.1 | `memory-region = <&service_reserved>` is part of the svc contract | **It is inert on mainline.** `stratix10-svc.c:865-876` takes the buffer from the `FPGA_CONFIG_GET_MEM` SMC and `:952-960` `memremap`s that; the `no-map` reserved region is never consulted. Whether BL31 actually answers with `service_reserved`'s range is a **hardware check that must precede the first reconfiguration attempt** — [U9]. |
 | [`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §4.2 | The svc node needs `compatible = "intel,agilex-svc"` authored on top of the in-tree dtsi | Only true on a 6.18 base, where the whole subtree is authored. On 7.x the subtree already exists and is inherited; the only additions are the `fpga_mgr` child and the root `fpga-region`. That section's own `[U]` note about the missing `smmu` node is resolved on 7.2: the node exists with `status = "disabled"`, and the board file deliberately leaves it disabled for wave 1 (§4.1); the SMMU-on form is kept only as the labelled alternative for the second test leg. |
+| [`de25-implementation-path.md`](de25-implementation-path.md) §2.6, §8 Q1; ADR 0029 D9/D10 *(added 2026-11-17)* | SMMU-off is the only configuration in which mainline `svc` can program the fabric; `iommu.passthrough=1` is the runtime equivalent | **Incomplete.** With stock TF-A v2.15.0 it fails in every SMMU mode: BL31 rejects the buffer window it advertises and returns rebased completion addresses (§4.1). Fixed in BL31 by TF-A patch `0002`; the four-step test is replaced by T0–T5 in [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8. |
+| This document, earlier revisions *(added 2026-11-17)* | The disabled SMMU is "MAINLINE 7.2's own default" | True of the 7.2 dtsi only. At 7.3.4 the node is enabled (`socfpga_agilex5.dtsi:379-388`), so ours is a divergence from mainline. |
+| This document and [`de25-implementation-path.md`](de25-implementation-path.md) §3.1 *(added 2026-11-17)* | Keep `intel,agilex5-svc` and carry `0102`; the override is only a fallback | **Reversed** by [ADR 0034](decisions/0034-de25-fpga-service-path.md): the override ships and `0102` is dropped (§3, "The svc node"). |
+| This document §3, earlier revisions *(added 2026-11-17)* | `hwmon`: revisit if an SDM hwmon driver lands; `cap-sd-highspeed`: the caps mask is the only lever | Mainline has `socfpga-hwmon` (kept off, wrong channel table under our svc compatible). High speed has two independent enables, the DT property and capability bit 21; both are now off. |
+| [`de25-uboot.md`](de25-uboot.md) §5.1 *(added 2026-11-17)* | Leaving `cap-sd-highspeed` out keeps U-Boot at default speed | U-Boot's SDHCI core enables high speed from capability bit 21 regardless of DT (`drivers/mmc/sdhci.c:977-978`). The U-Boot DTS now masks that bit. |

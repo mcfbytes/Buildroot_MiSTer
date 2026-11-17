@@ -223,6 +223,32 @@ Agilex region node and of any arm64 Intel DTS reference to `altr,socfpga-*-bridg
 **[V `arch/arm64/boot/dts/intel/socfpga_agilex.dtsi:75-80`; grep across
 `arch/arm64/boot/dts/intel/` returns nothing, 2026-08-21]**.
 
+#### What BL31 does with those addresses on Agilex 5 *(added 2026-11-17)*
+
+The paragraph above describes the kernel side, at 6.18.44. The EL3 side was unread when this
+document was written. It has now been read, in TF-A v2.15.0, the version this repo builds, and
+it matters more than anything else on this path
+([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §3 has the line citations):
+
+- **The window.** `FPGA_CONFIG_GET_MEM` answers base `0x80400000`, length `0x1C00000`. That is
+  inside `service_reserved`, so the "does BL31 answer with the region we reserved" question is
+  closed from source.
+- **The range check.** `FPGA_CONFIG_WRITE` rejects any buffer below `0x82000000`. That is the
+  whole window just advertised. The kernel's first data submit comes back `REJECTED`.
+- **The rebasing.** BL31 subtracts `0x80000000` from every accepted buffer address before
+  handing it to the SDM, and reports completions with that subtracted value. The kernel matches
+  completions by exact address and finds nothing.
+- **The remapper.** Unless a caller has asked for bypass, and unless a "revision A" scratch bit
+  is set, BL31 writes `0x80000000` into two SDM address-remap registers at each start and write.
+  The SDM can address 29 bits; the remapper is what lets it reach DDR at 2 GiB without an SMMU.
+- **Mainline never asks for bypass.** The vendor kernels and Linux v7.4's `intel,agilex5-svc`
+  path do, and pair it with an SMMU mapping.
+
+So on stock firmware a mainline kernel cannot program this fabric, with the SMMU on or off.
+This repo patches the range check and the completion address in BL31
+([`de25-uboot.md`](de25-uboot.md) §8). The timeouts quoted elsewhere in this document are
+6.18.44's; 7.3.4 raised the request and buffer timeouts to 5000 ms.
+
 ### 2.6 There is no second door — for this manager
 
 The FPGA manager's sysfs surface is `name`, `state`, `status` — all `DEVICE_ATTR_RO`
@@ -242,6 +268,21 @@ convenience.
 ## 3. The two gaps mainline does not fill
 
 ### 3.1 Agilex 5 is absent from 6.18.44 — and being added upstream
+
+> **Status at the 7.3.4 pin and at v7.4-rc1 (2026-11-17).**
+>
+> | Piece | 7.3.4 | v7.4-rc1 |
+> |---|---|---|
+> | `/firmware/svc` node in `socfpga_agilex5.dtsi` | present, `intel,agilex5-svc`, with `iommus` | same |
+> | `intel,agilex5-svc` in the service driver's match table | **no** | **yes**, and it requires an attached IOMMU domain |
+> | `fpga-mgr` / `fpga-region` nodes in the dtsi | no | no |
+> | `intel,agilex5-soc-fpga-mgr` in the manager's match table | no | no |
+> | `smmu` node | present and **enabled** | same |
+> | `mmc` node | no | no (the SD6HC *driver* is in; the node is not) |
+>
+> Our board DTS authors the `fpga-mgr` child and the `fpga-region`, and sets the service node's
+> compatible to `intel,agilex-svc`. The rest of this section is the 6.18.44 analysis, kept as
+> written.
 
 `socfpga_agilex5.dtsi` contains **no** `svc`, `fpga-mgr`, `fpga-region`, or bridge node.
 It carries only a `reserved-memory` stub with no consumer **[V
@@ -381,7 +422,23 @@ Given this repo's standing lesson that `linux.config` is a minimal defconfig and
 symbol is not necessarily off (memory: `linux-config-is-minimal-defconfig`), this belongs in
 `scripts/check-kernel-defconfig-sync.sh`'s per-board sentinel set when D1.2 parameterizes it.
 
+> **Kconfig as shipped (2026-11-17).** The table above is what
+> `board/mister/de25nano/linux.config` sets. Two additions since: `INTEL_STRATIX10_RSU` is
+> explicitly off, and Kconfig is the only thing keeping RSU out, because the service driver
+> creates the RSU device itself with no DT node; and `SENSORS_ALTERA_SOCFPGA_HWMON` is
+> explicitly off, because under our service compatible it would use the Agilex 7 channel table.
+> Nothing else was there to add: no vendor-only symbol (`OF_CONFIGFS`, `FPGA_MGR_DEBUG_FS`, the
+> FCS set) exists in mainline to set. See [`de25-kernel-config.md`](de25-kernel-config.md) §5.
+
 ### 4.2 Device-tree nodes to author
+
+> **As shipped (2026-11-17).** The listing below is what the board DTS now contains, with two
+> differences: the node is inherited from the 7.x dtsi, so only `compatible` and the child are
+> written; and the `fpga-mgr` child uses the two-string form. The `[U]` on the gen-1 string is
+> answered in part: on 7.3.4 the string changes nothing in the driver, and it is the correct
+> choice for the physical-address contract our BL31 serves
+> ([ADR 0034](decisions/0034-de25-fpga-service-path.md)). Whoever calls `fpga_mgr_load()` must
+> supply a completion timeout; with zero, `stratix10-soc` reports a timeout immediately.
 
 Modelled on `socfpga_agilex.dtsi:63-80` **[V]** and cross-checked against the *A5-series*
 DTS patch **[V]**, added by the DE25 board DTS on top of the in-tree
@@ -518,6 +575,20 @@ MiSTer at all:
    default and is not proof; a board manual would not necessarily mention provisioning
    either way.
 
+**Authentication does not depend on how the bytes reach the SDM** *(added 2026-11-17)*.
+
+- The SDM authenticates the bitstream it receives. Linux and BL31 only tell it where to read.
+  The SMMU, or the SDM address remapper, decides whether it reads the right bytes; a wrong
+  mapping produces a failed configuration, not an unauthenticated one.
+- Mainline's reconfiguration request carries one flag, for partial reconfiguration. No tree we
+  read has a flag that skips authentication. The vendor kernels add an *authenticate-only*
+  request — a dry run that checks a bitstream without configuring — which mainline lacks.
+- So the SMMU decision and the BL31 patch have no bearing on enforcement. Whether enforcement
+  is on is a per-device provisioning fact, and remains the question below. Port reports since
+  this section was written say unsigned cores load on shipped boards
+  ([`de25-boot-chain.md`](de25-boot-chain.md) §7b F5); a per-board check over JTAG is still the
+  authority.
+
 The evidence base supports "very likely permissive out of the box" and supports nothing
 stronger. Because a wrong answer here invalidates the entire core-switching premise —
 not the schedule, the premise — this should be settled *before* hardware money is
@@ -582,6 +653,18 @@ second-configuration hang on a related path (row 4a), and it is the thing D2.5 m
 actually measure.
 
 ### 6.3 D2.5 hardware-measurement plan (runnable)
+
+> **Run these first (2026-11-17).** Before any Linux measurement, capture the register state
+> and try a load at the U-Boot prompt: tests T0 and T1 in
+> [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8. They need a serial console
+> only, and they decide whether the Linux steps below can work at all with the SMMU off.
+>
+> The steps below assume an overlay loader. The trigger now preferred is a direct
+> `fpga_mgr_load()` module ([`de25-implementation-path.md`](de25-implementation-path.md) §7),
+> so where a step says "apply the overlay", read "write the firmware name to the loader". The
+> state checks, the timing method and the iteration counts are unchanged. Add
+> `dyndbg='file stratix10-svc.c +p'` to the kernel command line for the first run: the service
+> driver then prints every SMC result, which is how a `REJECTED` data submit shows up.
 
 Prerequisite: a DE25 board booted to Linux with §4's DT and defconfig, an overlay loader
 per §3.2, and one `core.rbf` built for A5EB013.
@@ -893,11 +976,11 @@ remains unread and **[U]**.
 | # | Unknown | How it gets settled | Inherits |
 |---|---|---|---|
 | 1 | Does the factory DE25-Nano QSPI ship with VAB/QKY keys provisioned — i.e. will unsigned community `.rbf` load? | Load a locally built unsigned `core.rbf` and observe SDM accept/reject; or obtain and fully read Intel doc 762191 / the Agilex 5 Configuration UG (both 403 on 2026-08-21). The *UM* is now read and is silent, which is weak permissive evidence only | **D2.5** (first hour); a doc fetch is worth attempting before hardware purchase |
-| 2 | Do `intel,agilex-svc` / `intel,agilex-soc-fpga-mgr` bind and function on Agilex 5 silicon? | Substantially de-risked by the *A5-series* fallback declaration (§3.1) but not proven: author §4.2's DT, boot, check `/sys/class/fpga_manager/` and the probe dmesg. Desk follow-up: check whether the series landed in a post-6.18 kernel and what else it dragged in | **D2.5**; the mainline-landing check is desk work for **D0.3** |
+| 2 | Do `intel,agilex-svc` / `intel,agilex-soc-fpga-mgr` bind and function on Agilex 5 silicon? *(2026-11-17: binding is settled from source. Function was blocked by BL31's address handling on stock firmware and is patched there; the hardware run is T3.)* | Substantially de-risked by the *A5-series* fallback declaration (§3.1) but not proven: author §4.2's DT, boot, check `/sys/class/fpga_manager/` and the probe dmesg. Desk follow-up: check whether the series landed in a post-6.18 kernel and what else it dragged in | **D2.5**; the mainline-landing check is desk work for **D0.3** |
 | 3 | Measured reconfiguration latency: storage read vs overlay apply vs SDM write vs overlay remove | §6.3, steps 2–4, 20 iterations. Watch for SDM windows that are near-exact 1 s multiples (§6.1 row 7) | **D2.5** |
 | 4 | Does the region accept repeated overlay apply/remove cycles cleanly — no leaks, no second-switch failure, HPS→fabric access still alive afterwards? | §6.3 step 3, iterations 2..20, with an LWH2F-window read after every switch. **Raised in priority**: no mainline user cycles overlays (§3.2) and *AXE5* reports a second-configuration hang on Agilex 5 (§6.1 row 4a) | **D2.5** |
 | 5 | Does an overlay omitting `config-complete-timeout-us` fail immediately? | §6.3 step 6, several runs (benign race, §4.3) | **D2.5** |
-| 6 | Which overlay-loader option — carry `OF_CONFIGFS`, write a board driver, or U-Boot-preload only | Design decision once §3.2's options are costed; classify the configfs patch against `docs/patch-provenance.md` (origin is the 2014 Antoniou series; the shipping form was not located) | **D2** (design), **D0.3** may classify the patch |
+| 6 | Which overlay-loader option — carry `OF_CONFIGFS`, write a board driver, or U-Boot-preload only *(2026-11-17: a board module calling `fpga_mgr_load()` directly; drafted, not landed.)* | Design decision once §3.2's options are costed; classify the configfs patch against `docs/patch-provenance.md` (origin is the 2014 Antoniou series; the shipping form was not located) | **D2** (design), **D0.3** may classify the patch |
 | 7 | Actual A5EB013 `core.rbf` size, and the SDM's internal config clock/bus width | Build a GHRD-based `core.rbf` in Quartus Prime Pro and `stat` it; read the Agilex 5 datasheet PDF locally rather than the JS docs site | **D2.5** / desk, whenever a PDF mirror is found |
 | 8 | Agilex 5 F2H and F2SDRAM window addresses and widths | Read Intel HPS TRM 814346/813752 directly — needs an authenticated fetch, a mirror, or a human-supplied PDF | **D0.1/D2.2** recon; blocks §7.3 |
 | 9 | Is fabric access to HPS LPDDR4A coherent by default, or must the fabric master assert CCU/ACE-Lite via AXUSER? | Same TRM chapter, then measure on hardware once a GHRD test image exists | **D2.2/D2.5**; plan §7 calls this the highest-value unknown and it stays that way |
@@ -905,5 +988,7 @@ remains unread and **[U]**.
 | 11 | What runtime doorbell/aperture mechanism the DE25 uses (the actual purpose of 0043–0045) | Gated on L0's register-access model and on a GHRD; not resolvable by desk research. **Needs its own DP**, plus the plan §6 DP-9 wording edit (§8) | **L0 watch (D0.4)** → its own DP, *not* DP-9 |
 | 12 | Does Terasic's GHRD wire LPDDR4A to the HPS hard EMIF by default, or is that a per-design Platform Designer choice? *UM* §3.7.4 says the bank *can*, and that the FPGA may claim it if the HPS does not | Inspect the System CD's `golden_top` / `.qsys` once obtained | **D0.1** (BSP quality already flagged unassessed) |
 | 13 | Phase-1/phase-2 version-skew tolerance across Quartus/SDM versions | Not stated in any reachable Altera doc; treat as project-side convention per `de25-boot-chain.md` §5 until a doc says otherwise | **D0.1 Q2**, **D2.2** |
-| 14 | Does the Agilex 5 `svc` node need `iommus = <&smmu 10>` (upstream has it; 6.18.44's DTSI has no `smmu` node)? | Read the *A5-series* DTS patch against whichever DTSI it targets; test both forms on hardware | **D0.3** desk, **D2.5** confirm |
+| 14 | Does the Agilex 5 `svc` node need `iommus = <&smmu 10>` (upstream has it; 6.18.44's DTSI has no `smmu` node)? *(2026-11-17: the binding requires it only for `intel,agilex5-svc`. We inherit it and it is inert with the SMMU disabled. Whether the SMMU is needed by the hardware is T0/T1.)* | Read the *A5-series* DTS patch against whichever DTSI it targets; test both forms on hardware | **D0.3** desk, **D2.5** confirm |
 | 15 | Can the ADV7513's control I2C be muxed onto the HPS bus (*UM* Figure 3-13, not text-extractable)? | Read the figure from the PDF as an image, or the System CD schematic | **D0.1**; does not change DP-10 (§7.4) |
+| 16 | *(added 2026-11-17)* Silicon revision, the revision-A scratch bit, the SDM remap registers and the SMMU's reset state | Test T0 in [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8: register reads at the U-Boot prompt | **first bench session** |
+| 17 | *(added 2026-11-17)* Is there a phase-2 RBF that matches the QSPI phase-1 image, and is the factory image HPS-first at all? | `quartus_pfg -i` on the factory JIC prints an HPS IO hash for an HPS-first image; without a matching RBF, T1 waits for a Quartus build | **desk, before the bench session** |

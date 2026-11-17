@@ -455,6 +455,12 @@ unaffected by any of this; see
 
 ### 6.3 What changes when the pin moves to 7.4
 
+> **Done for shape (b), 2026-11-17:** the DE25 pin is now 7.4-rc3 (local-only, no CI artifact).
+> The SD node uses `altr,agilex5-sd6hc` and `0101` is gone; the svc node stays
+> `intel,agilex-svc` with the SMMU off, so the (a)/(b) choice below is still open for hardware.
+> Details: [`de25-kernel-config.md`](de25-kernel-config.md) 2026-11-17 note,
+> [`de25-dts-rationale.md`](de25-dts-rationale.md) §2.7.
+
 Verified at v7.4-rc1 **[V]**; whether the dtsi `mmc` node lands in 7.5 is **[S]**.
 
 | Area | 7.3.4 (now) | 7.4 |

@@ -351,6 +351,8 @@ header UART, so its banner is now expected — `de25-uboot.md` §11); capture th
   two-stage layout is the target; the plain ext4 card stays until hardware. ~~Owed before the
   switch: an aarch64 stage-1 initramfs stack + its QEMU test path.~~ **Delivered 2026-09-06
   (wave 3 below).** Still owed before the switch: the 7.x re-anchor of patch 0031.
+- **Superseded 2026-11-17:** the DE25 pin is a local-only 7.4 -rc pin with its own hash file
+  ([`de25-kernel-config.md`](de25-kernel-config.md), 2026-11-17 note). Earlier record:
 - The DE25 kernel pin has no Renovate manager and shares `linux.hash` by symlink with the DE10
   registry, so an rt bump replaces the 7.2.y hash line rather than adding one. **This happened on
   2026-09-02** (rt 7.2.2 -> 7.2.3): the DE25 pin was moved to 7.2.3 in the same series of commits

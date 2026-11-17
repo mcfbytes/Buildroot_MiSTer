@@ -2423,6 +2423,10 @@ something a boot artifact should depend on. (`scripts/check-config-fragments.sh`
 
 ### 6.3 Download integrity — `BR2_GLOBAL_PATCH_DIR` (DE25) and the shared hash file
 
+> **2026-11-17:** the DE25 kernel pin is now a local-only 7.4 -rc pin. Its `linux.hash` is a
+> DE25-local file with one hand-computed sha256, no longer a symlink to `linux-rt.hash`, and
+> Renovate does not manage it ([`de25-kernel-config.md`](de25-kernel-config.md), 2026-11-17 note).
+
 `BR2_DOWNLOAD_FORCE_CHECK_HASHES` comes from `common` (§2.2).
 `BR2_GLOBAL_PATCH_DIR="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/patches"`
 is load-bearing here for exactly ONE reason, and it is not patches: it is

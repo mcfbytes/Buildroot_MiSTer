@@ -21,6 +21,10 @@ a **mainline** board device tree for the Terasic DE25-Nano on Linux 7.3.x.
 > The pin is 7.3.4. **Line citations into `linux-7.2.2` in §1–§3 were not re-anchored** and are
 > still labelled 7.2.2; anything cited as 7.3.4 was read for this update. The `dtbs_check` and
 > structural results in §2 were re-run at 7.3.4 and are restated in §2.6.
+>
+> **Later on 2026-11-17 the pin moved to 7.4-rc3** and `mmc0` was rewritten for v7.4's SD6HC
+> driver (`altr,agilex5-sd6hc`; kernel patch `0101` dropped). §2.7 records that change and its
+> checks; every SD4HC statement elsewhere in this document describes the 7.3.4 node.
 
 The device tree is the highest-risk file on a new board: a wrong value here does not fail the
 build, it fails the *board*, and several of the specific mistakes available on this SoC are
@@ -332,6 +336,39 @@ among them), dtschema 2026.9, before and after the 2026-11-17 board-file change.
 
 Every `iommus` phandle in the §2.5 coverage table is still present. The listing at the top of
 §2.5 is the 7.2.2 blob and shows the old svc compatible.
+
+### 2.7 `mmc0` rewritten for SD6HC at 7.4-rc3 (2026-11-17)
+
+v7.4 adds `Documentation/devicetree/bindings/mmc/cdns,sd6hc.yaml` and an
+`altr,agilex5-sd6hc` match in `drivers/mmc/host/sdhci-cadence-core.c` (driver data: 40-bit DMA
+mask, `SDHCI_QUIRK_CAP_CLOCK_BASE_BROKEN` with the base clock taken from `ciu`, ACMD12/ACMD23
+quirks, and an init hook that asserts and releases all three resets together). The node now
+follows the binding exactly, and matches Altera's own 6.18 dtsi node for the same block:
+
+```
+ mmc@10808000 {
+-        compatible = "intel,agilex5-sd4hc", "cdns,sd4hc";
+-        resets = <&rst SDMMC_RESET>;
+-        clocks = <&clkmgr AGILEX5_L4_MP_CLK>, <&clkmgr AGILEX5_SDMCLK>;
+-        clock-names = "biu", "ciu";
++        compatible = "altr,agilex5-sd6hc", "cdns,sd6hc";
++        resets = <&rst SDMMC_RESET>, <&rst COMBOPHY_RESET>, <&rst SDMMC_OCP_RESET>;
++        reset-names = "sdhc-reset", "combophy", "sdmmc-ocp";
++        clocks = <&clkmgr AGILEX5_SDMCLK>, <&clkmgr AGILEX5_L4_MP_CLK>;
++        clock-names = "ciu", "biu";
+```
+
+Unchanged on purpose: no `dma-coherent` (§4.5), default speed at 25 MHz with `no-1-8-v` and the
+caps mask clearing bit 21 ([U3]). The `sdhci-caps` base-clock override is now inert (the quirk
+ignores the capability's base-clock field) and is kept as harmless. None of the binding's
+`cdns,iocell-*`/`cdns,delay-element-ps` properties is set, so the driver's defaults apply
+**[U — first bench test]**. The probe-time reset means Linux no longer depends on U-Boot's PHY
+state, which retires the "inherited PHY" risk of §3 for this pin.
+
+Checks: compiled with the 7.4-rc3 tree's own `dtc` with default checks plus
+`avoid_unnecessary_addr_size`, `alias_paths`, `unique_unit_address` and `unit_address_vs_reg`:
+**0 warnings**, and byte-identical to the DTB `make de25` built. **`dtbs_check` was not re-run**
+at 7.4-rc3 (no dtschema in this environment). Not run on hardware.
 
 ---
 

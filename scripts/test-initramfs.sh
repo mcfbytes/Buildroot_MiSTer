@@ -224,6 +224,9 @@ KERNEL_VERSION="${TEST_INITRAMFS_KERNEL_VERSION:-$(sed -n "s/^$PIN_SYMBOL=\"\(.*
 if [ -z "${TEST_INITRAMFS_KERNEL_TARBALL:-}" ]; then
 	if [ -f "$ROOT/dl/linux/linux-$KERNEL_VERSION.tar.xz" ]; then
 		KERNEL_TARBALL="$ROOT/dl/linux/linux-$KERNEL_VERSION.tar.xz"
+	elif [ -f "$ROOT/dl/linux/linux-$KERNEL_VERSION.tar.gz" ]; then
+		# -rc pins come from cgit as .tar.gz.
+		KERNEL_TARBALL="$ROOT/dl/linux/linux-$KERNEL_VERSION.tar.gz"
 	else
 		KERNEL_TARBALL="$ROOT/work/linux-$KERNEL_VERSION.tar.xz"
 	fi

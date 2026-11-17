@@ -1,14 +1,17 @@
 # DE25-Nano kernel patch series — what is here and why
 
-**Base:** mainline Linux **7.3.4**, aarch64 (Agilex 5). See
+**Base:** mainline Linux **7.4-rc3**, aarch64 (Agilex 5), since 2026-11-17: a local-only pin with no
+CI artifact ([`docs/de25-kernel-config.md`](../../../../docs/de25-kernel-config.md), 2026-11-17 note). See
 [`docs/de25-implementation-path.md`](../../../../docs/de25-implementation-path.md) §5 for the
-version pin.
+version pin's history.
 
 **Shape.** This directory follows the same house pattern as
 [`board/mister/de10nano/linux-patches-beta/`](../../de10nano/linux-patches-beta/): every patch
 shared with the DE10 is a **relative symlink** into the DE10 series, so there is exactly one copy
 of each shared patch in the tree and a fix to it lands on both boards at once. Only genuinely
-DE25-specific patches are real files here.
+DE25-specific patches are real files here — plus, since the 7.4 move, **six 7.4-rebased copies**
+(`0014`, `0015`, `0031`, `0033`, `0036`, `0061`) that are real files because the DE10's 6.18 and
+7.3 copies no longer apply at zero fuzz (see "RE-ANCHORED AT 7.4-rc3" at the end).
 
 **Numbering.** The shared series keeps its DE10 4-digit prefixes (`0010`–`0042`) so
 `support/scripts/apply-patches.sh` applies it in the same order on both boards. DE25-local
@@ -107,7 +110,7 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 
 | # | Patch | Why |
 |---|---|---|
-| 101 | `0101-mmc-sdhci-cadence-agilex5-40-bit-dma-mask` | **Optional: not needed to boot.** Gives `intel,agilex5-sd4hc` its own `of_device_id` entry whose driver data installs a 40-bit DMA mask via the existing `sdhci_ops->set_dma_mask` hook. With the SMMU disabled, as the board DTS ships, the mask changes nothing (all DRAM is below 4 GiB); it matters only on an SMMU-on leg (`docs/de25-implementation-path.md` §8 Q2). Kept for that leg and for its binding hunk, which completes `Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml` for this integration — the new compatible string, `clocks` widened to 2 with `clock-names` (`biu`, `ciu`), and `iommus`/`dma-coherent` declared — and is what keeps the DE25 `mmc0` node dtbs_check-clean (`docs/de25-dts-rationale.md` §2.4). **Not an upstream candidate:** Linux v7.4 adds `altr,agilex5-sd6hc` with the same 40-bit mask, and that entry replaces this patch when the pin moves ([`docs/de25-vendor-kernel-delta.md`](../../../../docs/de25-vendor-kernel-delta.md) §6). |
+| ~~101~~ | `0101-mmc-sdhci-cadence-agilex5-40-bit-dma-mask` — **DROPPED 2026-11-17 at the 7.4 move**: v7.4's `altr,agilex5-sd6hc` carries the same 40-bit mask, and the DTS now uses it. Original rationale: | **Optional: not needed to boot.** Gives `intel,agilex5-sd4hc` its own `of_device_id` entry whose driver data installs a 40-bit DMA mask via the existing `sdhci_ops->set_dma_mask` hook. With the SMMU disabled, as the board DTS ships, the mask changes nothing (all DRAM is below 4 GiB); it matters only on an SMMU-on leg (`docs/de25-implementation-path.md` §8 Q2). Kept for that leg and for its binding hunk, which completes `Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml` for this integration — the new compatible string, `clocks` widened to 2 with `clock-names` (`biu`, `ciu`), and `iommus`/`dma-coherent` declared — and is what keeps the DE25 `mmc0` node dtbs_check-clean (`docs/de25-dts-rationale.md` §2.4). **Not an upstream candidate:** Linux v7.4 adds `altr,agilex5-sd6hc` with the same 40-bit mask, and that entry replaces this patch when the pin moves ([`docs/de25-vendor-kernel-delta.md`](../../../../docs/de25-vendor-kernel-delta.md) §6). |
 
 `0102-firmware-stratix10-svc-match-agilex5-svc` was **dropped on 2026-11-17**. The board DTS
 now sets `/firmware/svc`'s compatible to `intel,agilex-svc`, which the stock driver matches, so
@@ -129,8 +132,8 @@ runs against upstream; and it would not apply at v7.4 anyway.
 | rtw88 `0067` (2026-09-30) | 1 considered, **1** included |
 | dwc2 `0068` (2026-10-19, fork #114) | 1 considered, **1** included |
 | dwc2 `0069` (2026-11-10, fork #115) | 1 considered, **1** included |
-| DE25-local patches | **1** (`0101`; `0102` dropped 2026-11-17) |
-| **Total applied here** | **39** |
+| DE25-local patches | **0** (`0101` and `0102` both dropped 2026-11-17) |
+| **Total applied here** | **38** (six of them DE25-local 7.4 copies) |
 
 ## Note for the DE25 DTS
 
@@ -220,3 +223,14 @@ RE-VERIFIED AT 7.3.4 (2026-11-17), after dropping `0102`. `apply-patches.sh` on 
 `dtbs_check` on the board DTB at 7.3.4 + this series (dtschema 2026.9) leaves the same **5**
 `fpga-mgr` two-string warnings before and after the `intel,agilex-svc` change, and none about
 the `svc` node's own properties or `mmc@10808000`. No kernel was built for this change, and nothing was run on hardware.
+
+RE-ANCHORED AT 7.4-rc3 (2026-11-17), when the DE25 pin moved to the 7.4 -rc line. On a pristine
+`linux-7.4-rc3`, 29 of the 39 then-current patches applied at zero fuzz. `0101` was dropped
+(superseded by v7.4's SD6HC driver). The other nine were context drift, none upstream: `0034`,
+`0037`, `0042` and `0069` apply again once their predecessors are rebased; five needed new copies —
+`0014`, `0015`, `0033`, `0061` (offsets/fuzz only) and `0036` (`btusb.c` became `btusb_main.c`).
+A sixth copy, `0031`, applied but failed to compile: 7.4's `.symlink` op takes a
+`const struct mnt_idmap *`. Each copy carries a `Forward-port:` line. `lint-kernel-patches.sh`
+passes for all 38; `make de25` builds from scratch with 109 modules and a passing
+`check-sdcard-de25.sh`. The rebased HID/btusb/dwc2 copies are compile-verified only. Not run on
+hardware.

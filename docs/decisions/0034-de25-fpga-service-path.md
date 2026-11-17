@@ -98,6 +98,10 @@ meaning or made the service driver IOMMU-aware. Both happened in v7.4. The pin m
 a decision point, not a routine bump. [`de25-vendor-kernel-delta.md`](../de25-vendor-kernel-delta.md)
 §6.3 lists what changes, including the SD controller, which gets a real driver there.
 
+**2026-11-17 (later):** the pin moved to 7.4-rc3. Only the SD controller changed; the svc node,
+TF-A `0002` and SMMU-off are unchanged, so this decision still stands as Proposed and the
+SMMU-on alternative remains the hardware fallback rather than the default.
+
 ## 7. Not decided here
 
 - Whether TF-A patch `0002` or the kernel robustness findings are sent upstream.

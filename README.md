@@ -525,7 +525,7 @@ one kernel patch fewer. It is also architecture-neutral: stock's patch calls `sy
 directly, which does not exist on arm64. Details:
 [`docs/loop-boot-6.18.md`](docs/loop-boot-6.18.md), [`PLAN.md` §5](PLAN.md).
 
-**DE25-Nano.** A bare developer OS for the Agilex 5 DE25-Nano (aarch64, 7.3 kernel) builds
+**DE25-Nano.** A bare developer OS for the Agilex 5 DE25-Nano (aarch64, 7.4 -rc kernel) builds
 from the same tree and shares the userspace profiles and most kernel patches. It has no
 MiSTer binaries yet and its own manual CI lane. Start at
 [`docs/de25-nano-overview.md`](docs/de25-nano-overview.md).

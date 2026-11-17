@@ -2,7 +2,7 @@
 /*
  * Terasic DE25-Nano — Intel/Altera Agilex 5 (A5EB013BB23BE4S)
  *
- * Board device tree for mainline Linux 7.3.x, on top of mainline's
+ * Board device tree for mainline Linux 7.4.x, on top of mainline's
  * socfpga_agilex5.dtsi. Rationale per node: docs/de25-dts-rationale.md.
  *
  * Copyright (C) 2023, Intel Corporation           (upstream socfpga_agilex5)
@@ -72,24 +72,24 @@
 &soc {
 	/* Absent from mainline's dtsi. The block is an SD6HC; this binds the SD4HC driver. */
 	mmc0: mmc@10808000 {
-		compatible = "intel,agilex5-sd4hc", "cdns,sd4hc";
+		compatible = "altr,agilex5-sd6hc", "cdns,sd6hc";
 		reg = <0x10808000 0x1000>;
 		interrupts = <GIC_SPI 96 IRQ_TYPE_LEVEL_HIGH>;
-		resets = <&rst SDMMC_RESET>;
-		clocks = <&clkmgr AGILEX5_L4_MP_CLK>,
-			 <&clkmgr AGILEX5_SDMCLK>;
-		clock-names = "biu", "ciu";
+		resets = <&rst SDMMC_RESET>, <&rst COMBOPHY_RESET>, <&rst SDMMC_OCP_RESET>;
+		reset-names = "sdhc-reset", "combophy", "sdmmc-ocp";
+		clocks = <&clkmgr AGILEX5_SDMCLK>, <&clkmgr AGILEX5_L4_MP_CLK>;
+		clock-names = "ciu", "biu";
 		iommus = <&smmu 5>;
 		/* No dma-coherent until measured with the SMMU off: docs/de25-dts-rationale.md §4.5. */
 
 		bus-width = <4>;
-		/* Default speed at 25 MHz, the mode U-Boot leaves the PHY in. Never add cdns,phy-*. */
+		/* First boot: default speed at 25 MHz; the SD6HC driver programs the PHY itself. */
 		max-frequency = <25000000>;
 		disable-wp;
 		no-1-8-v;
 		no-sdio;
 
-		/* <caps1 caps>: 200 MHz base clock; mask SDR50 tuning and high speed (bit 21). */
+		/* <caps1 caps>: mask SDR50 tuning and high speed (bit 21); base clock comes from ciu. */
 		sdhci-caps = <0x00000000 0x0000c800>;
 		sdhci-caps-mask = <0x00002000 0x0020ff00>;
 

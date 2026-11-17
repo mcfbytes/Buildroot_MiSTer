@@ -20,6 +20,19 @@ load-bearing comments were folded into this document when that file was deleted.
 > carries its own `linux.config`; the shared `board/mister/common/linux-mister.fragment` remains
 > the DE25's layer. Re-create the proof from git history if the DE10 adopts the fragment.
 
+> **2026-11-17 — kernel pin: 7.4-rc3, local-only.** The DE25 left the DE10 RT kernel's 7.3.y
+> line for the 7.4 -rc line (`BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="7.4-rc3"` in
+> `configs/mister_de25nano_defconfig`), for v7.4's SD6HC driver and Agilex 5 service path
+> ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §6.3). DE25 builds are
+> local-only until a board has run one, so the pin is **not managed by Renovate** and is no
+> longer tied to the RT kernel's `linux-rt.hash`: `board/mister/de25nano/patches/linux/linux.hash`
+> is a DE25-local file holding one hand-computed sha256 for the cgit `-rc` tarball
+> (`BR2_DOWNLOAD_FORCE_CHECK_HASHES=y` stays, because `scripts/check-defconfigs.sh` requires both
+> boards to agree on it). Moving the pin: edit the version, `sha256sum dl/linux/linux-<pin>.tar.gz`
+> into that file, re-run the patch series (`board/mister/de25nano/linux-patches/README.md`, last
+> section). All 492 requested config lines survive `olddefconfig` at 7.4-rc3; `make de25` builds
+> from scratch. Statements below that name 7.2.x/7.3.4 are dated records from those pins.
+
 ## 1. The problem this closes
 
 Wave 1 built the DE25 kernel as **arm64's in-tree `defconfig` plus a 38-symbol
@@ -401,6 +414,12 @@ left. That is why the board DTS and the U-Boot DTS both hold the card at default
 speed, and why no `cdns,phy-*` property may be added to the Linux node
 ([`de25-dts-rationale.md`](de25-dts-rationale.md) §3, [U12]). v7.4 splits the
 driver and adds real SD6HC support under the same Kconfig symbol.
+
+**2026-11-17, at 7.4-rc3:** the board DTS now binds `altr,agilex5-sd6hc` (three named resets,
+`ciu`/`biu` clocks), which resets the controller and combo PHY at probe and programs the PHY per
+speed mode itself, so Linux no longer inherits U-Boot's PHY state. `MMC_SDHCI_CADENCE=y` builds
+`sdhci-cadence-core.o` + `sdhci-cadence-phy-v6.o`; no new symbol. First boot still runs default
+speed at 25 MHz; lifting it is now a test step rather than a driver gap.
 
 ### 4.3 The temporary PHY driver set
 

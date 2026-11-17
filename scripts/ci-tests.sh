@@ -986,7 +986,7 @@ fi
 # Asserted on the module trees because olddefconfig drops a fragment symbol silently.
 RTW89_7X_MODS="rtw89_8852au rtw89_8852cu rtw89_8922au"
 # A bare x.y pin (a .0 release, e.g. 7.3) installs its modules under x.y.0.
-kver_dir() { case "$1" in *.*.*|'') printf '%s' "$1" ;; *) printf '%s.0' "$1" ;; esac; }
+kver_dir() { case "$1" in *-rc*) printf '%s.0-%s' "${1%%-*}" "${1#*-}" ;; *.*.*|'') printf '%s' "$1" ;; *) printf '%s.0' "$1" ;; esac; }
 RT_KVER=$(kver_dir "$(sed -n 's/^BR2_PACKAGE_LINUX_RT_VERSION="\([^"]*\)".*$/\1/p' \
 	"$ROOT/configs/mister_de10nano_defconfig" | tail -1)")
 rt89_missing=""

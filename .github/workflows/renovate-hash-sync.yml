@@ -117,10 +117,9 @@ on:
       # BOTH kernel pins live in this one committed defconfig since ADR 0030
       # (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE for the stable 6.18.y kernel,
       # BR2_PACKAGE_LINUX_RT_VERSION for the RT/beta 7.x line), so it is the
-      # only kernel path that has to let a Renovate kernel PR through. (An RT
-      # bump PR also touches configs/mister_de25nano_defconfig, whose 7.x pin
-      # moves in the same PR; it needs no entry of its own because this file
-      # is always in the same diff.) The RT pin's history matters for a
+      # only kernel path that has to let a Renovate kernel PR through. (Until
+      # 2026-11-17 an RT bump PR also moved the DE25 pin; that pin is now a
+      # local-only 7.4 -rc pin that Renovate does not manage.) The RT pin's history matters for a
       # reader coming from an older commit: it was deliberately NOT triggering
       # this workflow while it tracked mainline -rc (no signed manifest exists
       # for a cgit snapshot), joined on 2026-08-17 when Linux 7.2 released and

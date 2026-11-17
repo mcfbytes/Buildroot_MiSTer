@@ -23,7 +23,7 @@
 # scripts/hash-sync-buildroot.sh -- never from a downloaded tarball. Keep both
 # lines exactly this shape: four scripts and renovate.json parse them.
 BUILDROOT_VERSION  ?= 2026.08.2
-BUILDROOT_SHA256   ?= 38a6c152490096018720a9ade379ee1e571c9bf5f93a3657a166566945a98b0d
+BUILDROOT_SHA256   ?= 8256118146429958ebb9695e7649233875efb5a9568cf7b192017200f7c5e9d2
 
 ROOT_DIR   := $(CURDIR)
 O          ?= $(ROOT_DIR)/output

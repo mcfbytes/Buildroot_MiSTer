@@ -871,3 +871,11 @@ change is the per-`fork`/`exec` allocation the feature does even while dormant.
 
 See also: the RT-feasibility and 7.2-port findings in the project memory / the
 session that produced this scaffold.
+
+## 12. `CONFIG_CACHE_L2X0_PMU` is on (both kernels)
+
+`board/mister/de10nano/linux.config` sets `CONFIG_CACHE_L2X0_PMU=y`, so both the 6.18
+and the RT kernel expose the PL310 L2 event counters to perf as the `l2c_310` PMU
+(`/sys/bus/event_source/devices/l2c_310`). Purpose: measuring HPS-to-DDR traffic. It
+costs nothing unless a perf session opens the PMU. The PL310 node is already in the
+upstream `socfpga.dtsi` (`cache-controller@fffef000`), so no DTS change is involved.

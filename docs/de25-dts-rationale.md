@@ -367,8 +367,12 @@ state, which retires the "inherited PHY" risk of §3 for this pin.
 
 Checks: compiled with the 7.4-rc3 tree's own `dtc` with default checks plus
 `avoid_unnecessary_addr_size`, `alias_paths`, `unique_unit_address` and `unit_address_vs_reg`:
-**0 warnings**, and byte-identical to the DTB `make de25` built. **`dtbs_check` was not re-run**
-at 7.4-rc3 (no dtschema in this environment). Not run on hardware.
+**0 warnings**, and byte-identical to the DTB `make de25` built. Then, by the §1 method on a
+pristine `linux-7.4-rc3` (no DE25 patch touches a binding any more, so stock = shipped):
+`W=1` 0 warnings; `W=2` only the six `snps,*_osr_lmt` property-name warnings from mainline's
+own dtsi, the same six the in-tree SoCDK board shows; **`dtbs_check` (dtschema 2026.9): the same
+5 `fpga-mgr` two-string warnings as at 7.3.4 (§2.6) and nothing else** — none for `svc` or
+`mmc@10808000`, which validates cleanly against `cdns,sd6hc.yaml`. Not run on hardware.
 
 ---
 

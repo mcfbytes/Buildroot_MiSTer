@@ -270,3 +270,53 @@ gains exactly the UIO and cmdline symbols. QEMU has no Cyclone V machine, so pro
 - stock Main behaves as before; a UIO client resolves `mister_fpga_mgr` through UIO on both
   lines, still SO;
 - the aperture's WC throughput on the 6.18 line.
+
+## 7. DE25-Nano (Agilex 5): the same interface, moved
+
+The DE25 board DTS (`board/mister/de25nano/socfpga_agilex5_de25nano.dts`, last `/ { }` block)
+carries the same `/mister` group with the **same UIO names**, so the shared
+`65-mister-uio.rules` (the DE25 takes the DE10's whole rootfs overlay) builds the same
+`/dev/mister/*` tree and `0045` (symlinked into the DE25 series) gives `ddr-aperture` the same
+write-combined mapping. Owner decision 2026-11-17: these windows are a **starting point** for an
+aarch64 Main_MiSTer, not a frozen ABI — they may move.
+
+**Memory: the DE10 layout plus `0x8000_0000`.** The DE25's 1 GiB of HPS LPDDR4 starts at
+`0x8000_0000`; the public DE25 port (`ahmadexp/MiSTer-DE25-Nano`) boots `mem=512M`, keeps a 4 KiB
+handoff page at `0x9fff_f000` and gives cores `0xa000_0000`–`0xbfff_ffff`, with its Main patch
+adding `0x8000_0000` to every DE10 address below 1 GiB. That is exactly the DE10 map shifted, so
+the DE25 takes the DE10's tiles (§2.1) at the same offset rather than the port's coarser two:
+
+| DE10 | DE25 | node |
+|---|---|---|
+| `0x1ff0_0000` +1020 KiB | `0x9ff0_0000` | `mister-ddr-low`, `/dev/mister/ddr-low` (first `reg`) |
+| `0x1fff_f000` +4 KiB | `0x9fff_f000` | `mister-handoff`, `ddr-low`'s second `reg` |
+| `0x2000_0000` +24 MiB / `0x2180_0000` +8 MiB / `0x2200_0000` +24 MiB / `0x2380_0000` +456 MiB | `0xa000_0000` / `0xa180_0000` / `0xa200_0000` / `0xa380_0000` | scaler / core-lo / fb / core-hi tiles |
+| `0x2000_0000` +512 MiB | `0xa000_0000` | `ddr-aperture` (WC) |
+
+`mem=511M` is on the extlinux `append` line (`post-image.sh`, checked by
+`check-sdcard-de25.sh`) as well as the `no-map` tiles, as on the DE10. Nothing in the base DTB
+claims `mister-fb`: there is no DE25 `MiSTer_fb` yet (`0001` is DE10-only).
+
+**Bridges.** `lw-bridge@2000_0000` (LWH2F, 2 MiB as on the DE10; the port's shell decodes the
+first 4 MiB and puts its GPO/GPI PIOs at `+0x2_0000`/`+0x2_0010`) and `h2f-bridge@4000_0000`
+(the first 1 GiB H2F window; the 15 GiB and 240 GiB windows above 4 GiB are not described).
+Addresses from Altera's Agilex 5 GSRD user guide **[V doc, U on this board]**. There is **no
+`fpga-mgr` node**: Cyclone V's GPO/GPI registers live in the HPS FPGA manager, Agilex 5 has no
+equivalent, so a DE25 shell must provide them as fabric PIOs behind `lw-bridge`; the shared
+rule's `mister_fpga_mgr` line simply never matches.
+
+**Interrupts.** 63 nodes `f2h-irq1..63`, same names, types and doorbell aliases as §2.3, at
+**GIC SPI cell `17 + N`** (17–80). Evidence **[U, desk]**: Altera's Agilex devicetree HOWTO maps
+f2h bit 0 to GIC interrupt 49 = SPI 17; an Altera KB note says the Agilex 5 GHRD's push-button
+PIO belongs on IRQ 17; and both mainline Agilex 5 and Agilex 7 dtsi leave SPI 4–80 unused. The
+first board run (or a GHRD-generated DTS) must confirm it before any core relies on a line.
+
+**Hazard, stronger than H-1.** On Agilex 5 a read of `lw-bridge`/`h2f-bridge` while the fabric is
+unconfigured, or too soon after config-complete, is an asynchronous SError or a hung AXI bus
+(`de25-reference-implementation.md`). Probing a UIO node touches nothing, so the nodes are safe in
+the base DTB; userspace must see `/sys/class/fpga_manager/fpga0/state` = `operating` first.
+
+**Kernel side.** `CONFIG_UIO`, `CONFIG_UIO_PDRV_GENIRQ` (DE25 `linux.config` §15); the
+`uio_pdrv_genirq.of_id=generic-uio` binding rides the extlinux `append` line instead of the DE10's
+`CONFIG_CMDLINE` + `CMDLINE_EXTEND`, because the DE25's command line is ours end to end.
+`board/mister/de25nano/post-build.sh` fails the build if a DTS UIO name has no rule.

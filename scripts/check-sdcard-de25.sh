@@ -76,8 +76,8 @@
 #     one; the `extent` feature is what distinguishes an actual ext4 from an
 #     ext2 image that merely got named .ext4.
 #
-#  6. THE IMAGE FITS A BUDGET. p1 (256 MiB) + p2 (rootfs.ext4, 256 MiB today) +
-#     1 MiB of alignment ≈ 513 MiB. $EXPECT_MAX_IMAGE_BYTES defaults to 768 MiB:
+#  6. THE IMAGE FITS A BUDGET. p1 (256 MiB) + p2 (rootfs.ext4, 512 MiB = the DE10's
+#     size since 2026-11-17) + 1 MiB of alignment ≈ 769 MiB. $EXPECT_MAX_IMAGE_BYTES defaults to 1 GiB:
 #     enough headroom that a modest rootfs bump does not trip it, tight enough
 #     that a runaway one does. Raise it deliberately, in the commit that grows
 #     the rootfs — never to make a red run go green.
@@ -100,7 +100,7 @@
 #   $EXPECT_DTB_NAME        default socfpga_agilex5_de25nano.dtb
 #   $EXPECT_ROOT_DEV        default /dev/mmcblk0p2
 #   $EXPECT_CONSOLE         default ttyS0,115200
-#   $EXPECT_MAX_IMAGE_BYTES default 805306368 (768 MiB)
+#   $EXPECT_MAX_IMAGE_BYTES default 1073741824 (1 GiB)
 #   $MIN_BOOT_PART_SECTORS  default 524288 (256 MiB)
 #
 # Host tools: sfdisk (util-linux), mtools (mdir/mcopy/mlabel), e2fsprogs
@@ -139,7 +139,7 @@ FORBIDDEN_PART_TYPE=a2        # the Cyclone V BootROM's type byte; alien here
 : "${EXPECT_DTB_NAME:=socfpga_agilex5_de25nano.dtb}"
 : "${EXPECT_ROOT_DEV:=/dev/mmcblk0p2}"
 : "${EXPECT_CONSOLE:=ttyS0,115200}"
-: "${EXPECT_MAX_IMAGE_BYTES:=805306368}"
+: "${EXPECT_MAX_IMAGE_BYTES:=1073741824}"
 : "${MIN_BOOT_PART_SECTORS:=524288}"
 
 EXPECT_KERNEL_NAME=Image
@@ -596,6 +596,14 @@ else
 		case " $append " in
 			*" rootwait "*) ok "kernel args include rootwait (the SD controller probes asynchronously)" ;;
 			*) bad "kernel args do not include rootwait -- the root device may not exist yet when the kernel looks for it" ;;
+		esac
+		case " $append " in
+			*" mem=511M "*) ok "kernel args include mem=511M (Linux stays below the MiSTer windows at 0x9ff00000)" ;;
+			*) bad "kernel args do not include mem=511M -- Linux would allocate the FPGA-shared LPDDR" ;;
+		esac
+		case " $append " in
+			*" uio_pdrv_genirq.of_id=generic-uio "*) ok "kernel args bind the generic-uio nodes (/dev/mister)" ;;
+			*) bad "kernel args lack uio_pdrv_genirq.of_id=generic-uio -- no /dev/mister node would bind" ;;
 		esac
 
 		# The QSPI grep. Over-broad on purpose; see QSPI_FORBIDDEN above.

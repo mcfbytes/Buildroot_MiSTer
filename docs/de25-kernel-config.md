@@ -455,6 +455,15 @@ whose gate the bootloader left closed will not work however its node is written.
 
 ---
 
+### 4.x `linux.config` §15 — `/dev/mister` and the HPS key (2026-11-17)
+
+`CONFIG_UIO` + `CONFIG_UIO_PDRV_GENIRQ` bind the DTS's `generic-uio` nodes, with the `of_id` on the
+extlinux `append` line rather than in `CONFIG_CMDLINE` (`dts-mister-fpga-interface.md` §7);
+`CONFIG_KEYBOARD_GPIO` drives `hps_key0`. `0045-uio-writecombine` joined the series with them.
+Since the same day the image also carries the DE10's out-of-tree drivers (xone, rtl8852cu,
+aic8800), so the §7 notes that `xow-firmware`/xone are absent and that the rootfs is 256 MiB are
+history: 121 modules ship, in a 512 MiB rootfs.
+
 ## 5. What is deliberately OFF, and why
 
 ### 5.1 In the DE25 base — the five exclusions that do the diet

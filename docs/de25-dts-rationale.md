@@ -439,8 +439,22 @@ file is named.
 | `disable-over-current` on `&watchdog4` | TERASIC → ALTERA → PORT | **dropped** | A copy-paste of the `usb0` property onto a watchdog. Meaningless to `snps,dw-wdt`, absent from its binding, propagated unchanged through all three trees. |
 | `&osc1 { clock-frequency = <25000000> }` | all three | **kept** | MAINLINE declares `osc1` as a `fixed-clock` with `clock-frequency = <0>` (`socfpga_agilex5.dtsi:139-143`); it is the root of the peripheral clock tree, so leaving it at 0 gives a zero rate everywhere downstream. Exactly the `osc1` question [`dts-comparison.md`](dts-comparison.md) §4.1 asked for the DE10 — and here, unlike there, the answer is that it *does* need setting. |
 | `&qspi` + `flash@0` + partitions | ALTERA only | **dropped** | Not in the §3.1 node set; TERASIC and PORT both leave QSPI disabled. Enabling it exposes the **factory boot image** to `/dev/mtd` writes, and the QSPI contents are the board's un-recoverable-without-Quartus state ([`de25-boot-chain.md`](de25-boot-chain.md) §7 rows 14/15). Nothing in wave 1 needs it. |
-| `mister_fb`, `ascal_scratch`, `x86ram`, `mister_fb_mem` reserved regions | PORT only | **dropped** | ADR 0027 scopes wave 1 to a bare developer OS with **no MiSTer binaries**. These describe a fabric/Main_MiSTer memory map that does not exist yet, and `de25-reference-implementation.md` already flags the port's 2 GiB assumption underneath `x86ram@b0000000` as unverified. |
+| `mister_fb`, `ascal_scratch`, `x86ram`, `mister_fb_mem` reserved regions | PORT only | **replaced 2026-11-17** | Not copied. The DTS now carries the DE10's own `reserved-memory` tiles and `/mister` UIO group at DE10 address + `0x8000_0000` (the port's convention), with the DE10's names; see [`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7. |
 | `&i2c1`'s vendor `status` whitespace, `&mmc` label | — | n/a | We define our own label `mmc0`; the references' `&mmc` label lives in a `.dtsi` we do not patch. |
+
+### The MiSTer `/mister` group, the f2h lines and the HPS key (2026-11-17)
+
+The last `/ { }` block adds the MiSTer HPS<->FPGA interface with the DE10's node and UIO names,
+so the shared udev rule builds the same `/dev/mister/*`; addresses, the SPI `17 + N` evidence and
+the SError hazard are in [`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7, not
+repeated here. Beside it, `gpio-keys` declares `hps_key0` on HPS GPIO40 (`portb` 16, beside the
+LED on 17), which the public port wires to the board's HPS key; `GPIO_ACTIVE_LOW` is assumed from
+the LED and is **[U]**. The G-sensor behind HPS GPIO34's I2C enable is not described (part
+unidentified). Checks on the extended tree: `dtc` with the §1 warning set, 0 warnings;
+`dt-validate` (dtschema 2026.9) adds only `generic-uio` noise — 67 `linux,uio-name` "not of type"
+lines and one unknown-vendor `mister,map-writecombine`, because `generic-uio` has no binding (the
+DE10's `0072` draws the same) — beside the §2.7 `fpga-mgr` five; `gpio-keys` and
+`reserved-memory` validate clean.
 
 ### The svc node — described as `intel,agilex-svc`
 

@@ -1,0 +1,53 @@
+os_intfs: build without ndo_do_ioctl on Linux 7.4
+
+Linux 7.4 removes net_device_ops.ndo_do_ioctl; private ioctls already
+reach the driver through ndo_siocdevprivate (5.15+). Drop the member on
+7.4+ and identify our netdevs by that hook instead. No change below 7.4.
+
+Upstream-Status: Pending
+
+--- a/os_dep/linux/os_intfs.c
++++ b/os_dep/linux/os_intfs.c
+@@ -210,12 +210,22 @@
+ #endif
+ }
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 4, 0))
++static int rtw_siocdevprivate(struct net_device *dev, struct ifreq *ifr,
++			      void __user *data, int cmd);
++#endif
++
+ static u8 is_rtw_ndev(struct net_device *ndev)
+ {
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 29))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(7, 4, 0))
++	return ndev->netdev_ops
++		&& ndev->netdev_ops->ndo_siocdevprivate == rtw_siocdevprivate;
++#else
+ 	return ndev->netdev_ops
+ 		&& ndev->netdev_ops->ndo_do_ioctl
+ 		&& ndev->netdev_ops->ndo_do_ioctl == rtw_ioctl;
++#endif
+ #else
+ 	return ndev->do_ioctl
+ 		&& ndev->do_ioctl == rtw_ioctl;
+@@ -360,7 +370,9 @@
+ #endif
+ 	.ndo_set_mac_address = rtw_net_set_mac_address,
+ 	.ndo_get_stats = rtw_net_get_stats,
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(7, 4, 0))
+ 	.ndo_do_ioctl = rtw_ioctl,
++#endif
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+ 	.ndo_siocdevprivate = rtw_siocdevprivate,
+ #endif
+@@ -1775,7 +1787,9 @@
+ 	.ndo_start_xmit = rtw_xmit_entry,
+ 	.ndo_set_mac_address = rtw_net_set_mac_address,
+ 	.ndo_get_stats = rtw_net_get_stats,
++#if (LINUX_VERSION_CODE < KERNEL_VERSION(7, 4, 0))
+ 	.ndo_do_ioctl = rtw_ioctl,
++#endif
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+ 	.ndo_siocdevprivate = rtw_siocdevprivate,
+ #endif

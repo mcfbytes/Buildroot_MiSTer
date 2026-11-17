@@ -80,7 +80,11 @@ SDCARD_NAME="sdcard-de25.img"                # the `image` section in the cfg
 #     `earlycon` (no argument) picks the port up from stdout-path.
 ROOT_DEV=/dev/mmcblk0p2
 CONSOLE_ARG=ttyS0,115200
-BOOTARGS="root=$ROOT_DEV rw rootwait console=$CONSOLE_ARG earlycon"
+# mem=511M keeps Linux below the MiSTer windows at 0x9ff00000; the of_id binds the
+# generic-uio nodes (docs/dts-mister-fpga-interface.md §7).
+MEM_ARG=511M
+UIO_ARG=uio_pdrv_genirq.of_id=generic-uio
+BOOTARGS="root=$ROOT_DEV rw rootwait console=$CONSOLE_ARG earlycon mem=$MEM_ARG $UIO_ARG"
 
 die() {
 	echo "$prog: FATAL: $*" >&2

@@ -77,8 +77,12 @@ label de25
 	menu label MiSTer DE25-Nano developer OS
 	kernel /Image
 	fdt /socfpga_agilex5_de25nano.dtb
-	append root=/dev/mmcblk0p2 rw rootwait console=ttyS0,115200 earlycon
+	append root=/dev/mmcblk0p2 rw rootwait console=ttyS0,115200 earlycon mem=511M uio_pdrv_genirq.of_id=generic-uio
 ```
+
+`mem=511M` keeps Linux below the FPGA-shared LPDDR at `0x9ff0_0000` and the `of_id` binds the
+`/dev/mister` UIO nodes ([`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7);
+`check-sdcard-de25.sh` asserts both.
 
 `console=ttyS0,115200` is HPS **uart1** (`serial@10c02100`), aliased `serial0` with
 `stdout-path = "serial0:115200n8"` in `board/mister/de25nano/socfpga_agilex5_de25nano.dts`. It is

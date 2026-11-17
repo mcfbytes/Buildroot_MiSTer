@@ -651,7 +651,9 @@ pin time), hash-verified. It builds one module, `8852cu.ko`, into
 One patch is carried: `0001-mac_ax-use-div_u64-for-64-bit-division-on-32-bit-arch.patch`
 swaps a plain `u64 / 1000` in `phl/hal_g6/mac/mac_ax/fwcmd.c` for the kernel's
 `div_u64()`; without it the module fails at `modpost` on ARM32 with
-`"__aeabi_uldivmod" [8852cu.ko] undefined!`. Every version bump must re-check it.
+`"__aeabi_uldivmod" [8852cu.ko] undefined!`. Every version bump must re-check it. A second,
+`0002-os_intfs-build-without-ndo_do_ioctl-on-7.4.patch` (2026-11-17, for the DE25's 7.4 kernel),
+drops the `ndo_do_ioctl` member 7.4 removed; it is version-guarded, a no-op below 7.4.
 
 Chips: **RTL8852CU / RTL8832CU** — Wi-Fi 6E, 2×2, 2.4/5/**6** GHz.
 

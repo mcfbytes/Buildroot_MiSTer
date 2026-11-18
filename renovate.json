@@ -119,7 +119,9 @@
   ],
   "automerge": false,
   "platformAutomerge": false,
-  "dependencyDashboard": true,
+  "dependencyDashboard": {
+    "enabled": true
+  },
   "prConcurrentLimit": 2,
   "prHourlyLimit": 2,
   "schedule": [
@@ -164,7 +166,7 @@
     },
     {
       "customType": "regex",
-      "description": "Bump the pinned 6.18.y kernel (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE), constrained to the current longterm line by the custom datasource above. Since ADR 0030 (2026-09-11) the pin lives in exactly ONE file, configs/mister_de10nano_defconfig (the committed Buildroot defconfig; the fragment stacks are gone): the shipped image's stack and the kernel-only stack every kernel variant builds on both include that fragment (configs/fragments/stacks.mk), so there is no mirrored copy to bump alongside it any more. (Before the split BOTH configs/mister_de10nano_defconfig and configs/mister_kernel_defconfig were listed, because a manager covering only the main one bumped half the repo and left the copy behind -- which is exactly what happened on the 6.18.38 -> 6.18.39 bump and was caught, loudly, by the lockstep check. That failure mode is gone by construction; scripts/check-kernel-defconfig-sync.sh now guards the construction instead.) configs/mister_rt.fragment and configs/fragments/de25nano.fragment carry the same SYMBOL but are deliberately NOT matched here: both pin the 7.2 line (the rt fragment has its own manager below; the DE25 pin is unmanaged today). The companion tarball hash (board/mister/de10nano/patches/linux/linux.hash) is NOT updated here -- it comes from kernel.org's own signed sha256sums.asc; see .github/workflows/renovate-hash-sync.yml. CI (build.yml, pull_request-triggered) then proves the carried Linux patches still apply against the bumped source -- see docs/renovate.md and PLAN.md \u00a713. The README.md badge carries the same version (managerFilePatterns + second matchString), so it bumps in the same PR; keep the badge text and this matchString in step.",
+      "description": "Bump the pinned 6.18.y kernel (BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE), constrained to the current longterm line by the custom datasource above. Since ADR 0030 (2026-09-11) the pin lives in exactly ONE file, configs/mister_de10nano_defconfig (the committed Buildroot defconfig; the fragment stacks are gone): the shipped image's stack and the kernel-only stack every kernel variant builds on both include that fragment (configs/fragments/stacks.mk), so there is no mirrored copy to bump alongside it any more. (Before the split BOTH configs/mister_de10nano_defconfig and configs/mister_kernel_defconfig were listed, because a manager covering only the main one bumped half the repo and left the copy behind -- which is exactly what happened on the 6.18.38 -> 6.18.39 bump and was caught, loudly, by the lockstep check. That failure mode is gone by construction; scripts/check-kernel-defconfig-sync.sh now guards the construction instead.) configs/mister_rt.fragment and configs/fragments/de25nano.fragment carry the same SYMBOL but are deliberately NOT matched here: both pin the 7.2 line (the rt fragment has its own manager below; the DE25 pin is unmanaged today). The companion tarball hash (board/mister/de10nano/patches/linux/linux.hash) is NOT updated here -- it comes from kernel.org's own signed sha256sums.asc; see .github/workflows/renovate-hash-sync.yml. CI (build.yml, pull_request-triggered) then proves the carried Linux patches still apply against the bumped source -- see docs/renovate.md and PLAN.md §13. The README.md badge carries the same version (managerFilePatterns + second matchString), so it bumps in the same PR; keep the badge text and this matchString in step.",
       "managerFilePatterns": [
         "/^configs/mister_de10nano_defconfig$/",
         "/^README\\.md$/"

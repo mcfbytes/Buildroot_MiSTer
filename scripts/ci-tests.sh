@@ -1407,6 +1407,16 @@ if [ "$uio_db_bad" -eq 0 ]; then
 else
 	fail "65-mister-uio.rules aliases mister/doorbell/1..8 to f2h-irq8..15" "an alias is missing or points at the wrong line"
 fi
+# The mister user (8429, also in video for /dev/fb0) owns every /dev/mister UIO node.
+if printf '%s\n' "$uio_rules" | grep -qxF 'SUBSYSTEM=="uio", ATTR{name}=="mister_*", GROUP="mister", MODE="0660"' &&
+	tar xOf "$ROOTFS_TAR" ./etc/passwd 2>/dev/null | grep -q '^mister:x:8429:8429:' &&
+	tar xOf "$ROOTFS_TAR" ./etc/group 2>/dev/null | grep -q '^mister:x:8429:' &&
+	tar xOf "$ROOTFS_TAR" ./etc/group 2>/dev/null | grep -Eq '^video:x:28:(.*,)?mister(,|$)'; then
+	pass "/dev/mister UIO nodes are root:mister 0660; mister is uid/gid 8429 and in video"
+else
+	fail "/dev/mister UIO nodes are root:mister 0660; mister is uid/gid 8429 and in video" \
+		"65-mister-uio.rules, etc/passwd or etc/group changed"
+fi
 
 # -- vhd_mount's mount point -------------------------------------------------
 # vhd_mount mounts /dev/loop1p1 on /media/rootfs; "/" is read-only at runtime,

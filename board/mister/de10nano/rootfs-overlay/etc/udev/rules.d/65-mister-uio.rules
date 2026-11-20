@@ -68,4 +68,6 @@ SUBSYSTEM=="uio", ATTR{name}=="mister_f2h_irq60", SYMLINK+="mister/irq/f2h-irq60
 SUBSYSTEM=="uio", ATTR{name}=="mister_f2h_irq61", SYMLINK+="mister/irq/f2h-irq61"
 SUBSYSTEM=="uio", ATTR{name}=="mister_f2h_irq62", SYMLINK+="mister/irq/f2h-irq62"
 SUBSYSTEM=="uio", ATTR{name}=="mister_f2h_irq63", SYMLINK+="mister/irq/f2h-irq63"
+# Group mister (8429) gets the nodes; fb stays group video, which mister is in.
+SUBSYSTEM=="uio", ATTR{name}=="mister_*", GROUP="mister", MODE="0660"
 SUBSYSTEM=="graphics", KERNEL=="fb[0-9]*", ATTR{name}=="MiSTer_fb", SYMLINK+="mister/fb"

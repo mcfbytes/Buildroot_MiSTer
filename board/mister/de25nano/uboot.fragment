@@ -297,3 +297,18 @@ CONFIG_DISTRO_DEFAULTS=y
 # manual `booti` do something surprising on real hardware.
 CONFIG_USE_BOOTARGS=y
 CONFIG_BOOTARGS="console=ttyS0,115200 root=/dev/mmcblk0p2 rw rootwait"
+
+################################################################################
+# SD link: ComboPHY (Agilex 5 analog frontend)
+################################################################################
+#
+# Mainline v2026.07 has NO ComboPHY support (no driver, no dts node, no call
+# from the SDHCI stack); Terasic's u-boot-socfpga de25-nano-v2025.01 carries
+# drivers/phy/cadence/phy-cadence-combophy.c and its sdhci-cadence refuses to
+# probe without "combo-phy". Bring-up evidence: factory itb (with ComboPHY
+# init) detects the SD card 10/10, our itb without it ~2/5 ("No partition
+# table"). The driver is patched into the build tree until upstream grows one
+# (see board/mister/de25nano docs and the issue draft). UCLASS_PHY is required
+# for generic_phy_get_by_name() from the sdhci-cadence hook.
+CONFIG_PHY=y
+CONFIG_PHY_CADENCE_COMBOPHY=y

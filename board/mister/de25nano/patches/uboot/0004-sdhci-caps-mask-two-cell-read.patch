@@ -1,0 +1,25 @@
+--- a/drivers/mmc/sdhci.c
++++ b/drivers/mmc/sdhci.c
+@@ -868,8 +868,20 @@
+ #if CONFIG_IS_ENABLED(DM_MMC)
+ 	u64 dt_caps, dt_caps_mask;
+ 
+-	dt_caps_mask = dev_read_u64_default(host->mmc->dev,
+-					    "sdhci-caps-mask", 0);
++	/*
++	 * "sdhci-caps-mask" is a two-cell <caps0 caps1> property, but the
++	 * u64 read below would put cell 0 into the HIGH half of the u64,
++	 * after which lower_32_bits() (applied to CAPS0) would return the
++	 * CAPS1 mask and upper_32_bits() (applied to CAPS1) the CAPS0 mask
++	 * -- the two halves applied swapped. Read the cells explicitly.
++	 */
++	{
++		u32 caps_mask_arr[2] = { 0, 0 };
++
++		dev_read_u32_array(host->mmc->dev, "sdhci-caps-mask",
++				   caps_mask_arr, 2);
++		dt_caps_mask = ((u64)caps_mask_arr[1] << 32) | caps_mask_arr[0];
++	}
+ 	dt_caps = dev_read_u64_default(host->mmc->dev,
+ 				       "sdhci-caps", 0);
+ 	caps = ~lower_32_bits(dt_caps_mask) &

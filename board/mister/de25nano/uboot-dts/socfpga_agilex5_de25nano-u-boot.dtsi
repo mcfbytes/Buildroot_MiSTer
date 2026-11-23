@@ -20,6 +20,22 @@
  */
 #include "socfpga_agilex5-u-boot.dtsi"
 
+/*
+ * Reset manager: NO altr,modrst-offset override. Effective value is <0x24>
+ * from socfpga_agilex5-u-boot.dtsi — and that is EXACTLY what Terasic's
+ * de25-nano-v2025.01 ships in their socfpga_agilex5-u-boot.dtsi (verified).
+ * On this board any REAL write into the rstmgr bank registers kills SPTIMER0:
+ * measured on hardware — offset 0x14 sends the timer's own reset-deassert
+ * (id 38, bank 1) to 0x10d11018, and one RMW write of 0 there zeroes the
+ * dw-apb-timer registers (frozen get_timer, instant udelay, never-expiring
+ * polls, "dead" autoboot countdown). Offset 0x10 + ComboPHY killed it too
+ * (the ComboPHY reset cycle writes bank 0 for real). Only 0x24 — writes that
+ * miss the register block entirely — leaves the timer alive, which is how the
+ * factory SPL/U-Boot coexist with it. Corollary: the ComboPHY reset cycle is
+ * a no-op for us; the SD link works off the ComboPHY register programming
+ * alone (factory-proven). Do NOT reintroduce an override here.
+ */
+
 / {
 	chosen {
 		/*
@@ -54,16 +70,34 @@
 };
 
 &mmc {
-	/* No UHS or regulator (SoCDK wiring); PHY values are socdk's. Default speed, 25 MHz.
-	 * Rationale and the lift procedure: docs/de25-uboot.md section 5.1. */
+	/* No UHS or regulator; PHY values are socdk's. Default speed, 25 MHz.
+	 * The ComboPHY analog frontend is attached via phys/phy-names below;
+	 * its driver does the PER0MODRST reset cycle by direct register write
+	 * (see the build-tree phy-cadence-combophy.c) because the board-wide
+	 * modrst offset must stay 0x24 to keep SPTIMER0 alive. The cdns,phy-*
+	 * values feed mainline sdhci_cdns6_phy_init (HRS04/HRS05 + HRS09/10/
+	 * 16/07) and are REQUIRED for card detection on this stack (-110
+	 * without them). Rationale: docs/de25-uboot.md section 5.1, bring-up
+	 * sessions 2-3. */
 	status = "okay";
 	no-mmc;
 	no-sdio;
 	disable-wp;
 	bus-width = <4>;
 	max-frequency = <25000000>;
-	/* <caps1 caps>: hide SDHCI_CAN_DO_HISPD (bit 21), or sdhci.c enables SD HS itself. */
-	sdhci-caps-mask = <0x00000000 0x00200000>;
+
+	phys = <&combophy0>;
+	phy-names = "combo-phy";
+
+	/* SDR50 LIFT: the factory Terasic stack runs SDR50 on this board with
+	 * NO vmmc/vqmmc regulators (their u-boot has none and boots 10/10), so
+	 * the 1.8V switch is handled by the hardware/SDM path. Mask keeps SDR50
+	 * (CAPS1 bit 0) and hides SDR104 (bit 1) + DDR50 (bit 2). If this
+	 * regresses, revert to golden: caps-mask <0x00200000 0x00000007>,
+	 * no sd-uhs-sdr50, max-frequency 25000000. */
+	sdhci-caps-mask = <0x00200000 0x00000006>;
+	sd-uhs-sdr50;
+	max-frequency = <50000000>;
 
 	/* SD card default speed (DS) and UHS-I SDR12 mode timing configuration */
 	cdns,phy-dqs-timing-delay-sd-ds = <0x00780000>;
@@ -71,13 +105,23 @@
 	cdns,phy-dll-slave-ctrl-sd-ds = <0x00a000fe>;
 	cdns,phy-dq-timing-delay-sd-ds = <0x28000001>;
 
-	/* SD high speed / UHS-I SDR25 timing. Not reached while the caps mask
-	 * above hides high speed; kept for the lift in docs/de25-uboot.md 5.1. */
+	/* SD high speed / UHS-I SDR25 timing (used when high speed is on) */
 	cdns,phy-dqs-timing-delay-sd-hs = <0x780001>;
 	cdns,phy-gate-lpbk-ctrl-delay-sd-hs = <0x81a40040>;
 	cdns,phy-dq-timing-delay-sd-hs = <0x10000001>;
 	cdns,ctrl-hrs16-slave-ctrl-sd-hs = <0x101>;
 	cdns,ctrl-hrs07-timing-delay-sd-hs = <0xA0001>;
+
+	/* UHS SDR50 uses the mainline emmc_sdr table
+	 * (sdhci_cdns6_phy_adj case UHS_SDR50/MMC_HS_52). Its built-in defaults
+	 * (hrs16=0, hrs07=0x80000) break 1.8V/4-bit reads on this board, while
+	 * the sd-hs set above works (SDR25 1-bit proved it). Mirror the sd-hs
+	 * values onto the emmc_sdr slots so SDR50 applies the same timings. */
+	cdns,phy-dqs-timing-delay-emmc-sdr = <0x780001>;
+	cdns,phy-gate-lpbk-ctrl-delay-emmc-sdr = <0x81a40040>;
+	cdns,phy-dq-timing-delay-emmc-sdr = <0x10000001>;
+	cdns,ctrl-hrs16-slave-ctrl-emmc-sdr = <0x101>;
+	cdns,ctrl-hrs07-timing-delay-emmc-sdr = <0xA0001>;
 
 	bootph-all;
 };
@@ -126,3 +170,20 @@
 &binman {
 	/delete-node/ kernel;
 };
+
+&timer0 {
+   bootph-all;
+};
+
+&timer1 {
+   bootph-all;
+};
+
+&timer2 {
+   bootph-all;
+};
+
+&timer3 {
+   bootph-all;
+};
+

@@ -41,12 +41,14 @@ therefore every `/dev/mem` page attribute are what they were. A UIO client writt
     mister-core@23800000              0x1c800000   core-owned, to the top of the aperture
     (RT line only: ramoops@1fe00000, patch 0046)
 /MiSTer_fb@22000000                   + memory-region = <&mister_fb_mem>
+/soc/sram@ffff0000 (&ocram)           + mister-ocram@0, 0x0000..0xefff, beside 0004's flags-sram@f000
 /mister                               simple-mfd, ranges
     lw-bridge@ff200000                mister_lw_bridge      SO, never WC        H-1
     h2f-bridge@c0000000               mister_h2f_bridge     SO                  H-1, whole window
     fpga-mgr@ff706000                 mister_fpga_mgr       SO                  GPO +0x10, GPI +0x14
     ddr-aperture@20000000             mister_ddr_aperture   WC (with 0045)
     ddr-low@1ff00000                  mister_ddr_low        SO, two maps
+    ocram@ffff0000                    mister_ocram          SO, 60 KiB          warm-boot SPL image
     fabric-irqs                       simple-mfd, interrupt-parent = <&intc>
         f2h-irq1 .. f2h-irq63         mister_f2h_irq1 .. mister_f2h_irq63
 ```
@@ -101,6 +103,7 @@ lands the 8 MiB stock `reg` simply sits inside the tile. Merge order between the
 | fpga-mgr | `0xff706000` | `0x1000` | SO | legacy `fpga_base_addr_ac5.h:49`; GPO at `+0x10`, GPI at `+0x14` (`fpga_manager.h:17-18`) |
 | ddr-aperture | `0x20000000` | `0x20000000` | WC with 0045, else SO | the HPS view of FPGA DDR, `0x20000000 \| (x & 0x1FFFFFFF)`; the f2sdram ports |
 | ddr-low | `0x1ff00000` / `0x1ffff000` | `0xff000` / `0x1000` | SO | as the two tiles above; map0 / map1 |
+| ocram | `0xffff0000` | `0xf000` | SO | `socfpga.dtsi` `ocram: sram@ffff0000`, 64 KiB; the top page stays out (§2.4) |
 
 **H-1 (LW and h2f).** An access to an offset no fabric slave decodes never completes: the SoC
 hard-hangs with no fault, no panic, no console output, power cycle only. Seen three times on
@@ -182,6 +185,38 @@ would starve the framebuffer's vsync.
 doorbells 1..8 in order); `TurboGrafx16_MiSTer/sys/sys_top.v:590-591` (f2h_irq[8] = `mister_doorbell1`). udev links
 `/dev/mister/doorbell/<k>` to `irq/f2h-irq<k+7>`; `ci-tests.sh` checks all eight.
 
+### 2.4 The on-chip RAM (`mister_ocram`)
+
+The HPS's 64 KiB OCRAM is the data plane of the fpga2hps mailboxes (Main_SiSTer
+`rewrite-plan/phase4/ocram-mailbox-design.md`): the fabric reaches it as an AXI master, the host
+maps it. The node and the reserved child are one pair:
+
+- **The kernel's own node is `mmio-sram` over all 64 KiB** (`socfpga.dtsi` `ocram: sram@ffff0000`).
+  `drivers/misc/sram.c` maps it (`devm_ioremap_resource_wc`, which also claims the region) and
+  pools every byte not covered by a `reg`-only child; such a child is reserved, never mapped,
+  exported or cleared (`sram_reserve_regions()`). `0004`'s `flags-sram@f000` holds the top page;
+  `mister-ocram@0` holds `0x0000..0xefff`, so the pool is empty and no in-kernel user can take a
+  byte the host and fabric own. The two children are adjacent and do not overlap (overlap is a
+  probe error there).
+- **Nothing in this image allocates from that pool today.** Its two socfpga users are the
+  suspend-to-RAM self-refresh copy (`arch/arm/mach-socfpga/pm.c`, built only with
+  `CONFIG_SOCFPGA_SUSPEND`) and the Altera EDAC's OCRAM error-injection buffer
+  (`drivers/edac/altera_edac.c` `ocram_alloc_mem()`, `CONFIG_EDAC_ALTERA_OCRAM`); both are unset on
+  6.18 and RT. Enabling either later fails soft (an allocation error at its init or trigger), never
+  a write into the mailbox. The SMP trampoline goes to DDR address 0 (`platsmp.c`), not OCRAM.
+- **Warm boot uses the low bytes.** The SPL is linked at `0xffff0000` (`CONFIG_SPL_TEXT_BASE`) and
+  stays resident (46,386 B in the 2026.07 build), and U-Boot arms warm boot from OCRAM
+  (`misc_gen5.c` `arch_early_init_r()`, `0xae9efebc` into `romcodegrp.warmramgrp.enable`). The
+  kernel never clears a reserved child, so this change leaves both as they were; a client clears
+  the enable before its first store, which is the one-line hazard on the node.
+- **The map stops at `0xf000`.** The top page is the boot ROM's workspace and `flags-sram`; the
+  UIO map (60 KiB, page-aligned) cannot reach it, and `uio_mmap_physical()` refuses a longer map.
+- **SO, as `/dev/mem` gives it.** Under the kernel's WC pool mapping the user mapping is a second,
+  strongly-ordered alias of plain RAM; the kernel never touches the reserved bytes, and `/dev/mem`
+  (`STRICT_DEVMEM` off) makes the same alias, so the node moves no attribute. Not write-combined:
+  WC would need an L2 store-buffer sync before each ring publish.
+- **Stock is unaffected.** Stock Main does not touch OCRAM; a stock-Main mailbox port keeps `/dev/mem`.
+
 ## 3. Left out, and why
 
 - **Line 0** (`HDMI_TX_VS`): `MiSTer_fb`'s vsync; a UIO node would fail to share it or starve it (§2.3).
@@ -242,7 +277,7 @@ doorbells 1..8 in order); `TurboGrafx16_MiSTer/sys/sys_top.v:590-591` (f2h_irq[8
    listener; a consumer already armed across a core load does see it.
 
 `/dev/mister/` view (eudev, `65-mister-uio.rules`): `lw-bridge`, `h2f-bridge`, `fpga-mgr`,
-`ddr-aperture`, `ddr-low`, `irq/f2h-irq1` .. `irq/f2h-irq63`, and two alias sets:
+`ddr-aperture`, `ddr-low`, `ocram`, `irq/f2h-irq1` .. `irq/f2h-irq63`, and two alias sets:
 `doorbell/1` .. `doorbell/8` (= `irq/f2h-irq8` .. `irq/f2h-irq15`) and `fb` (the `MiSTer_fb`
 framebuffer, matched by its `fix.id`; `/dev/fb0` itself is unchanged). The UIO nodes are
 `root:mister 0660`; `mister` (uid/gid 8429, `users.table`) is also in `video`, which owns `/dev/fb0`
@@ -257,9 +292,13 @@ same 5 pre-existing `socfpga.dtsi` warnings under `W=1` as before; the decompile
 UIO names, SPI cells 40..103 each exactly once, and the merged `/reserved-memory`, whose `mister-*`
 tiles are adjacent from `0x1ff00000` to `0x40000000`; `drivers/uio/`
 compiles with 0045 under both resolved configs; the RT resolved config is unchanged and the 6.18 one
-gains exactly the UIO and cmdline symbols. QEMU has no Cyclone V machine, so probing is rig-only:
+gains exactly the UIO and cmdline symbols. With `mister_ocram` (2026-11-22, 6.18.64 and 7.3.5):
+0072 applies at `-F0` to both lines; the DTB keeps 0 / 5 (`W=1`) warnings; the decompiled DTB
+differs from the previous one only by `/mister/ocram@ffff0000` and `sram@ffff0000`'s new
+`mister-ocram@0` child (`flags-sram@f000`, `ranges`, the phandle and `ocram-ecc`'s `iram`
+unchanged), with 69 unique UIO names. QEMU has no Cyclone V machine, so probing is rig-only:
 
-- all 68 UIO devices probe on both kernels, with the names above, and `/dev/mister/*` (doorbell
+- all 69 UIO devices probe on both kernels, with the names above, and `/dev/mister/*` (doorbell
   and fb aliases included) appears;
 - `/proc/cmdline` ends in `uio_pdrv_genirq.of_id=generic-uio` with U-Boot's tokens intact;
 - the boot log lists the six reserved tiles, no overlap error, and `/proc/iomem` is unchanged below
@@ -271,7 +310,10 @@ gains exactly the UIO and cmdline symbols. QEMU has no Cyclone V machine, so pro
   `taskset -p` on the kthreads), on both kernels;
 - stock Main behaves as before; a UIO client resolves `mister_fpga_mgr` through UIO on both
   lines, still SO;
-- the aperture's WC throughput on the 6.18 line.
+- the aperture's WC throughput on the 6.18 line;
+- `mister_ocram` probes with one 60 KiB map; the boot log has no `sram` probe error (an overlap or
+  out-of-range child fails it); `/proc/iomem` still names `ffff0000.sram` over the 64 KiB; and
+  after boot `warmramgrp.enable` still reads `0xae9efebc` (nothing in the kernel cleared it).
 
 ## 7. DE25-Nano (Agilex 5): the same interface, moved
 
@@ -305,7 +347,8 @@ first 4 MiB and puts its GPO/GPI PIOs at `+0x2_0000`/`+0x2_0010`) and `h2f-bridg
 Addresses from Altera's Agilex 5 GSRD user guide **[V doc, U on this board]**. There is **no
 `fpga-mgr` node**: Cyclone V's GPO/GPI registers live in the HPS FPGA manager, Agilex 5 has no
 equivalent, so a DE25 shell must provide them as fabric PIOs behind `lw-bridge`; the shared
-rule's `mister_fpga_mgr` line simply never matches.
+rule's `mister_fpga_mgr` line simply never matches. There is no `ocram` node either (§2.4 is
+Cyclone V's OCRAM and warm-boot flow), so `mister_ocram`'s line never matches on the DE25.
 
 **Interrupts.** 63 nodes `f2h-irq1..63`, same names, types and doorbell aliases as §2.3, at
 **GIC SPI cell `17 + N`** (17–80). Evidence **[U, desk]**: Altera's Agilex devicetree HOWTO maps

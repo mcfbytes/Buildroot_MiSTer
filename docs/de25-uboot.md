@@ -88,7 +88,8 @@ SPL's own config, from the same public branch: `SPL_FIT_SIGNATURE=y` with no key
 | `board/mister/de25nano/uboot.fragment` | the U-Boot Kconfig delta on `socfpga_agilex5_defconfig` (§4) |
 | `board/mister/de25nano/uboot-dts/socfpga_agilex5_de25nano.dts` | U-Boot board device tree (§5) |
 | `board/mister/de25nano/uboot-dts/socfpga_agilex5_de25nano-u-boot.dtsi` | U-Boot additions: `stdout-path`, mmc caps, FIT tweaks (§5, §6) |
-| `board/mister/de25nano/patches/uboot/0001-configs-socfpga_soc64-guard-mtdids-mtdparts-env.patch` | the one carried U-Boot patch (§8) |
+| `board/mister/de25nano/patches/uboot/0001-configs-socfpga_soc64-guard-mtdids-mtdparts-env.patch` | carried U-Boot patch: env build fix (§8) |
+| `board/mister/de25nano/patches/uboot/0002-mmc-sdhci-cadence-pulse-resets-in-probe.patch` | carried U-Boot patch: SD reset pulse (§8) |
 | `board/mister/de25nano/patches/arm-trusted-firmware/0001-…uart1.patch`, `0002-…fpga-config-address-contract.patch` | the two carried TF-A patches (§8) |
 | `board/mister/de25nano/patches/arm-trusted-firmware/arm-trusted-firmware.hash` | TOFU hash for the v2.15.0 git tarball |
 | `Makefile` (`de25` recipe) | post-build assertions for `images/bl31.bin` and `images/u-boot.itb` |
@@ -290,90 +291,90 @@ the whole justification; everything else in our board file follows from keeping 
 
 Those are two different categories and the block splits them deliberately.
 
-**What Terasic's own board support does (2026-09-14, public branch `de25-nano-v2025.01`,
-`socfpga_agilex5_de25_nano-u-boot.dtsi`):** `bus-width = <4>; sd-uhs-sdr50; cap-mmc-highspeed;`
-with the 2025.01-era `&combophy0 cdns,phy-*` PHY knobs **identical to that tree's SoCDK file** — i.e.
-Terasic ran the dev kit's PHY values unchanged on this board, with no `vqmmc` regulator. That is
-the same decision this block makes in the 2026.07 driver's per-mode form (the two driver
-generations' properties are not directly comparable), and it is silicon evidence that the SoCDK
-values suit this board. The `sd-uhs-sdr50` line is *not* copied: without a voltage regulator
-U-Boot cannot switch to 1.8 V signalling, so it is inert at best.
+> **Rewritten 2026-11-23 after the first hardware report** ([#318], PR [#319]). The text this
+> replaces reasoned from source alone: DS at 25 MHz, "no UHS without a regulator". A tester's
+> DE25-Nano showed SD failing on about 2 of 5 cold boots in that state ("No partition table",
+> `-110` on voltage select, "no tuning point found"), and 10 of 10 boots at UHS SDR50 with
+> PR #319. We took that PR's device-tree changes and left out its U-Boot driver patches; why is
+> below. **The shipped state has not itself been run on hardware yet.**
 
-**BOARD facts we do not take from socdk.** socdk declares `sd-uhs-sdr50`/`sd-uhs-sdr104` with
-`vqmmc-supply = <&sd_io_1v8_reg>`, whose GPIO is `<&portb 3>` — a **SoC Development Kit wiring
-fact**. Driving the wrong GPIO to switch SD bus voltage is a way to break a card, not a way to go
-faster, and the reference DE25 tree declares no vqmmc regulator either **[V]**. So: no UHS modes,
-no voltage switching, no regulator phandles.
+[#318]: https://github.com/mcfbytes/Buildroot_MiSTer/issues/318
+[#319]: https://github.com/mcfbytes/Buildroot_MiSTer/pull/319
 
-**SoC facts we do take from socdk.** An earlier draft of this file omitted socdk's `cdns,*` timing
-properties on the argument that `drivers/mmc/sdhci-cadence6.c` carries a built-in default for every
-one of them. That is true and it was the wrong conclusion: **the driver's defaults are a fallback,
-not a validated configuration.** For SD high speed they are
+**What ships:** `bus-width = <4>; sd-uhs-sdr50; max-frequency = <50000000>;`,
+`sdhci-caps-mask = <0x00000006 0x00200000>;` and socdk's `cdns,*` PHY values. The `sd-hs`
+values are also copied into the `*-emmc-sdr` slots. U-Boot settles on **UHS SDR50, 4-bit**.
 
-```
-cdns,phy-dqs-timing-delay-sd-hs      0x00380004
-cdns,phy-gate-lpbk-ctrl-delay-sd-hs  0x01A00040
-cdns,phy-dq-timing-delay-sd-hs       0x00000001
-cdns,ctrl-hrs07-* / cdns,ctrl-hrs16-*   (no entry at all)
-```
+**What Terasic's own board support does (public branch `de25-nano-v2025.01`,
+`socfpga_agilex5_de25_nano-u-boot.dtsi`):** `bus-width = <4>; sd-uhs-sdr50; cap-mmc-highspeed;`,
+with the dev kit's PHY values unchanged and **no vmmc/vqmmc regulator**. The tester's factory
+itb runs SDR50 on 10 of 10 boots like that. So the 1.8 V switch works on this board without a
+regulator driver, and `sd-uhs-sdr50` is copied. No regulator phandles are declared, because
+socdk's (`<&portb 3>`) are dev-kit wiring.
 
-**[V `drivers/mmc/sdhci-cadence6.c:75-135`]** — values that no validated Agilex 5 board ships.
-socdk's, which are the only Agilex 5 SD timings anyone has run on silicon, are `0x780001`,
-`0x81a40040`, `0x10000001`, `hrs16 = 0x101`, `hrs07 = 0xA0001`
-**[V `arch/arm/dts/socfpga_agilex5_socdk-u-boot.dtsi:122-134`]**. These are *controller* delays, not
-board wiring, so they transfer. We now copy the `sd-ds` and `sd-hs` stanzas verbatim, with the
-source named in the file.
+**`sdhci-caps-mask` is a u64, so the first cell is CAPS1.** U-Boot (`sdhci.c:871-876`) and Linux
+(`sdhci.c`, `sdhci_read_caps`) both read the property with `*_read_u64` and apply
+`lower_32_bits` to `SDHCI_CAPABILITIES` and `upper_32_bits` to `SDHCI_CAPABILITIES_1`. The
+binding is `uint64`, and socdk writes `<0x00002000 0x0000ff00>` in that order. The pre-#318 mask
+`<0x00000000 0x00200000>` therefore hid high speed (CAPS0 bit 21) but left CAPS1's UHS bits
+(`SDHCI_SUPPORT_SDR50/SDR104/DDR50` = bits 0-2) visible. With `MMC_UHS_SUPPORT=y` from the
+defconfig, U-Boot then attempted SDR104 tuning, which failed with "no tuning point found" and
+left the link broken. **That is the most likely cause of the flaky boots.** The shipped mask
+hides SDR104 and DDR50 and keeps SDR50. PR #319 instead patched `sdhci.c` to read the cells
+the other way round. Its `<0x00200000 0x00000006>` under that patch is exactly our value
+under mainline's reading. We did not take the patch, because it would make U-Boot disagree
+with Linux and with every other board's device tree.
 
-**Speed: default speed only, 25 MHz.** `max-frequency` is `<25000000>` and
-`sdhci-caps-mask = <0x00000000 0x00200000>` hides the controller's high-speed capability, so U-Boot
-proper never leaves DS mode — the slowest and most forgiving SD timing there is.
+**PHY values.** `drivers/mmc/sdhci-cadence6.c` (selected by `altr,agilex5-sd6hc`) programs the
+PHY and HRS09/10/16/07 from the per-mode `cdns,*` properties, at probe and again on every mode
+change. Its built-in defaults are a fallback, not a validated configuration
+(`sdhci-cadence6.c:75-135`). socdk's values are the only Agilex 5 SD timings anyone has run on
+silicon, and they transfer because they are controller delays, not board wiring:
+`0x780001`, `0x81a40040`, `0x10000001`, `hrs16 = 0x101`, `hrs07 = 0xA0001`
+(`socfpga_agilex5_socdk-u-boot.dtsi:122-134`). SDR50 reads the `emmc_sdr` table
+(`sdhci_cdns6_phy_adj`). That table's defaults failed 4-bit reads on the tester's board, and the
+`sd-hs` values copied into it passed. socdk also carries its own SDR50 stanza (`0x780004`,
+`0x80a40040`, `0x4000004`, `0x38000001`, hrs09 `0xf1c1800c`, hrs10 `0x20000`, hrs16 `0x101`,
+hrs07 `0x90005`). That stanza is the next thing to try if SDR50 misbehaves. It has not been run
+on a DE25.
 
-> **Corrected 2026-11-17.** This paragraph used to say that leaving `cap-sd-highspeed` out was
-> what kept U-Boot in DS mode. It was not. U-Boot's SDHCI core turns on high speed from the
-> controller's own capability register, whatever the device tree says
-> **[V `drivers/mmc/sdhci.c:977-978`]**; the same function applies `sdhci-caps-mask` first
-> **[V `:871-875`]**. So until the mask
-> was added, U-Boot switched the card to high-speed timing at 25 MHz and programmed the `sd-hs`
-> PHY values. Found by reading, not on hardware. It matters because **Linux 7.3.4 cannot program
-> this PHY at all**: it runs on whatever state U-Boot leaves, so both stages must end in the same
-> mode ([`de25-dts-rationale.md`](de25-dts-rationale.md) §3 and [U3], [U12]). The Linux board
-> DTS now masks the same bit.
+**No ComboPHY driver.** PR #319 ports Terasic's `drivers/phy/cadence/phy-cadence-combophy.c`.
+Terasic's tree belongs to the vendor's older design: a separate `cdns,combophy` node next to a
+`cdns,sd4hc` controller. Mainline replaced that design: `sdhci-cadence6.c` writes the same
+registers, and the ComboPHY reset is the `combophy` entry of `&mmc`'s `resets`
+(`socfpga_agilex5-u-boot.dtsi:700-703`). The one behaviour mainline lacked is the vendor's
+reset *pulse*. Mainline only released the resets, so state left by the factory SPL (which
+loads `u-boot.itb` over this controller) survived. Patch `0002` (§8) adds the pulse.
 
-The cost is nothing that matters: 4-bit DS is about 12.5 MB/s, so the 20 MB `Image` costs under
-two seconds, once, per boot. The `sd-hs` values are still declared so that lifting the cap is a
-one-line change rather than a research task.
+**The reset manager offset `0x24` is correct; leave it.** `reset_manager_soc64.h` puts HDSKREQ
+at `0x14`, HDSKACK at `0x18`, PER0MODRST at `0x24` and PER1MODRST at `0x28`. With
+`altr,modrst-offset = <0x24>`, bank 0 is PER0MODRST and bank 1 is PER1MODRST, so writes through
+the reset framework land on real reset bits. An offset of `0x14` aims them at the handshake
+registers instead, which is why the tester's experiment with it stopped the SP timer.
 
-**This is the first knob to turn if the card misbehaves.** The symptoms to watch for on the first
-boot are: `Retrieving file: /Image` stalling or timing out; `mmc_load_image_raw` / `sdhci` timeout
-messages; a CRC or checksum complaint from extlinux or from `booti`; or a kernel that starts and
-then panics on a corrupt initramfs/rootfs read. Any of those is a timing problem until proven
-otherwise, and the order of attack is:
+**The timers.** `timer0..3` are enabled with `bootph-all` exactly as mainline's socdk does
+(`socfpga_agilex5_socdk.dts:114-129`, `-u-boot.dtsi:167-181`). They are disabled in the SoC
+dtsi, and the defconfig selects `DESIGNWARE_APB_TIMER`.
 
-1. **Already at the safest setting** (DS, 25 MHz, socdk PHY values) — that is what ships.
-2. If it still fails, try the *driver-default* PHY values (delete the `cdns,*` lines) — that
-   isolates "socdk's timings are wrong for this board" from "the card or the socket is the problem".
-3. Only then suspect the card itself; `dd if=/dev/mmcblk0 of=/dev/null bs=1M` from Linux is the
-   independent check, because it exercises the kernel's driver rather than U-Boot's.
+**Linux after an SDR50 U-Boot.** The tester's kernel (7.4-rc3, our unchanged board DTS)
+mounted the root filesystem from the card that U-Boot had left in SDR50. Linux 7.4's SD6HC
+driver programs the PHY itself, so the old rule that both stages must end in the same mode
+(written for 7.3.4, which could not program the PHY) no longer applies.
 
-**Lifting it, once a full `dd` of the card reads clean under Linux and U-Boot has booted reliably a
-few times** *(procedure rewritten 2026-11-17)*. Change both stages in the same commit, one step at
-a time:
-
-1. **High-speed timing, still 25 MHz.** Delete the `sdhci-caps-mask` line in
-   `socfpga_agilex5_de25nano-u-boot.dtsi`. In the Linux board DTS, drop bit 21 from the caps mask
-   (`0x0020ff00` → `0x0000ff00`) and re-add `cap-sd-highspeed;`.
-2. **50 MHz.** Set `max-frequency = <50000000>;` in both files.
-
-The `sd-hs` PHY block U-Boot needs is already there. Re-test a cold boot, a `Retrieving file:` of
-the kernel, and a full `dd` under Linux after each step. Lifting only one stage leaves Linux
-running a mode the PHY was not programmed for. Going
-beyond 50 MHz means UHS, which means a `vqmmc` regulator, which means establishing the DE25's real
-1.8 V switch GPIO on hardware — a different and much larger job.
+**If the card misbehaves:**
+- "no tuning point found" means the caps mask is not hiding a UHS mode.
+- `Retrieving file: /Image` stalling, or CRC errors, points at the `emmc-sdr` PHY values: try
+  socdk's SDR50 stanza above.
+- `-110` on voltage select, or a card that intermittently goes missing, points at controller
+  state. Check that `0002` applied.
+- The rollback is the tester's "golden" setting: drop `sd-uhs-sdr50`, set
+  `max-frequency = <25000000>`, and use mask `<0x00000007 0x00200000>`, which is 4-bit DS.
+- `dd if=/dev/mmcblk0 of=/dev/null bs=1M` under Linux is the independent check of the card.
 
 **Deliberate omissions:** no `&qspi` and no flash node (the node stays at the dtsi's `disabled`
 default, so even a hypothetically-present driver would not probe — the second lock on §7's door);
 no `&nand`; no `&gmac0`/PHY (U-Boot does not need ethernet to load a kernel, and the DE25's PHY
-address in U-Boot terms is unverified); no LEDs, watchdogs, timers, i2c, i3c, usb, spi0/spi1.
+address in U-Boot terms is unverified); no LEDs, watchdogs, i2c, i3c, usb, spi0/spi1.
 
 **`socfpga_agilex5_de25nano-u-boot.dtsi` must `#include "socfpga_agilex5-u-boot.dtsi"`** — that is
 what pulls in `socfpga_soc64_fit-u-boot.dtsi`, the binman description that *is* `u-boot.itb`.
@@ -651,9 +652,24 @@ assert.
 
 ---
 
-## 8. The carried patches — one U-Boot, two TF-A
+## 8. The carried patches — two U-Boot, two TF-A
 
-*(Heading said "one TF-A" until 2026-11-17.)*
+*(Heading said "one TF-A" until 2026-11-17 and "one U-Boot" until 2026-11-23.)*
+
+**The second U-Boot patch (2026-11-23):**
+`patches/uboot/0002-mmc-sdhci-cadence-pulse-resets-in-probe.patch`. In `sdhci_cdns_probe()`,
+the bulk resets are asserted, held for 10 µs and then released; mainline only released them. On
+Agilex 5 those resets are `combophy`, `sdmmc-ocp` and `sdhc-reset`, which land on real
+PER0MODRST bits at offset `0x24` (§5.1). The factory SPL has already used this controller to load
+`u-boot.itb`, and a release of resets that are already released does nothing. Terasic's tree
+pulses the SDMMC reset in the same place. This is a precaution against the #318 symptoms that
+are not explained by the caps mask (`-110` on voltage select). Drop it if a DE25 boots reliably
+without it.
+
+- **Verified by:** a standalone cross build of 2026.07 + `0001` + `0002` for this board (proper and
+  SPL, no warnings), and the DTB checked with `fdtget`: three resets, offset `0x24`, caps mask
+  CAPS0 `0x00200000` / CAPS1 `0x6`, timers okay. **Not run on hardware.**
+- **Upstreamable**, not submitted.
 
 TF-A carries `patches/arm-trusted-firmware/0001-plat-intel-agilex5-route-bl31-console-to-uart1.patch`
 (2026-09-14): two macro values, boot and crash console to UART1, the header UART. Terasic's own

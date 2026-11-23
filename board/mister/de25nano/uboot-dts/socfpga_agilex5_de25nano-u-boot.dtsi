@@ -54,16 +54,17 @@
 };
 
 &mmc {
-	/* No UHS or regulator (SoCDK wiring); PHY values are socdk's. Default speed, 25 MHz.
-	 * Rationale and the lift procedure: docs/de25-uboot.md section 5.1. */
+	/* UHS SDR50 with no regulators, as Terasic ships; PHY values are socdk's.
+	 * Hardware-tested in issue #318; rationale in docs/de25-uboot.md section 5.1. */
 	status = "okay";
 	no-mmc;
 	no-sdio;
 	disable-wp;
 	bus-width = <4>;
-	max-frequency = <25000000>;
-	/* <caps1 caps>: hide SDHCI_CAN_DO_HISPD (bit 21), or sdhci.c enables SD HS itself. */
-	sdhci-caps-mask = <0x00000000 0x00200000>;
+	sd-uhs-sdr50;
+	max-frequency = <50000000>;
+	/* u64 <caps1 caps0>: hide SDR104 + DDR50 (caps1 bits 1-2) and SD high speed (caps0 bit 21). */
+	sdhci-caps-mask = <0x00000006 0x00200000>;
 
 	/* SD card default speed (DS) and UHS-I SDR12 mode timing configuration */
 	cdns,phy-dqs-timing-delay-sd-ds = <0x00780000>;
@@ -71,13 +72,19 @@
 	cdns,phy-dll-slave-ctrl-sd-ds = <0x00a000fe>;
 	cdns,phy-dq-timing-delay-sd-ds = <0x28000001>;
 
-	/* SD high speed / UHS-I SDR25 timing. Not reached while the caps mask
-	 * above hides high speed; kept for the lift in docs/de25-uboot.md 5.1. */
+	/* SD high speed / UHS-I SDR25 timing configuration */
 	cdns,phy-dqs-timing-delay-sd-hs = <0x780001>;
 	cdns,phy-gate-lpbk-ctrl-delay-sd-hs = <0x81a40040>;
 	cdns,phy-dq-timing-delay-sd-hs = <0x10000001>;
 	cdns,ctrl-hrs16-slave-ctrl-sd-hs = <0x101>;
 	cdns,ctrl-hrs07-timing-delay-sd-hs = <0xA0001>;
+
+	/* UHS SDR50 reads the emmc-sdr table; the sd-hs values, which #318 ran on hardware. */
+	cdns,phy-dqs-timing-delay-emmc-sdr = <0x780001>;
+	cdns,phy-gate-lpbk-ctrl-delay-emmc-sdr = <0x81a40040>;
+	cdns,phy-dq-timing-delay-emmc-sdr = <0x10000001>;
+	cdns,ctrl-hrs16-slave-ctrl-emmc-sdr = <0x101>;
+	cdns,ctrl-hrs07-timing-delay-emmc-sdr = <0xA0001>;
 
 	bootph-all;
 };
@@ -125,4 +132,20 @@
  */
 &binman {
 	/delete-node/ kernel;
+};
+
+&timer0 {
+	bootph-all;
+};
+
+&timer1 {
+	bootph-all;
+};
+
+&timer2 {
+	bootph-all;
+};
+
+&timer3 {
+	bootph-all;
 };

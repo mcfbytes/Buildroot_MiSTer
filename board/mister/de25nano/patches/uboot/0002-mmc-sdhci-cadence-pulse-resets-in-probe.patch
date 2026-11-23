@@ -1,0 +1,38 @@
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Subject: [PATCH] mmc: sdhci-cadence: assert the resets before releasing them in probe
+
+sdhci_cdns_probe() only deasserts the controller's resets. On Agilex 5
+those are COMBOPHY, SDMMC_OCP and SDMMC (socfpga_agilex5-u-boot.dtsi).
+When an earlier stage has already used the controller, for example an
+SPL that loaded u-boot.itb from SD, releasing a reset that is already
+released does nothing. U-Boot proper then starts from whatever state
+that stage left in the host and PHY.
+
+Pulse the resets instead: assert, wait 10 us, deassert. The vendor tree
+(Terasic u-boot-socfpga de25-nano-v2025.01) asserts and deasserts the
+SDMMC reset in the same place. Nothing changes for a controller that
+starts out in reset, or for a board without a resets property.
+
+Upstream status: not submitted yet. Local carry for board/mister/de25nano
+(issue #318); see docs/de25-uboot.md section 8.
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+--- a/drivers/mmc/sdhci-cadence.c
++++ b/drivers/mmc/sdhci-cadence.c
+@@ -259,9 +259,14 @@
+ 	if (!plat->hrs_addr)
+ 		return -ENOMEM;
+ 
++	/* Pulse rather than only release: a previous stage (e.g. SPL) may have
++	 * left the controller and its PHY configured. */
+ 	ret = reset_get_bulk(dev, &reset_bulk);
+-	if (!ret)
++	if (!ret) {
++		reset_assert_bulk(&reset_bulk);
++		udelay(10);
+ 		reset_deassert_bulk(&reset_bulk);
++	}
+ 
+ 	host->name = dev->name;
+ 	host->ioaddr = plat->hrs_addr + SDHCI_CDNS_SRS_BASE;

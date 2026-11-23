@@ -542,7 +542,7 @@ nothing ran on hardware.
 | Why mainline could not program the fabric | Two address-handling mismatches in BL31, independent of the SMMU **[V]** |
 | TF-A patch `0002` | Added. BL31 builds for `agilex5` and `agilex`; host harness passes **[V]**; not run on hardware |
 | Service node | Now `intel,agilex-svc`; kernel patch `0102` dropped. Series is 39 patches, applies with no fuzz **[V]** |
-| SD | Default speed at 25 MHz in **both** U-Boot and Linux; U-Boot was reaching high-speed timing before this **[V from source]** |
+| SD | Default speed at 25 MHz in **both** U-Boot and Linux; U-Boot was reaching high-speed timing before this **[V from source]**. *2026-11-23: U-Boot now runs UHS SDR50 from #318's hardware report, Linux unchanged ([`de25-uboot.md`](de25-uboot.md) §5.1).* |
 | DMA coherency | `dma-coherent` removed from `mmc0` and `gmac0` for first boot |
 | Kernel config | Five temporary PHY drivers added; `MEDIA_SUPPORT` contradiction removed; `STRICT_DEVMEM`, RSU and hwmon stated explicitly. 494 asked-for symbols, 0 dropped **[V]** |
 | FPGA load trigger | Drafted as an external module, compile-checked, **not landed** |

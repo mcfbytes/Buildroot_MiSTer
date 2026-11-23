@@ -122,6 +122,23 @@
 	status = "okay";
 };
 
+/* The SoC timers, enabled as mainline's socdk does (bootph-all in the -u-boot.dtsi). */
+&timer0 {
+	status = "okay";
+};
+
+&timer1 {
+	status = "okay";
+};
+
+&timer2 {
+	status = "okay";
+};
+
+&timer3 {
+	status = "okay";
+};
+
 /*
  * DELIBERATE OMISSIONS -- each one is a decision, not an oversight:
  *
@@ -138,7 +155,7 @@
  *     off the card, and the DE25's PHY address and phy-mode in U-Boot terms
  *     are unverified. Add it in the hardware session if netboot is wanted.
  *
- *   - NO leds, watchdogs, timers, i2c, i3c, usb, spi0/spi1. None is on the
+ *   - NO leds, watchdogs, i2c, i3c, usb, spi0/spi1. None is on the
  *     path from reset to "load Image from FAT and boot it". Every node here
  *     is a node someone has to keep correct for a board nobody has booted yet.
  */

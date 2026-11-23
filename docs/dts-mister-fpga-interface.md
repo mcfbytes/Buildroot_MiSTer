@@ -244,8 +244,10 @@ doorbells 1..8 in order); `TurboGrafx16_MiSTer/sys/sys_top.v:590-591` (f2h_irq[8
 `/dev/mister/` view (eudev, `65-mister-uio.rules`): `lw-bridge`, `h2f-bridge`, `fpga-mgr`,
 `ddr-aperture`, `ddr-low`, `irq/f2h-irq1` .. `irq/f2h-irq63`, and two alias sets:
 `doorbell/1` .. `doorbell/8` (= `irq/f2h-irq8` .. `irq/f2h-irq15`) and `fb` (the `MiSTer_fb`
-framebuffer, matched by its `fix.id`; `/dev/fb0` itself is unchanged). Nodes stay root-only (0600);
-a non-root Main would add a group to the rule.
+framebuffer, matched by its `fix.id`; `/dev/fb0` itself is unchanged). The UIO nodes are
+`root:mister 0660`; `mister` (uid/gid 8429, `users.table`) is also in `video`, which owns `/dev/fb0`
+by eudev's default rule. That is groundwork for a non-root Main: stock Main still runs as root, and
+still opens `/dev/mem`, which no group can grant.
 
 ## 6. Verified, and what only the rig can show
 

@@ -288,87 +288,91 @@ the whole justification; everything else in our board file follows from keeping 
 
 ### 5.1 The `&mmc` block — board facts vs SoC facts, treated differently
 
+> **Rewritten 2026-11-23 after the bring-up sessions, hardware-verified.**
+> The pre-bring-up text of this section reasoned from source reading alone;
+> several of its conclusions were wrong on this board and are corrected below.
+> The full evidence trail (including the two mainline bugs found on the way)
+> is in [`de25-upstream-issue-materials.md`](de25-upstream-issue-materials.md).
+
 Those are two different categories and the block splits them deliberately.
 
-**What Terasic's own board support does (2026-09-14, public branch `de25-nano-v2025.01`,
-`socfpga_agilex5_de25_nano-u-boot.dtsi`):** `bus-width = <4>; sd-uhs-sdr50; cap-mmc-highspeed;`
-with the 2025.01-era `&combophy0 cdns,phy-*` PHY knobs **identical to that tree's SoCDK file** — i.e.
-Terasic ran the dev kit's PHY values unchanged on this board, with no `vqmmc` regulator. That is
-the same decision this block makes in the 2026.07 driver's per-mode form (the two driver
-generations' properties are not directly comparable), and it is silicon evidence that the SoCDK
-values suit this board. The `sd-uhs-sdr50` line is *not* copied: without a voltage regulator
-U-Boot cannot switch to 1.8 V signalling, so it is inert at best.
+**What ships now (2026-11-23, 10/10 cold boots, ~1.5 s autoboot→kernel):**
+`bus-width = <4>;`, `max-frequency = <50000000>;`, `sd-uhs-sdr50;`,
+`sdhci-caps-mask = <0x00200000 0x00000006>;`, the ComboPHY attached via
+`phys = <&combophy0>; phy-names = "combo-phy";`, and the socdk `sd-ds`/`sd-hs`
+PHY stanzas plus the same values mirrored onto the `*-emmc-sdr` slots (the
+mainline table the UHS SDR50 case reads). Final link: **UHS SDR50, 4-bit**.
 
-**BOARD facts we do not take from socdk.** socdk declares `sd-uhs-sdr50`/`sd-uhs-sdr104` with
-`vqmmc-supply = <&sd_io_1v8_reg>`, whose GPIO is `<&portb 3>` — a **SoC Development Kit wiring
-fact**. Driving the wrong GPIO to switch SD bus voltage is a way to break a card, not a way to go
-faster, and the reference DE25 tree declares no vqmmc regulator either **[V]**. So: no UHS modes,
-no voltage switching, no regulator phandles.
+**What Terasic's own board support does (2026-09-14, public branch
+`de25-nano-v2025.01`, `socfpga_agilex5_de25_nano-u-boot.dtsi`):**
+`bus-width = <4>; sd-uhs-sdr50; cap-mmc-highspeed;` with the 2025.01-era
+`&combophy0`/`cdns,phy-*` knobs identical to that tree's SoCDK file — i.e.
+Terasic ran the dev kit's PHY values unchanged on this board, **with no vqmmc
+regulator**, and the factory itb runs SDR50 10/10. That last fact killed this
+file's earlier "no UHS without a regulator" conclusion: on this board the
+1.8 V switch is handled without a regulator driver, so `sd-uhs-sdr50` is
+copied, not omitted.
 
-**SoC facts we do take from socdk.** An earlier draft of this file omitted socdk's `cdns,*` timing
-properties on the argument that `drivers/mmc/sdhci-cadence6.c` carries a built-in default for every
-one of them. That is true and it was the wrong conclusion: **the driver's defaults are a fallback,
-not a validated configuration.** For SD high speed they are
+**BOARD facts we do not take from socdk.** socdk declares vmmc/vqmmc supplies
+whose GPIOs are SoC Development Kit wiring facts; driving the wrong GPIO to
+switch SD bus voltage is a way to break a card. The reference DE25 tree
+declares no regulator either **[V]**, so none are declared here — UHS works
+without them on this hardware (see issue materials §6).
 
-```
-cdns,phy-dqs-timing-delay-sd-hs      0x00380004
-cdns,phy-gate-lpbk-ctrl-delay-sd-hs  0x01A00040
-cdns,phy-dq-timing-delay-sd-hs       0x00000001
-cdns,ctrl-hrs07-* / cdns,ctrl-hrs16-*   (no entry at all)
-```
+**SoC facts we do take from socdk.** The driver's built-in defaults are a
+fallback, not a validated configuration **[V `drivers/mmc/sdhci-cadence6.c:75-135`]**.
+socdk's values — the only Agilex 5 SD timings anyone ran on silicon — are
+`dqs 0x780001`, `gate 0x81a40040`, `dq 0x10000001`, `hrs16 = 0x101`,
+`hrs07 = 0xA0001` **[V `arch/arm/dts/socfpga_agilex5_socdk-u-boot.dtsi:122-134`]**.
+These are controller delays, not board wiring, so they transfer; the `sd-ds`,
+`sd-hs` and (mirrored) `emmc-sdr` stanzas carry them, with the source named in
+the file. Without them card detection fails outright (-110 voltage select);
+with only the built-in `emmc_sdr` defaults, UHS SDR50 4-bit reads fail.
 
-**[V `drivers/mmc/sdhci-cadence6.c:75-135`]** — values that no validated Agilex 5 board ships.
-socdk's, which are the only Agilex 5 SD timings anyone has run on silicon, are `0x780001`,
-`0x81a40040`, `0x10000001`, `hrs16 = 0x101`, `hrs07 = 0xA0001`
-**[V `arch/arm/dts/socfpga_agilex5_socdk-u-boot.dtsi:122-134`]**. These are *controller* delays, not
-board wiring, so they transfer. We now copy the `sd-ds` and `sd-hs` stanzas verbatim, with the
-source named in the file.
+**Speed: UHS SDR50 at 50 MHz.** Two mainline bugs had to be fixed to make any
+masking work at all (both in `board/mister/de25nano/patches/uboot/`, both
+described with hardware evidence in the issue materials):
 
-**Speed: default speed only, 25 MHz.** `max-frequency` is `<25000000>` and
-`sdhci-caps-mask = <0x00000000 0x00200000>` hides the controller's high-speed capability, so U-Boot
-proper never leaves DS mode — the slowest and most forgiving SD timing there is.
+- `sdhci-caps-mask` halves were applied swapped — the property is read as one
+  u64 and split with `lower_32_bits()` → CAPS0 / `upper_32_bits()` → CAPS1,
+  which reverses the documented `<caps0 caps1>` cell order. Until patched, no
+  mask value could hide the UHS capability bits (CAPS1 bits 0-2 in this tree's
+  `sdhci.h`), and the card always entered an SDR104 tuning cascade that left
+  the PHY unrecoverable: "no tuning point found", then "No partition table".
+- The mask that ships: `<0x00200000 0x00000006>` = hide CAPS0 bit 21
+  (controller-driven high speed) and CAPS1 bits 1-2 (SDR104, DDR50), keep
+  CAPS1 bit 0 (SDR50). `max-frequency = <50000000>` and `sd-uhs-sdr50` do the
+  rest. Masks of the form `... 0x88000000>` / `0xF0000000` target CAPS1 bits
+  27-31 and cannot ever remove UHS modes — every earlier revision of this file
+  used exactly those.
 
-> **Corrected 2026-11-17.** This paragraph used to say that leaving `cap-sd-highspeed` out was
-> what kept U-Boot in DS mode. It was not. U-Boot's SDHCI core turns on high speed from the
-> controller's own capability register, whatever the device tree says
-> **[V `drivers/mmc/sdhci.c:977-978`]**; the same function applies `sdhci-caps-mask` first
-> **[V `:871-875`]**. So until the mask
-> was added, U-Boot switched the card to high-speed timing at 25 MHz and programmed the `sd-hs`
-> PHY values. Found by reading, not on hardware. It matters because **Linux 7.3.4 cannot program
-> this PHY at all**: it runs on whatever state U-Boot leaves, so both stages must end in the same
-> mode ([`de25-dts-rationale.md`](de25-dts-rationale.md) §3 and [U3], [U12]). The Linux board
-> DTS now masks the same bit.
+**The ComboPHY (`&combophy0`) is not optional — it is the fix for the
+original "No partition table ~2/5" instability.** The Cadence ComboPHY is the
+Agilex 5 SD analog frontend; mainline v2026.07 has no driver, no node and no
+call for it. `patches/uboot/0002` ports the Terasic driver, `0003` hooks it
+into `sdhci_cdns_probe` (`generic_phy_init` before any card traffic, vendor
+order). Without the ComboPHY programming the card is unreliable regardless of
+PHY timing values; with it, everything above this paragraph holds.
 
-The cost is nothing that matters: 4-bit DS is about 12.5 MB/s, so the 20 MB `Image` costs under
-two seconds, once, per boot. The `sd-hs` values are still declared so that lifting the cap is a
-one-line change rather than a research task.
+**The rstmgr offset must stay 0x24 — do not "fix" it.** Any real write into
+the Agilex 5 rstmgr bank registers kills SPTIMER0 (the dw-apb-timer behind
+`get_timer`/`udelay`): with `altr,modrst-offset = <0x14>` the timer's own
+reset-deassert writes 0 to 0x10d11018 and the timer stops dead — frozen
+autoboot countdown, instant `udelay`, never-expiring poll timeouts. Measured
+on hardware; Terasic ships `<0x24>` (all reset writes miss the register block)
+for exactly this reason. Because the ComboPHY reset must really toggle, its
+driver pokes PER0MODRST (0x10d11014 bit 6) directly instead of using the reset
+framework. See issue materials §3 — the true Agilex 5 rstmgr map needs Intel
+documentation; `reset_manager_gen5.h` describes Cyclone/Arria V, not this chip.
 
-**This is the first knob to turn if the card misbehaves.** The symptoms to watch for on the first
-boot are: `Retrieving file: /Image` stalling or timing out; `mmc_load_image_raw` / `sdhci` timeout
-messages; a CRC or checksum complaint from extlinux or from `booti`; or a kernel that starts and
-then panics on a corrupt initramfs/rootfs read. Any of those is a timing problem until proven
-otherwise, and the order of attack is:
-
-1. **Already at the safest setting** (DS, 25 MHz, socdk PHY values) — that is what ships.
-2. If it still fails, try the *driver-default* PHY values (delete the `cdns,*` lines) — that
-   isolates "socdk's timings are wrong for this board" from "the card or the socket is the problem".
-3. Only then suspect the card itself; `dd if=/dev/mmcblk0 of=/dev/null bs=1M` from Linux is the
-   independent check, because it exercises the kernel's driver rather than U-Boot's.
-
-**Lifting it, once a full `dd` of the card reads clean under Linux and U-Boot has booted reliably a
-few times** *(procedure rewritten 2026-11-17)*. Change both stages in the same commit, one step at
-a time:
-
-1. **High-speed timing, still 25 MHz.** Delete the `sdhci-caps-mask` line in
-   `socfpga_agilex5_de25nano-u-boot.dtsi`. In the Linux board DTS, drop bit 21 from the caps mask
-   (`0x0020ff00` → `0x0000ff00`) and re-add `cap-sd-highspeed;`.
-2. **50 MHz.** Set `max-frequency = <50000000>;` in both files.
-
-The `sd-hs` PHY block U-Boot needs is already there. Re-test a cold boot, a `Retrieving file:` of
-the kernel, and a full `dd` under Linux after each step. Lifting only one stage leaves Linux
-running a mode the PHY was not programmed for. Going
-beyond 50 MHz means UHS, which means a `vqmmc` regulator, which means establishing the DE25's real
-1.8 V switch GPIO on hardware — a different and much larger job.
+**Debugging hooks if the card regresses.** Symptoms and order of attack:
+`Retrieving file: /Image` stalling → PHY timings (the `cdns,*` stanzas);
+`Card did not respond to voltage select (-110)` → ComboPHY driver not running
+(check probe, the `combo-phy` property, `CONFIG_PHY_CADENCE_COMBOPHY`);
+"frozen" autoboot countdown or absurdly long boots → the timer is dead, i.e.
+someone introduced a real rstmgr write (offset ≠ 0x24, or a new `resets`
+property on an enabled node). A full `dd if=/dev/mmcblk0 of=/dev/null` under
+Linux is the independent card/socket check.
 
 **Deliberate omissions:** no `&qspi` and no flash node (the node stays at the dtsi's `disabled`
 default, so even a hypothetically-present driver would not probe — the second lock on §7's door);
@@ -651,9 +655,19 @@ assert.
 
 ---
 
-## 8. The carried patches — one U-Boot, two TF-A
+## 8. The carried patches — four U-Boot, two TF-A
 
-*(Heading said "one TF-A" until 2026-11-17.)*
+*(Heading said "one U-Boot, one TF-A" until 2026-11-17; "one U-Boot, two TF-A" until 2026-11-23.)*
+
+U-Boot carries, in `patches/uboot/` (all created 2026-11-23, hardware-verified —
+see §5.1 and [`de25-upstream-issue-materials.md`](de25-upstream-issue-materials.md)):
+
+| Patch | What | Why |
+|---|---|---|
+| `0001-configs-socfpga_soc64-guard-mtdids-mtdparts-env` | (pre-existing) | QSPI env lock |
+| `0002-phy-cadence-combophy-agilex5-sdmmc-frontend` | Ports the Terasic `phy-cadence-combophy.c` (new driver + Kconfig + Makefile); the reset cycle pokes PER0MODRST directly | The ComboPHY is the Agilex 5 SD analog frontend and is absent from mainline; without it the card is unreliable (~2/5). The direct write exists because the reset framework must stay a no-op here, see §5.1 "rstmgr offset" |
+| `0003-sdhci-cadence-init-combo-phy` | `generic_phy_get_by_name("combo-phy")` + `generic_phy_init/power_on` in `sdhci_cdns_probe`, vendor order | Without the hook the PHY driver never runs |
+| `0004-sdhci-caps-mask-two-cell-read` | Reads `sdhci-caps-mask` cell-by-cell | The u64 read reverses the `<caps0 caps1>` halves, so CAPS1 masks never applied (UHS could not be disabled from DT) |
 
 TF-A carries `patches/arm-trusted-firmware/0001-plat-intel-agilex5-route-bl31-console-to-uart1.patch`
 (2026-09-14): two macro values, boot and crash console to UART1, the header UART. Terasic's own

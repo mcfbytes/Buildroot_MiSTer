@@ -1,6 +1,6 @@
 # DE25-Nano kernel patch series — what is here and why
 
-**Base:** mainline Linux **7.4-rc3**, aarch64 (Agilex 5), since 2026-11-17: a local-only pin with no
+**Base:** mainline Linux **7.4-rc4**, aarch64 (Agilex 5), since 2026-11-23 (7.4-rc3 from 2026-11-17): a local-only pin with no
 CI artifact ([`docs/de25-kernel-config.md`](../../../../docs/de25-kernel-config.md), 2026-11-17 note). See
 [`docs/de25-implementation-path.md`](../../../../docs/de25-implementation-path.md) §5 for the
 version pin's history.
@@ -9,9 +9,9 @@ version pin's history.
 [`board/mister/de10nano/linux-patches-beta/`](../../de10nano/linux-patches-beta/): every patch
 shared with the DE10 is a **relative symlink** into the DE10 series, so there is exactly one copy
 of each shared patch in the tree and a fix to it lands on both boards at once. Only genuinely
-DE25-specific patches are real files here — plus, since the 7.4 move, **six 7.4-rebased copies**
-(`0014`, `0015`, `0031`, `0033`, `0036`, `0061`) that are real files because the DE10's 6.18 and
-7.3 copies no longer apply at zero fuzz (see "RE-ANCHORED AT 7.4-rc3" at the end).
+DE25-specific patches are real files here — plus, since the 7.4 move, **seven 7.4-rebased copies**
+(`0014`, `0015`, `0017`, `0031`, `0033`, `0036`, `0061`) that are real files because the DE10's 6.18 and
+7.3 copies no longer apply at zero fuzz (see "RE-ANCHORED AT 7.4-rc3" and "MOVED TO 7.4-rc4" at the end).
 
 **Numbering.** The shared series keeps its DE10 4-digit prefixes (`0010`–`0042`) so
 `support/scripts/apply-patches.sh` applies it in the same order on both boards. DE25-local
@@ -133,7 +133,7 @@ runs against upstream; and it would not apply at v7.4 anyway.
 | dwc2 `0068` (2026-10-19, fork #114) | 1 considered, **1** included |
 | dwc2 `0069` (2026-11-10, fork #115) | 1 considered, **1** included |
 | DE25-local patches | **0** (`0101` and `0102` both dropped 2026-11-17) |
-| **Total applied here** | **39** (six of them DE25-local 7.4 copies) |
+| **Total applied here** | **39** (seven of them DE25-local 7.4 copies) |
 
 ## Note for the DE25 DTS
 
@@ -234,3 +234,11 @@ A sixth copy, `0031`, applied but failed to compile: 7.4's `.symlink` op takes a
 passes for all 38; `make de25` builds from scratch with 109 modules and a passing
 `check-sdcard-de25.sh`. The rebased HID/btusb/dwc2 copies are compile-verified only. Not run on
 hardware.
+
+MOVED TO 7.4-rc4 (2026-11-23). On a pristine `linux-7.4-rc4`, every patch but one applied at zero
+fuzz (offsets only). `0017` failed one hunk because rc4 added the 8BitDo M30 row (`2dc8:200a`) next
+to the Qanba row the patch inserts, so `0017` became a DE25-local copy with that one context line
+updated and a `Forward-port:` line. The DE10 copy is unchanged. None of rc4's new xpad IDs
+duplicates a row the patch adds. `lint-kernel-patches.sh` passes, every requested config line
+survives `olddefconfig`, and a host-gcc cross build of `Image`, modules (109) and the board DTB
+is clean. Not run on hardware.

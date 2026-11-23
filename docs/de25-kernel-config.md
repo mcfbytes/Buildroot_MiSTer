@@ -32,6 +32,14 @@ load-bearing comments were folded into this document when that file was deleted.
 > into that file, re-run the patch series (`board/mister/de25nano/linux-patches/README.md`, last
 > section). All 492 requested config lines survive `olddefconfig` at 7.4-rc3; `make de25` builds
 > from scratch. Statements below that name 7.2.x/7.3.4 are dated records from those pins.
+>
+> **2026-11-23 — pin moved to 7.4-rc4.** rc3 → rc4 touches nothing DE25-specific: no change under
+> the Agilex 5/socfpga DTS, `sdhci-cadence`, Stratix 10 firmware/FPGA, reset, clock, dwc2 or
+> HID paths, and no Kconfig change that reaches arm64. The DE25-relevant pieces are stmmac
+> fixes that apply to this board's XGMAC2 (ECC/parity setup for `asp == 0x2`, a DMA-error
+> interrupt path, RX checksum/drain fixes), and new xpad device IDs, which forced a DE25-local
+> copy of `0017` (patch README, last section). Every requested config line survives
+> `olddefconfig`.
 
 ## 1. The problem this closes
 

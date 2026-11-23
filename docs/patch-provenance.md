@@ -1884,8 +1884,8 @@ page and the visible frame, and the client maps `0x7FF000` of `/dev/fb0`. A clie
 
 Original work by the repo owner, not from the fork. `0072` describes the board's fixed HPS<->FPGA
 resources in the DE10 DTS: `no-map` reserved-memory tiles over `0x1ff00000..0x3fffffff`, map-only
-`generic-uio` windows (LW bridge, heavy HPS-to-FPGA bridge, FPGA-manager page, DDR aperture, low DDR)
-and one UIO node per `f2h` IRQ line 1..63. `0045` adds `UIO_MEM_PHYS_WC` so the aperture node maps
+`generic-uio` windows (LW bridge, heavy HPS-to-FPGA bridge, FPGA-manager page, DDR aperture, low DDR,
+OCRAM below its top page), a reserved `mister-ocram@0` child of `&ocram`, and one UIO node per `f2h` IRQ line 1..63. `0045` adds `UIO_MEM_PHYS_WC` so the aperture node maps
 write-combined. Both were beta-only (`0043`/`0044`/`0045` in `linux-patches-beta/`); `0072`
 superseded `0043` and `0044`, which were removed, their UIO nodes renamed to the one `mister_<name>` scheme, and `0045` moved to
 `linux-patches/`. Carried in the de10nano and beta series (beta by symlink); not in de25nano. Needs

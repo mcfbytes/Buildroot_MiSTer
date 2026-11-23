@@ -12,15 +12,20 @@ Describe every fixed HPS<->FPGA resource the board has, as one tree:
                      memory-region phandle) and the core-owned remainder.
   /mister            map-only generic-uio windows: the LW bridge, the heavy
                      HPS-to-FPGA bridge, the FPGA-manager page (GPO/GPI),
-                     the 512 MiB DDR aperture (write-combined with 0045) and
-                     the low DDR window.
+                     the 512 MiB DDR aperture (write-combined with 0045),
+                     the low DDR window and the HPS on-chip RAM below its
+                     top page (the fpga2hps mailbox data plane).
   /mister/fabric-irqs
                      one generic-uio node per f2h_irq line 1..63 (GIC SPI
                      41..103). Line 0 stays MiSTer_fb's vsync.
+  &ocram             a second reserved child, mister-ocram@0 over
+                     0x0000..0xefff, beside 0004's flags-sram@f000, so the
+                     mmio-sram gen_pool is empty and no in-kernel user can
+                     allocate the bytes the host and fabric own.
 
 One name per device: the UIO name is mister_<name> and udev adds
 /dev/mister/<name> (lw-bridge, h2f-bridge, fpga-mgr, ddr-aperture,
-ddr-low, irq/f2h-irq<N>; N is the hardware f2h line). Supersedes the
+ddr-low, ocram, irq/f2h-irq<N>; N is the hardware f2h line). Supersedes the
 beta-only 0043 (doorbells) and 0044 (LW window, DDR aperture) and renames
 their nodes to this scheme: mister_doorbell1..8 are mister_f2h_irq8..15
 (udev keeps /dev/mister/doorbell/1..8 as aliases), mister_lw_window is
@@ -39,7 +44,7 @@ Provenance
 ----------
 Origin:       None; authored for this tree. Folds in 0043 (2026-08-08) and
               0044 (2026-08-14), same author.
-Author:       Michael C. Ferguson, 2026-11-13.
+Author:       Michael C. Ferguson, 2026-11-13; mister_ocram 2026-11-22.
 Upstream:     For the MiSTer kernel fork (export via
               scripts/export-kernel-tree.sh). generic-uio is bound through
               uio_pdrv_genirq.of_id; not a mainline binding.
@@ -50,12 +55,12 @@ Depends on:   0004 (the DTS base). 0045 makes mister,map-writecombine
 
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
- .../intel/socfpga/socfpga_cyclone5_de10nano.dts    | 472 +++++++++++++++++++++
- 1 file changed, 472 insertions(+)
+ .../intel/socfpga/socfpga_cyclone5_de10nano.dts    | 486 +++++++++++++++++++++
+ 1 file changed, 486 insertions(+)
 
 --- a/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
 +++ b/arch/arm/boot/dts/intel/socfpga/socfpga_cyclone5_de10nano.dts
-@@ -288,3 +288,475 @@ flags-sram@f000 {
+@@ -288,3 +288,489 @@ flags-sram@f000 {
  		reg = <0xf000 0x1000>;
  	};
  };
@@ -144,6 +149,13 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 +			linux,uio-name = "mister_ddr_low";
 +			reg = <0x1ff00000 0x000ff000>,
 +			      <0x1ffff000 0x00001000>;
++		};
++
++		/* Warm boot runs the SPL image at +0: clear warmramgrp.enable before a store. */
++		ocram@ffff0000 {
++			compatible = "generic-uio";
++			linux,uio-name = "mister_ocram";
++			reg = <0xffff0000 0x0000f000>;
 +		};
 +
 +		/* f2h_irq[N] = GIC SPI 40+N; N=0 is MiSTer_fb's vsync. */
@@ -529,6 +541,13 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 +				interrupts = <0 103 IRQ_TYPE_LEVEL_HIGH>;
 +			};
 +		};
++	};
++};
++
++/* OCRAM below flags-sram is mister_ocram's: keep it out of the mmio-sram pool. */
++&ocram {
++	mister-ocram@0 {
++		reg = <0x0 0xf000>;
 +	};
 +};
 -- 

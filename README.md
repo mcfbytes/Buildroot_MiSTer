@@ -4,7 +4,7 @@
 
 [![Build](https://github.com/mcfbytes/Buildroot_MiSTer/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/mcfbytes/Buildroot_MiSTer/actions/workflows/build.yml)
 [![Lint CI](https://github.com/mcfbytes/Buildroot_MiSTer/actions/workflows/lint.yml/badge.svg?branch=master)](https://github.com/mcfbytes/Buildroot_MiSTer/actions/workflows/lint.yml)
-[![Latest release](https://img.shields.io/github/v/release/mcfbytes/Buildroot_MiSTer?include_prereleases&label=release)](https://github.com/mcfbytes/Buildroot_MiSTer/releases)
+[![Latest release](https://img.shields.io/github/v/release/mcfbytes/Buildroot_MiSTer?include_prereleases&filter=v*&label=release)](https://github.com/mcfbytes/Buildroot_MiSTer/releases)
 [![Downloads](https://img.shields.io/github/downloads/mcfbytes/Buildroot_MiSTer/total?label=downloads)](https://github.com/mcfbytes/Buildroot_MiSTer/releases)
 [![License: GPL-3.0, kernel patches GPL-2.0](https://img.shields.io/badge/license-GPL--3.0%20%C2%B7%20kernel%20patches%20GPL--2.0-blue)](#contributing-and-licensing)
 [![Platform: MiSTer FPGA](https://img.shields.io/badge/platform-MiSTer%20FPGA%20%C2%B7%20DE10--Nano-orange)](https://github.com/MiSTer-devel/Wiki_MiSTer/wiki)
@@ -550,10 +550,11 @@ digest last. It covers:
 | Workflow | Trigger | Job |
 |---|---|---|
 | `build.yml` | push to `master`, PRs | Both kernels, the image, the parity and ABI suite, patch and defconfig lints |
-| `release.yml` | `v*` tags | Clean rebuild, release archive, draft Release |
-| `publish-db.yml` | release published | Regenerate and deploy `db.json` |
+| `release.yml` | `v*` tags | Clean rebuild, release archive, draft pre-release |
+| `cut-release.yml` | manual | Tag master's commit `v<date>-<suffix>` and dispatch `release.yml` (dry run by default) |
+| `publish-db.yml` | `v*` release published | Regenerate and deploy `db.json` |
 | `reproducibility.yml` | manual | Two independent builds must be byte-identical |
-| `de25-build.yml` | manual | The DE25-Nano build |
+| `de25-build.yml` | manual | The DE25-Nano build; optionally a `de25-YYYYMMDD` pre-release |
 | `renovate-hash-sync.yml` | Renovate PRs | Refresh companion hashes a version bump leaves stale |
 | `renovate-validate.yml` | config changes | Catch an invalid Renovate config, which Renovate would otherwise skip silently |
 | `fork-sync.yml` | weekly | Track new commits on upstream's kernel fork |

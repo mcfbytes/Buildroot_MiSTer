@@ -1,0 +1,154 @@
+################################################################################
+#
+# cut-release.yml — cut a DE10 release from the web UI: derive the tag from
+# master's HEAD commit, check it, create it, and dispatch release.yml on it.
+#
+# Tag = v<YYYY.MM.DD>-<suffix>, the date being the commit's UTC date, so it
+# equals /MiSTer.version and release_<YYYYMMDD>.7z. dry_run (the default) only
+# prints what would happen. Pushing a v* tag from a terminal still works exactly
+# as before; this is a convenience, not a second path. docs/ci.md#cut-release
+#
+################################################################################
+
+name: Cut release (DE10)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Only print the tag, SHA, version and checks; create nothing.'
+        type: boolean
+        default: true
+      suffix:
+        description: 'Tag suffix: v<YYYY.MM.DD>-<suffix> (e.g. beta, rc1).'
+        type: string
+        default: beta
+      build_full_sdcard:
+        description: 'Passed to release.yml: build sdcard-full.img.xz instead of the minimal sdcard.img.xz.'
+        type: boolean
+        default: false
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  cut:
+    name: Derive, check, tag, dispatch release.yml
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write        # create the tag ref
+      actions: write         # dispatch release.yml; read Build runs
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Require master
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -eu
+          [ "$REF" = refs/heads/master ] || { echo "::error::cut-release must run on master, not $REF" >&2; exit 1; }
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Derive tag and version from the commit
+        id: derive
+        env:
+          SUFFIX: ${{ inputs.suffix }}
+        run: |
+          set -eu
+          [[ "$SUFFIX" =~ ^[A-Za-z0-9][A-Za-z0-9.-]*$ ]] ||
+            { echo "::error::suffix '$SUFFIX' must be letters, digits, dots and hyphens (e.g. beta, rc1)" >&2; exit 1; }
+          sha=$(git rev-parse HEAD)
+          [ "$sha" = "$GITHUB_SHA" ] || { echo "::error::checked-out $sha != GITHUB_SHA $GITHUB_SHA" >&2; exit 1; }
+          day=$(TZ=UTC git show -s --format=%cd --date=format-local:%Y.%m.%d HEAD)
+          release_date=${day//./}
+          {
+            echo "sha=$sha"
+            echo "tag=v${day}-${SUFFIX}"
+            echo "release_date=$release_date"
+            echo "version=${release_date#20}"
+          } >> "$GITHUB_OUTPUT"
+          echo "tag v${day}-${SUFFIX}  sha $sha  /MiSTer.version ${release_date#20}  archive release_${release_date}.7z"
+
+      - name: Refuse an existing tag
+        env:
+          TAG: ${{ steps.derive.outputs.tag }}
+        run: |
+          set -eu
+          rc=0; git ls-remote --exit-code --tags origin "refs/tags/$TAG" || rc=$?
+          case "$rc" in
+            2) echo "ok: tag $TAG is free" ;;
+            0) echo "::error::tag $TAG already exists; pick another suffix" >&2; exit 1 ;;
+            *) echo "::error::git ls-remote failed (exit $rc)" >&2; exit 1 ;;
+          esac
+
+      # Same date = same /MiSTer.version, so devices would never see it as an update.
+      - name: Refuse a date a published release already ships
+        env:
+          ASSET: release_${{ steps.derive.outputs.release_date }}.7z
+        run: |
+          set -eu
+          hits=$(gh api --paginate "repos/${GH_REPO}/releases" \
+            --jq ".[] | select(any(.assets[]; .name == \"${ASSET}\")) | \"\(.tag_name) draft=\(.draft)\"")
+          published=$(printf '%s\n' "$hits" | grep ' draft=false$' || true)
+          drafts=$(printf '%s\n' "$hits" | grep ' draft=true$' || true)
+          if [ -n "$published" ]; then
+            echo "::error::$ASSET is already shipped by published release(s): $(echo "$published" | tr '\n' ' ')-- a new tag on this commit date would carry the same /MiSTer.version" >&2
+            exit 1
+          fi
+          [ -z "$drafts" ] || echo "::warning::draft release(s) already carry $ASSET: $(echo "$drafts" | tr '\n' ' ')"
+          echo "ok: no published release ships $ASSET"
+
+      - name: Check the latest Build run on this commit (warning only)
+        env:
+          SHA: ${{ steps.derive.outputs.sha }}
+        run: |
+          set -eu
+          run=$(gh api "repos/${GH_REPO}/actions/workflows/build.yml/runs?head_sha=${SHA}&per_page=1" \
+            --jq '.workflow_runs[0] // empty | "\(.status) \(.conclusion // "-") \(.html_url)"')
+          case "$run" in
+            "completed success "*) echo "ok: Build is green on $SHA ($run)" ;;
+            "") echo "::warning::no Build run found for $SHA" ;;
+            *) echo "::warning::latest Build run on $SHA is not green: $run" ;;
+          esac
+
+      - name: Summary
+        env:
+          TAG: ${{ steps.derive.outputs.tag }}
+          SHA: ${{ steps.derive.outputs.sha }}
+          VERSION: ${{ steps.derive.outputs.version }}
+          RELEASE_DATE: ${{ steps.derive.outputs.release_date }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          FULL_SDCARD: ${{ inputs.build_full_sdcard }}
+        run: |
+          {
+            echo "## Cut release ${TAG}$([ "$DRY_RUN" = true ] && echo ' (dry run: nothing created)')"
+            echo ""
+            echo "| Fact | Value |"
+            echo "|---|---|"
+            echo "| Tag | \`${TAG}\` |"
+            echo "| Commit | \`${SHA}\` |"
+            echo "| \`/MiSTer.version\` | \`${VERSION}\` |"
+            echo "| Archive | \`release_${RELEASE_DATE}.7z\` |"
+            echo "| build_full_sdcard | ${FULL_SDCARD} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # The API-created tag fires no push event, so release.yml runs once, via dispatch.
+      - name: Create the tag and dispatch release.yml
+        if: ${{ !inputs.dry_run }}
+        env:
+          TAG: ${{ steps.derive.outputs.tag }}
+          SHA: ${{ steps.derive.outputs.sha }}
+          FULL_SDCARD: ${{ inputs.build_full_sdcard }}
+        run: |
+          set -eu
+          gh api --method POST "repos/${GH_REPO}/git/refs" -f "ref=refs/tags/${TAG}" -f "sha=${SHA}" --jq .ref
+          gh workflow run release.yml --ref "$TAG" -f "build_full_sdcard=${FULL_SDCARD}" -f prerelease=true
+          echo "Dispatched release.yml on $TAG -- follow it at https://github.com/${GH_REPO}/actions/workflows/release.yml" | tee -a "$GITHUB_STEP_SUMMARY"

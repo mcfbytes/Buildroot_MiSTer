@@ -63,6 +63,8 @@ jobs:
     name: Regenerate + publish db.json
     runs-on: ubuntu-26.04
     timeout-minutes: 15
+    # Only DE10 v* tags carry a db.json; other boards' releases (de25-*) skip quietly.
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
 
     # OIDC-based Pages deploy (`pages`/`id-token`), same mechanism as
     # release.yml's attest-build-provenance; contents:read only — never
@@ -100,6 +102,10 @@ jobs:
             echo "::error::could not resolve a release tag (workflow_dispatch requires the 'tag' input)" >&2
             exit 1
           fi
+          case "$tag" in
+            v*) ;;
+            *) echo "::error::tag '$tag' is not a v* (DE10) release tag -- db.json is only published from those (docs/ci.md#tag-convention)" >&2; exit 1 ;;
+          esac
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "Resolved release tag: $tag"
 

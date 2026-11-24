@@ -6,12 +6,27 @@
 # slice of the cache budget. It only restores the DE10's dl/ for the sources
 # both boards share. Rationale: docs/ci.md#de25-manual-lane.
 #
+# Two jobs:
+#   de25     build, check, package dist-de25/ (scripts/mk-release-de25.sh)
+#   publish  publish=true on master only: attest provenance, then create the
+#            non-draft pre-release de25-YYYYMMDD[-N] (ADR 0027 D4/D6)
+#
 ################################################################################
 
 name: DE25-Nano build (manual)
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the build as a de25-YYYYMMDD GitHub pre-release (master only). Off = build + check + artifact, as before.'
+        type: boolean
+        default: false
+      notes:
+        description: 'Optional extra text appended to the release notes (publish only).'
+        type: string
+        required: false
+        default: ''
 
 concurrency:
   group: de25-build-${{ github.ref }}
@@ -26,10 +41,23 @@ jobs:
     runs-on: ubuntu-26.04
     # Cold every time (no toolchain cache): aarch64 toolchain + kernel + U-Boot/TF-A + rootfs.
     timeout-minutes: 300
+    outputs:
+      release_date: ${{ steps.version.outputs.release_date }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Same derivation as release.yml: /MiSTer.version = the commit's UTC date (YYMMDD).
+      - name: Derive version (YYMMDD) from the commit
+        id: version
+        run: |
+          set -eu
+          v="${MISTER_VERSION:-$(TZ=UTC git show -s --format=%cd --date=format-local:%y%m%d HEAD)}"
+          case "$v" in [0-9][0-9][0-9][0-9][0-9][0-9]) ;; *) echo "::error::derived MISTER_VERSION '$v' is not 6 digits YYMMDD" >&2; exit 1 ;; esac
+          echo "MISTER_VERSION=$v" >> "$GITHUB_ENV"
+          echo "release_date=20$v" >> "$GITHUB_OUTPUT"
+          echo "Version (YYMMDD) = $v  ->  /MiSTer.version, tag de25-20$v"
 
       - name: Free disk space on the runner
         run: |
@@ -47,7 +75,7 @@ jobs:
           echo "BUILDROOT_VERSION=$ver" >> "$GITHUB_ENV"
 
       # Restore only: whatever the DE10 build last saved. The DE25-only
-      # sources (aarch64 toolchain bits, 7.3 kernel, TF-A) are fetched fresh.
+      # sources (aarch64 toolchain bits, its own kernel pin, TF-A) are fetched fresh.
       - name: Restore dl/ download cache (read-only)
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -83,6 +111,13 @@ jobs:
       - name: Static card check (check-sdcard-de25.sh)
         run: scripts/check-sdcard-de25.sh output-de25/images/sdcard-de25.img output-de25/images
 
+      # Before the stage-1 step below, which edits output-de25/.config.
+      - name: Generate legal-info (SBOM)
+        run: make O=output-de25 legal-info
+
+      - name: Package the release assets (scripts/mk-release-de25.sh)
+        run: scripts/mk-release-de25.sh output-de25 dist-de25
+
       # The DE25 card does not embed stage 1 yet (ADR 0029 D11), so build the
       # package alone for the test; the card built above is already final.
       - name: Build the stage-1 cpio for the QEMU leg
@@ -106,22 +141,131 @@ jobs:
             echo "| Fact | Value |"
             echo "|---|---|"
             echo "| Commit | \`${GITHUB_SHA:0:12}\` |"
+            echo "| \`/MiSTer.version\` | \`${MISTER_VERSION:-n/a}\` |"
             echo "| Kernel module tree | \`${kver:-n/a}\` |"
-            for f in sdcard-de25.img u-boot.itb bl31.bin Image; do
-              p=output-de25/images/$f
-              if [ -f "$p" ]; then echo "| $f | $(stat -c %s "$p") B, sha256 \`$(sha256sum "$p" | cut -c1-16)…\` |"; fi
-            done
+            echo ""
+            echo "<details><summary>dist-de25/SHA256SUMS</summary>"; echo ""; echo '```'; cat dist-de25/SHA256SUMS 2>/dev/null || echo "(not packaged)"; echo '```'; echo ""; echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload the card image
+      - name: Upload the release asset bundle
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: de25-images-${{ github.sha }}
-          path: |
-            output-de25/images/sdcard-de25.img
-            output-de25/images/u-boot.itb
-            output-de25/images/bl31.bin
-            output-de25/images/Image
-            output-de25/images/*.dtb
+          name: de25-dist-${{ github.sha }}
+          path: dist-de25/
           if-no-files-found: error
           retention-days: 14
+
+  # Elevated scopes live only here, as in release.yml. docs/ci.md#de25-manual-lane
+  publish:
+    name: Attest provenance + create the de25 pre-release
+    needs: de25
+    if: inputs.publish && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    permissions:
+      contents: write        # create the release, its tag and its assets
+      id-token: write        # attest-build-provenance's OIDC token exchange
+      attestations: write    # publish the attestation to this repo
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_DATE: ${{ needs.de25.outputs.release_date }}
+    steps:
+      - name: Download release asset bundle
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: de25-dist-${{ github.sha }}
+          path: dist
+
+      - name: Check every asset survived the artifact round trip
+        run: |
+          set -eu
+          ls -la dist/
+          for f in sdcard-de25.img.xz u-boot.itb Image socfpga_agilex5_de25nano.dtb bl31.bin buildroot.config linux.config legal-info.tar.gz SHA256SUMS; do
+            [ -f "dist/$f" ] || { echo "::error::dist/$f is missing from the de25 build's bundle" >&2; exit 1; }
+          done
+          ( cd dist && sha256sum -c SHA256SUMS )
+          case "$RELEASE_DATE" in 20[0-9][0-9][0-9][0-9][0-9][0-9]) ;; *) echo "::error::bad release date '$RELEASE_DATE' from the build job" >&2; exit 1 ;; esac
+
+      - name: Attest build provenance for the image assets
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/sdcard-de25.img.xz
+            dist/u-boot.itb
+            dist/Image
+            dist/socfpga_agilex5_de25nano.dtb
+            dist/bl31.bin
+
+      # Never reuses a tag: same-day builds become de25-YYYYMMDD-2, -3, ...
+      - name: Pick the next free de25-YYYYMMDD tag
+        id: tag
+        run: |
+          set -eu
+          base="de25-${RELEASE_DATE}"
+          taken="$RUNNER_TEMP/taken-tags.txt"
+          gh api --paginate "repos/${GH_REPO}/git/matching-refs/tags/${base}" --jq '.[].ref | sub("^refs/tags/"; "")' > "$taken"
+          gh release list --limit 1000 --json tagName --jq '.[].tagName' >> "$taken"
+          tag=$base n=1
+          while grep -qxF -- "$tag" "$taken"; do n=$((n + 1)); tag="${base}-${n}"; done
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Release tag: $tag"
+
+      - name: Write the release notes
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          EXTRA_NOTES: ${{ inputs.notes }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -eu
+          cfgval() { sed -n "s/^$1=\"\(.*\)\"\$/\1/p" dist/buildroot.config; }
+          kernel=$(cfgval BR2_LINUX_KERNEL_VERSION)
+          uboot=$(cfgval BR2_TARGET_UBOOT_VERSION)
+          tfa=$(cfgval BR2_TARGET_ARM_TRUSTED_FIRMWARE_VERSION)
+          [ -n "$kernel" ] && [ -n "$uboot" ] && [ -n "$tfa" ] ||
+            { echo "::error::could not read kernel/U-Boot/TF-A versions from dist/buildroot.config" >&2; exit 1; }
+          docs="https://github.com/${GH_REPO}/blob/${GITHUB_SHA}/docs/de25-sdcard.md"
+          {
+            echo "DE25-Nano developer OS pre-release (ADR 0027 Decision 6): a bare Linux for the board, with **no MiSTer binaries**. Not offered by any db.json."
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Commit | \`${GITHUB_SHA}\` |"
+            echo "| \`/MiSTer.version\` | \`${RELEASE_DATE#20}\` |"
+            echo "| Linux | \`${kernel}\` |"
+            echo "| U-Boot | \`${uboot}\` |"
+            echo "| TF-A | \`${tfa}\` |"
+            echo ""
+            echo "**Assets:** \`sdcard-de25.img.xz\` is the whole card (\`xz -d\`, then write it raw). \`u-boot.itb\`, \`Image\`, \`socfpga_agilex5_de25nano.dtb\` and \`bl31.bin\` are the loose boot files, for updating the FAT partition (p1) of an existing card; \`bl31.bin\` is already inside \`u-boot.itb\` and is attached for inspection. Writing, layout and first-boot checks: [docs/de25-sdcard.md](${docs})."
+            echo ""
+            echo "Hashes are in \`SHA256SUMS\`; verify provenance with \`gh attestation verify <asset> --owner ${OWNER}\`."
+            echo ""
+            echo "**Corresponding source (GPL/LGPL):** \`legal-info.tar.gz\` holds the SBOM (\`manifest.csv\` with each package's version, licence and hash-pinned upstream source URL), every licence text and every local patch we apply. Upstream source archives are not bundled: they are the hash-pinned upstreams \`manifest.csv\` names, plus this repository at \`${GITHUB_SHA}\`, which rebuilds the images with \`make de25\`. **Written offer:** for at least three years from this release we will provide a complete machine-readable copy of the corresponding source for any component on request; open an issue at https://github.com/${GH_REPO}."
+            if [ -n "$EXTRA_NOTES" ]; then echo ""; printf '%s\n' "$EXTRA_NOTES"; fi
+          } > "$RUNNER_TEMP/notes.md"
+          cat "$RUNNER_TEMP/notes.md"
+
+      # Created as a draft, then flipped: a run cancelled mid-upload leaves only a draft.
+      - name: Create the de25 pre-release
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -eu
+          assets=(
+            dist/sdcard-de25.img.xz dist/u-boot.itb dist/Image dist/socfpga_agilex5_de25nano.dtb dist/bl31.bin
+            dist/buildroot.config dist/linux.config dist/legal-info.tar.gz dist/SHA256SUMS
+          )
+          gh release create "$TAG" --draft --prerelease --latest=false --target "$GITHUB_SHA" \
+            --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" "${assets[@]}"
+          gh release edit "$TAG" --draft=false --prerelease --latest=false
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease,url
+
+      - name: Publish summary (job summary)
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          {
+            echo "## DE25-Nano pre-release published"
+            echo ""
+            echo "**${TAG}** at \`${GITHUB_SHA:0:12}\`: a non-draft pre-release, never marked latest. Its \`release\` event (if any) does not reach \`publish-db.yml\`, which ignores non-\`v*\` tags."
+          } >> "$GITHUB_STEP_SUMMARY"

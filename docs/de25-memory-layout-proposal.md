@@ -507,3 +507,29 @@ unmasked. [S: stock `sys/sysmem.sv:74-84,204`]
 | 5 | whether the ACE5-Lite path lets the HPS map the window cached | the port reports coherence; our image maps it write-combined and has not measured |
 | 6 | whether any published DE10 core relies on an address this table does not list | §1.1 is a grep of stock Main and five cores, not a survey of all of them |
 | 7 | the block's encoding in rule 5 | belongs with the lightweight-bridge directory design, when video is reached |
+
+## 8. Status, and the long-term placement question (operator, 2026-11-24)
+
+**For now the DE25 image keeps the third-party port's layout as shipped** (scaler scratch `0x9E00_0000`, framebuffer
+`0xA000_0000`, core window `0xB000_0000`, all on the HPS LPDDR4). Layout A above is a proposal to discuss, not a plan
+of record. The long-term layout gets more thought before either side changes anything.
+
+The question still open is which controller each region lives on. The board has two independent LPDDR4 controllers:
+the HPS's hard interface and a separate FPGA-side one. The operator's starting position:
+
+- **All of ascal on one controller, most likely the HPS one as it is now.** That means the scaler scratch AND the
+  framebuffer it can read, so ascal has one memory port and no traffic split across controllers.
+- **The FPGA-side bank left to the cores**, so core DDR traffic has a controller to itself.
+- **No region that makes one block's traffic cross both controllers.**
+
+Before deciding, measure or check these:
+
+1. ascal's real bandwidth on the HPS bank at 1080p60 (input write, output read, framebuffer read), and its headroom
+   next to Linux.
+2. What the FPGA-side controller costs a core's shell: area, calibration time at each full reconfiguration, and
+   whether it survives the reconfiguration sequences the port uses.
+3. Core DDR latency and timing on the FPGA bank against the HPS path, for timing-sensitive cores (for example PSX's
+   SPU cache in DDR3 mode).
+4. How the HPS reaches core RAM on the FPGA bank for bulk loads (ROM, MSU-1 data), and for savestates: the bridge
+   window speed, or a fabric DMA from an HPS staging buffer.
+5. Side effects not yet listed. An FPGA developer's review of the whole placement is owed before it is decided.

@@ -1,6 +1,6 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-11-10 18:09 UTC by `reduce.py` from 151 records (110 MiSTer-v5.15 + 25 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/151.
+Generated 2026-11-24 17:20 UTC by `reduce.py` from 152 records (110 MiSTer-v5.15 + 26 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/152.
 
 ## How to read this table
 
@@ -65,7 +65,7 @@ lives in `records/<full-sha>.json`.
   independently re-derived result (`N` rows are the errors this exercise found; all are
   corrected in that doc's §11).
 - **T2** — `✓` means the record survived a second, independent verification pass
-  (a stronger reviewer re-derived every claim from the actual source trees; 126/151
+  (a stronger reviewer re-derived every claim from the actual source trees; 126/152
   rows have this).
 - **Why / replacement** — the short answer to "where did it go?": the mainline commit that
   provides it (`dropped-upstream`), or what replaces it (`→ package/...`, a mainline driver,
@@ -122,7 +122,7 @@ directory is not capped at one.
 
 ### Present-day limitations — the complete list
 
-Of 151 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
+Of 152 rows, **3** describe a real difference a user could notice on this build today; everything else is fully covered. They are:
 
 - `43c52e9ef` Update lg4ff to latest version. Fix broken 32bit rumble/ff (#54) — see its record for the decision and affected hardware.
 - `aec7dc3aa` config: enable CONFIG_TUN for tap device support (#76) — see its record for the decision and affected hardware.
@@ -139,6 +139,7 @@ Of 151 rows, **3** describe a real difference a user could notice on this build 
 | `1337de1fd` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | — | Y | ✓ | Switch to i2c-gpio driver for smbus compatibility. |
 | `15968bc26` | v5.15 | **carried** | 0023-hid-wiimote-fixes.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | wiimote: fix analog ranges. |
 | `246984fce` | v5.15 | **carried** | 0004-dts-de10nano-MiSTer.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Enable SPI on LTC. Use HPS LED for SD card activity. |
+| `2917c67b8` | v6.18 | **carried** | 0010-hid-guncon2.patch | — | none (carried) | feature-loss/silent | — | ? |  | guncon2: Improve support for clones/compatible devices (#12… |
 | `2ac0aa1e8` | v5.15 | **carried** | 0026-input-mousedev-eviocgrab.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | input: support for mouseX and mice in EVIOCGRAB mode. |
 | `2d39e76d1` | v5.15 | **carried** | 0020-mmc-no-led-on-send-status.patch | — | none (carried) | cosmetic/silent | Y | Y | ✓ | mmc: don't activate LED on status command. |
 | `333d49b95` | v5.15 | **carried** | 0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch | — | none (carried) | feature-loss/silent | Y | Y | ✓ | Implement MiSTer audio driver. |

@@ -1,0 +1,63 @@
+{
+  "sha": "2917c67b8d70df39c7b4992543597bdf0ae3340c",
+  "subject": "guncon2: Improve support for clones/compatible devices (#121)",
+  "author": "Phil Eichinger",
+  "author_is_pr_contributor": true,
+  "date": "2026-11-17",
+  "source_branch": "MiSTer-v6.18",
+  "subsystem": "hid",
+  "change_type": "in-tree-code",
+  "files": [
+    "drivers/hid/hid-guncon2.c"
+  ],
+  "added": 1,
+  "removed": 1,
+  "is_backport_of_vanilla": false,
+  "disposition": "carried",
+  "carried_patch": "0010-hid-guncon2.patch",
+  "carried_mode": "re-implemented",
+  "upstream": {
+    "vanilla_shas": [],
+    "vanilla_file_line": null,
+    "vanilla_quote": null,
+    "equivalence": "absent"
+  },
+  "verification": {
+    "method": "diff",
+    "confidence": "high",
+    "contradiction": false
+  },
+  "agrees_with_provenance_doc": null,
+  "provenance_doc_ref": "Not a provenance-doc row: new fork work (PR #121), parent 9fcb1cb21.",
+  "impact": {
+    "effect_if_absent": "guncon2_usb_irq() ignores every report whose length is not exactly 6, so a GunCon 2 clone that sends 7-byte reports enumerates but never moves the cursor or reports a button. Nothing in dmesg.",
+    "affected_hardware": [
+      "Thrustmaster Beretta 92FS (sold as GunCon 2 compatible; 7-byte reports)",
+      "other GunCon 2 clones that enumerate as 0b9a:016a with longer reports"
+    ],
+    "device_ids": [
+      "0b9a:016a"
+    ],
+    "severity": "feature-loss",
+    "failure_mode": "silent"
+  },
+  "userspace_coupling": {
+    "coupled": false,
+    "interface": "evdev (ABS_X/ABS_Y, BTN_*), unchanged",
+    "main_mister_ref": null
+  },
+  "forward_port": {
+    "applies_to_6_18": true,
+    "conflicts": "The fork commit's own hunk does not apply to our series: 0010 creates hid-guncon2.c in kernel style (tabs, /* */ comments), not the fork's 4-space layout, so the one-line change is folded into 0010's new-file hunk.",
+    "effort": "trivial -- one comparison operator. Each full series applied in order at patch -p1 -F0 to pristine tarballs, hash-checked against the pins: de10nano 59/59 on linux-6.18.64, linux-rt 58/58 on linux-7.3.5, de25nano 39/39 on linux-7.4-rc4. Zero fuzz, zero offsets. drivers/hid/hid-guncon2.o builds W=1 with 0 warnings on all three (arm, arm, arm64)."
+  },
+  "dependencies": {
+    "depends_on": [
+      "0010-hid-guncon2.patch (the driver itself)"
+    ],
+    "superseded_by": [],
+    "duplicate_of": []
+  },
+  "license_provenance": "GPL-2.0 (the file's SPDX tag). Author Phil Eichinger, who opened PR #121. The commit carries no Signed-off-by. 0010 credits it in its Provenance block and does not add a sign-off on the author's behalf.",
+  "notes": "NOT IN MAINLINE: no drivers/hid/hid-guncon2.c in linux-7.4-rc4, so there is nothing upstream to compare.\n\nSAFETY OF '>= 6'. The URB buffer is devm_kmalloc(usb_endpoint_maxp(epirq)), so a longer report fits the buffer, and the handler reads only data[0..5]. Byte 7 is ignored, its meaning on the Beretta is unknown. A genuine GunCon 2 still sends 6 bytes and behaves as before. Reports shorter than 6 are still dropped.\n\nAll three boards take it: 0010 is a symlink in board/mister/de10nano/patches/linux-rt/ and board/mister/de25nano/linux-patches/, so one edit reaches the 6.18 image, the 7.3 beta/RT series and the DE25.\n\nNOT TESTED on hardware: no Beretta 92FS or GunCon 2 here."
+}

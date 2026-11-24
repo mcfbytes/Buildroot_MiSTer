@@ -1,6 +1,6 @@
 # Silent-regression triage — the headline list
 
-Generated 2026-11-10 18:09 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
+Generated 2026-11-24 17:20 UTC. Rows where the functionality is NOT covered in our 6.18 build (misclassified / needs-verification / not-evaluated) and failure is silent. Sorted worst-first. All tier-2 verified.
 
 **Total: 0 candidates** (of which 0 feature-loss).
 
@@ -14,6 +14,7 @@ These WOULD regress silently if their patch (or, for `carried-as-package` rows, 
 - `1337de1fd` Switch to i2c-gpio driver for smbus compatibility. → 0004-dts-de10nano-MiSTer.patch
 - `15968bc26` wiimote: fix analog ranges. → 0023-hid-wiimote-fixes.patch
 - `246984fce` Enable SPI on LTC. Use HPS LED for SD card activity. → 0004-dts-de10nano-MiSTer.patch
+- `2917c67b8` guncon2: Improve support for clones/compatible devices (#12… → 0010-hid-guncon2.patch
 - `2ac0aa1e8` input: support for mouseX and mice in EVIOCGRAB mode. → 0026-input-mousedev-eviocgrab.patch
 - `333d49b95` Implement MiSTer audio driver. → 0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model.patch
 - `3726e2eba` usb: dwc2: acknowledge all HCINT bits again (#114) → 0068-dwc2-host-ack-all-hcint-bits.patch

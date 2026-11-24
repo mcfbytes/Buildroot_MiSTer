@@ -3,6 +3,7 @@ work/
 output*/
 dl/
 dist/
+dist-de25/
 release-work/
 *.img
 *.7z

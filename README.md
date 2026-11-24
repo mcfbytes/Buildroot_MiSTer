@@ -9,7 +9,7 @@
 [![License: GPL-3.0, kernel patches GPL-2.0](https://img.shields.io/badge/license-GPL--3.0%20%C2%B7%20kernel%20patches%20GPL--2.0-blue)](#contributing-and-licensing)
 [![Platform: MiSTer FPGA](https://img.shields.io/badge/platform-MiSTer%20FPGA%20%C2%B7%20DE10--Nano-orange)](https://github.com/MiSTer-devel/Wiki_MiSTer/wiki)
 [![Buildroot](https://img.shields.io/badge/Buildroot-2026.08.2-2e6da4)](https://buildroot.org/)
-[![Kernel](https://img.shields.io/badge/kernel-6.18.64%20LTS-fcc624?logo=linux&logoColor=black)](https://www.kernel.org/)
+[![Kernel](https://img.shields.io/badge/kernel-6.18.65%20LTS-fcc624?logo=linux&logoColor=black)](https://www.kernel.org/)
 [![RT kernel](https://img.shields.io/badge/RT%20kernel-7.3.5-fcc624?logo=linux&logoColor=black)](#the-real-time-kernel)
 [![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen?logo=renovatebot)](docs/renovate.md)
 [![Ask DeepWiki](art/badges/deepwiki.svg)](https://deepwiki.com/mcfbytes/Buildroot_MiSTer)

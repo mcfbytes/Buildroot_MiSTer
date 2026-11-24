@@ -71,7 +71,7 @@
 };
 
 &soc {
-	/* Absent from mainline's dtsi. The block is an SD6HC; this binds the SD4HC driver. */
+	/* Absent from mainline's dtsi. 7.4's SD6HC driver programs the PHY for every mode itself. */
 	mmc0: mmc@10808000 {
 		compatible = "altr,agilex5-sd6hc", "cdns,sd6hc";
 		reg = <0x10808000 0x1000>;
@@ -84,15 +84,16 @@
 		/* No dma-coherent until measured with the SMMU off: docs/de25-dts-rationale.md §4.5. */
 
 		bus-width = <4>;
-		/* First boot: default speed at 25 MHz; the SD6HC driver programs the PHY itself. */
-		max-frequency = <25000000>;
+		/* SD high speed at 3.3 V; no UHS without a 1.8 V regulator (docs/de25-dts-rationale.md §2.8). */
+		max-frequency = <50000000>;
+		cap-sd-highspeed;
 		disable-wp;
 		no-1-8-v;
 		no-sdio;
 
-		/* <caps1 caps>: mask SDR50 tuning and high speed (bit 21); base clock comes from ciu. */
+		/* <caps1 caps>: mask SDR50 tuning and the base clock field, which comes from ciu. */
 		sdhci-caps = <0x00000000 0x0000c800>;
-		sdhci-caps-mask = <0x00002000 0x0020ff00>;
+		sdhci-caps-mask = <0x00002000 0x0000ff00>;
 
 		status = "okay";
 	};
@@ -230,6 +231,13 @@
 			linux,uio-name = "mister_ddr_low";
 			reg = <0x0 0x9ff00000 0x0 0x000ff000>,
 			      <0x0 0x9ffff000 0x0 0x00001000>;
+		};
+
+		/* HPS on-chip RAM below the SPL handoff page; Device memory, so aligned accesses only. */
+		ocram@0 {
+			compatible = "generic-uio";
+			linux,uio-name = "mister_ocram";
+			reg = <0x0 0x00000000 0x0 0x0007f000>;
 		};
 
 		/* f2h_irq[N] = GIC SPI 17+N [U until a board confirms]; N=0 is kept for a future fb vsync. */
@@ -626,5 +634,16 @@
 			gpios = <&portb 16 GPIO_ACTIVE_LOW>;
 			linux,code = <BTN_0>;
 		};
+	};
+};
+
+/* OCRAM is mister_ocram's and the handoff page's: keep both out of the mmio-sram pool. */
+&ocram {
+	mister-ocram@0 {
+		reg = <0x0 0x7f000>;
+	};
+
+	handoff-sram@7f000 {
+		reg = <0x7f000 0x1000>;
 	};
 };

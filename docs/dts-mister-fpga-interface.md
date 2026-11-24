@@ -347,8 +347,33 @@ first 4 MiB and puts its GPO/GPI PIOs at `+0x2_0000`/`+0x2_0010`) and `h2f-bridg
 Addresses from Altera's Agilex 5 GSRD user guide **[V doc, U on this board]**. There is **no
 `fpga-mgr` node**: Cyclone V's GPO/GPI registers live in the HPS FPGA manager, Agilex 5 has no
 equivalent, so a DE25 shell must provide them as fabric PIOs behind `lw-bridge`; the shared
-rule's `mister_fpga_mgr` line simply never matches. There is no `ocram` node either (§2.4 is
-Cyclone V's OCRAM and warm-boot flow), so `mister_ocram`'s line never matches on the DE25.
+rule's `mister_fpga_mgr` line simply never matches.
+
+**On-chip RAM (2026-11-24).** `ocram@0`, `mister_ocram`, `/dev/mister/ocram`, the same name as
+§2.4. It covers 508 KiB, `0x00000..0x7efff`, of Agilex 5's 512 KiB OCRAM at physical `0x0`,
+mapped as Device memory (strongly ordered). `&ocram` gains two `reg`-only children so the
+`mmio-sram` pool is empty, as §2.4 does on the DE10: `mister-ocram@0` over the same range, and
+`handoff-sram@7f000` over the top page.
+
+What uses the OCRAM, from source:
+- **The boot stages only.** The factory SPL runs from it (`CFG_SYS_INIT_RAM_ADDR 0x0`, size
+  `0x80000`, `socfpga_soc64_common.h`) and leaves its handoff block at `0x7f000`
+  (`handoff_soc64.h`). U-Boot proper reads that block before relocating. TF-A v2.15.0 would use
+  `0x7d000` as BL2's MMC buffer, but this chain has no BL2.
+- **Not BL31.** It runs from DDR (`BL31_BASE 0x80000000`). It maps the OCRAM in its tables
+  (`bl31_plat_setup.c:198`) but nothing at runtime reads or writes it.
+- **No DE10-style warm-boot hazard.** Agilex 5 warm reset goes back through the SDM, which
+  reloads the SPL, so no resident image has to survive.
+
+**Hazards, all [U].**
+- **Non-secure access** depends on the OCRAM firewall that the factory SPL leaves. TF-A only opens
+  it explicitly on Stratix 10 (`socfpga_firewall.c:112`). A firewalled read from Linux would be an
+  SError, so test with `md.l`/`mw.l` at the U-Boot prompt (EL2, non-secure) before any client
+  touches the node.
+- **Fabric reach.** Whether the F2H bridge reaches OCRAM through the CCU under that firewall is
+  also open.
+- **Aligned accesses only.** It is Device memory on arm64, so an unaligned access faults; plain
+  `memcpy` is not safe on the mapping.
 
 **Interrupts.** 63 nodes `f2h-irq1..63`, same names, types and doorbell aliases as §2.3, at
 **GIC SPI cell `17 + N`** (17–80). Evidence **[U, desk]**: Altera's Agilex devicetree HOWTO maps

@@ -78,6 +78,15 @@ SPL's own config, from the same public branch: `SPL_FIT_SIGNATURE=y` with no key
 `BLOBLIST_ADDR=0x72000` (the value §4.4 guessed, confirmed), boot order mmc→flash0→nand, and
 `plat->dualport = 0` forced in `sdram_agilex5.c`.
 
+**Cortex-A76 errata (2026-11-24).** TF-A v2.15.0's `agilex5` `platform.mk` turns on one erratum,
+`ERRATA_A55_1530923`. The #318 boot log reported four A76 workarounds as "missing" on this
+silicon: 1946160, 2356586, 2743102 and 3888013. The defconfig enables those four through
+`BR2_TARGET_ARM_TRUSTED_FIRMWARE_ADDITIONAL_VARIABLES`.
+- TF-A's `cpu-specific-build-macros.rst` lists each one for every A76 revision up to r4p1.
+- Each workaround checks the CPU revision at runtime, so it is inert where it does not apply.
+- The report itself prints only from a `DEBUG=1` BL31. Ours is a release build, so after this
+  change the tester's debug build should report them as applied.
+
 ---
 
 ## 3. Files
@@ -360,6 +369,9 @@ dtsi, and the defconfig selects `DESIGNWARE_APB_TIMER`.
 mounted the root filesystem from the card that U-Boot had left in SDR50. Linux 7.4's SD6HC
 driver programs the PHY itself, so the old rule that both stages must end in the same mode
 (written for 7.3.4, which could not program the PHY) no longer applies.
+- **Retest (2026-11-24, #318):** 10/10 cold boots on master, `mmc info` UHS SDR50 at 50 MHz,
+  4-bit, and a clean full-card `dd`.
+- **Linux now runs SD high speed at 50 MHz** on its own timings (`de25-dts-rationale.md` §2.8).
 
 **If the card misbehaves:**
 - "no tuning point found" means the caps mask is not hiding a UHS mode.

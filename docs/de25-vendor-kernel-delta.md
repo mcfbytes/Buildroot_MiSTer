@@ -354,6 +354,12 @@ failures are easier to read.
 
 ### 5.1 SD: Linux inherits the PHY state, so both stages must agree on the mode
 
+> **Superseded at the 7.4 pin (2026-11-24).** v7.4's SD6HC driver computes and rewrites the PHY
+> and `HRS` timings on every clock or timing change, and T0 (#318) showed that the SDHCI reset
+> at probe zeroes `HRS07`/`10`/`16`. So Linux inherits nothing, and the stages now run different
+> modes: U-Boot UHS SDR50, Linux SD high speed at 50 MHz (`de25-dts-rationale.md` §2.8). The text
+> below describes 7.3.4.
+
 - The SD controller is a Cadence **SD6HC**. Mainline 7.3.4 has no SD6HC code, so our node binds
   the SD4HC driver through a local compatible. That driver never writes the SD6HC PHY: its only
   PHY code handles eleven SD4HC properties our node does not have **[S]**. Whatever U-Boot left
@@ -537,6 +543,10 @@ Then the reset question from §5.1. Write the reset Linux will write, and compar
 ```
 mw.b 0x1080822f 0x01   # SDHCI software reset, all — what sdhci_init() issues
 ```
+
+**T0 result (2026-11-24, #318):** rev-B silicon, `POR_1` bit 1 clear, remap registers 0, SMMU
+off with `GBPA` 0. The reset zeroed `HRS07`/`10`/`16` and `HRS04`-`06`, and cleared `HRS09`
+bit 19. Linux 7.4 reprograms all of them (§5.1 note).
 
 Repeat the `HRS` and PHY reads. Unchanged means Linux inherits the state. Reset values mean
 7.3.4 cannot run this card slot, and the SD6HC driver is needed before first boot. The card is

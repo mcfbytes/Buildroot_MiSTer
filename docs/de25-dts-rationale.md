@@ -25,6 +25,9 @@ a **mainline** board device tree for the Terasic DE25-Nano on Linux 7.3.x.
 > **Later on 2026-11-17 the pin moved to 7.4-rc3** and `mmc0` was rewritten for v7.4's SD6HC
 > driver (`altr,agilex5-sd6hc`; kernel patch `0101` dropped). §2.7 records that change and its
 > checks; every SD4HC statement elsewhere in this document describes the 7.3.4 node.
+>
+> **2026-11-24:** `mmc0` moved to SD high speed at 50 MHz (§2.8), and the HPS on-chip RAM
+> became a `mister_ocram` UIO node (the `/mister` section of §3). U3, U11 and U12 are closed.
 
 The device tree is the highest-risk file on a new board: a wrong value here does not fail the
 build, it fails the *board*, and several of the specific mistakes available on this SoC are
@@ -374,6 +377,32 @@ own dtsi, the same six the in-tree SoCDK board shows; **`dtbs_check` (dtschema 2
 5 `fpga-mgr` two-string warnings as at 7.3.4 (§2.6) and nothing else** — none for `svc` or
 `mmc@10808000`, which validates cleanly against `cdns,sd6hc.yaml`. Not run on hardware.
 
+### 2.8 `mmc0` at SD high speed, 50 MHz (2026-11-24)
+
+```
+-        max-frequency = <25000000>;
++        max-frequency = <50000000>;
++        cap-sd-highspeed;
+-        sdhci-caps-mask = <0x00002000 0x0020ff00>;
++        sdhci-caps-mask = <0x00002000 0x0000ff00>;
+```
+
+**Why the stages no longer have to match.** v7.4's `sdhci-cadence-phy-v6.c` computes the PHY
+and `HRS` timings from the card clock period. `sdhci_cdns6_set_clock()` and
+`sdhci_cdns6_set_uhs_signaling()` call `sdhci_cdns6_phy_reconfigure()`, which rewrites the PHY
+registers and `HRS07`/`09`/`10`/`16` whenever the clock or timing changes. None of it is read
+from DT. The #318 tester's T0 capture showed that the SDHCI soft reset at probe zeroes
+`HRS07`/`10`/`16` anyway. So Linux never runs on U-Boot's values, and it can pick its own mode.
+
+**Evidence [V on hardware, #318].** On 7.4-rc4 after a UHS SDR50 U-Boot, a full 32 GB
+`dd if=/dev/mmcblk0` read had no errors and a clean `dmesg`:
+- 12.0 MB/s at default speed, 25 MHz (the old node);
+- 23.5 MB/s with the same change on the tester's tree.
+
+**Not done.** UHS stays off under Linux. `no-1-8-v` stays, and there is no `vqmmc-supply` for
+ALTERA's level shifter (U4). Caps1 bit 13 (use tuning for SDR50) stays masked. The `sdhci-caps`
+base-clock override is still inert.
+
 ---
 
 ## 3. Node-by-node
@@ -418,7 +447,7 @@ file is named.
 | `mmc0` `iommus` | all three | **kept, inert as shipped** | `&smmu` is disabled, so `of_iommu_xlate()` returns `-ENODEV` and mmc0 DMAs physically. Kept because it is correct hardware description and mandatory the moment `&smmu` is flipped to `okay`. See §4.3. |
 | `mmc0` `dma-coherent` | all three | **removed (2026-11-17)** | First boot treats the SD controller as non-coherent. See §4.5. |
 | `mmc0` `bus-width = <4>`, `disable-wp` | all three | **kept** | 4-bit microSD, no write-protect switch wired. |
-| `mmc0` `cap-sd-highspeed` | TERASIC + ALTERA (PORT drops it) | **removed (2026-11-17)** | High speed is enabled from **two** independent places: `mmc_of_parse()` sets `MMC_CAP_SD_HIGHSPEED` from this property (7.3.4 `drivers/mmc/core/host.c:350`), and `sdhci.c:4572` sets it from capability bit 21. The earlier text here named only the second and kept the property as harmless; with the bit masked, the property alone would still enable high speed. Both are now off, so the card stays at default speed — the mode U-Boot leaves the PHY in ([U3], [U12]). |
+| `mmc0` `cap-sd-highspeed` | TERASIC + ALTERA (PORT drops it) | **removed (2026-11-17), restored 2026-11-24 (§2.8)** | High speed is enabled from **two** independent places: `mmc_of_parse()` sets `MMC_CAP_SD_HIGHSPEED` from this property (7.3.4 `drivers/mmc/core/host.c:350`), and `sdhci.c:4572` sets it from capability bit 21. The earlier text here named only the second and kept the property as harmless; with the bit masked, the property alone would still enable high speed. Both are now off, so the card stays at default speed — the mode U-Boot leaves the PHY in ([U3], [U12]). |
 | `mmc0` `no-1-8-v` | TERASIC + PORT | **kept** | 3.3V-only signalling. Also the reason we can safely omit ALTERA's `vqmmc-supply` level-shifter regulator (below). |
 | `mmc0` `no-sdio` | TERASIC + PORT | **kept** | SD card slot only; MiSTer WiFi is USB. |
 | `mmc0` `sd-uhs-sdr50` | TERASIC | **dropped** | Contradicts `no-1-8-v` in the same node: every UHS mode needs 1.8V signalling, which `MMC_CAP2_NO_1_8_V` bars. Inert, and confusing to leave in. |
@@ -455,6 +484,14 @@ unidentified). Checks on the extended tree: `dtc` with the §1 warning set, 0 wa
 lines and one unknown-vendor `mister,map-writecombine`, because `generic-uio` has no binding (the
 DE10's `0072` draws the same) — beside the §2.7 `fpga-mgr` five; `gpio-keys` and
 `reserved-memory` validate clean.
+
+**The on-chip RAM (2026-11-24).** Agilex 5's OCRAM is 512 KiB at physical `0x0`
+(`socfpga_agilex5.dtsi` `ocram: sram@0`, `mmio-sram`). `/mister/ocram@0` exposes
+`0x00000..0x7efff` as `mister_ocram`, which is `/dev/mister/ocram` through the existing rule.
+Two `reg`-only children of `&ocram`, `mister-ocram@0` and `handoff-sram@7f000`, leave the
+kernel's sram pool empty. The page left out is the SPL handoff block (`SOC64_HANDOFF_BASE` =
+`0x7f000` on Agilex 5). The interface doc, `dts-mister-fpga-interface.md` §7, has the
+boot-stage usage and the hazards.
 
 ### The svc node — described as `intel,agilex-svc`
 
@@ -739,7 +776,7 @@ D1–D6 are changes of *form*; the content drops are in §3.
 |---|---|---|---|
 | ~~U1~~ | ~~Is the console really `uart1`?~~ | — | **Closed `[V]`.** The DE25 U-Boot tree sets `serial0 = &uart1` and `stdout-path = "serial0:…"` (Terasic's public branch, `github.com/terasic/u-boot-socfpga` @ `de25-nano-v2025.01`, `arch/arm/dts/socfpga_agilex5_de25_nano.dts:11`, `...-u-boot.dtsi`), and the PORT booted Linux on that console. Not to be re-litigated. |
 | **U2** | Are the SDMMC and gmac0 masters cache-coherent **with the SMMU off**? | `dma-coherent` on a non-coherent master is silent data corruption. The vendors' evidence is all SMMU-**on**. The PORT's setup guide — the reference DE25 tree's, not the public port's, which has no such file — records ADMA corrupting early SD init under `iommu.passthrough=1` ([`de25-reference-implementation.md`](de25-reference-implementation.md), the "SD host needed capping at 25 MHz" finding). | **Shipped non-coherent since 2026-11-17** (§4.5), so first boot does not depend on the answer. To restore the property: a sustained `dd` round trip with checksum on SD, and a multi-GiB checksummed transfer on Ethernet, each run with and without it. |
-| **U3** | Can default speed and the 25 MHz cap be lifted? | Shipped at default speed, 25 MHz, in **both** U-Boot and Linux. Mainline 7.3.4 programs none of the SD6HC PHY, so Linux must run the mode U-Boot ended in; U-Boot programs different PHY values per mode. | After a clean sustained `dd` at default speed, climb one step at a time and **change both stages together**: (1) high-speed timing at 25 MHz — drop the bit-21 mask in both device trees and re-add `cap-sd-highspeed` to Linux; (2) 50 MHz in both. Watch for `unrecognised SCR structure version` / `-EINVAL` at init, the symptom the port hit. The real fix is the SD6HC driver at the 7.4 pin. **2026-11-23:** U-Boot alone now ends in UHS SDR50 ([`de25-uboot.md`](de25-uboot.md) §5.1, #318). The tester's 7.4-rc3 kernel, running this DTS unchanged, mounted its root filesystem after that U-Boot, so with the 7.4 driver the two stages no longer have to match. The Linux side of this row is still open. |
+| ~~U3~~ | **Closed 2026-11-24 (§2.8):** Linux runs SD high speed at 50 MHz; U-Boot runs UHS SDR50. Can default speed and the 25 MHz cap be lifted? | Shipped at default speed, 25 MHz, in **both** U-Boot and Linux. Mainline 7.3.4 programs none of the SD6HC PHY, so Linux must run the mode U-Boot ended in; U-Boot programs different PHY values per mode. | After a clean sustained `dd` at default speed, climb one step at a time and **change both stages together**: (1) high-speed timing at 25 MHz — drop the bit-21 mask in both device trees and re-add `cap-sd-highspeed` to Linux; (2) 50 MHz in both. Watch for `unrecognised SCR structure version` / `-EINVAL` at init, the symptom the port hit. The real fix is the SD6HC driver at the 7.4 pin. **2026-11-23:** U-Boot alone now ends in UHS SDR50 ([`de25-uboot.md`](de25-uboot.md) §5.1, #318). The tester's 7.4-rc3 kernel, running this DTS unchanged, mounted its root filesystem after that U-Boot, so with the 7.4 driver the two stages no longer have to match. The Linux side of this row is still open. |
 | **U4** | Does the SD I/O rail need ALTERA's `regulator-gpio` on `portb 3`? | ALTERA wires `vqmmc-supply` to a 1.8V/3.3V level shifter; we rely on `no-1-8-v` plus the boot-default state. | Only matters if UHS is ever wanted. Until then the shifter never switches. |
 | **U5** | `dr_mode` for `usb0` | Unset in all three references, so dwc2 reads OTG capability from the hardware. A MiSTer image wants host mode. | Observe `/sys/class/udc` and whether hubs enumerate; add `dr_mode = "host"` if OTG guesses wrong. |
 | **U6** | Should the root compatible say `terasic,de25-nano`? | Currently claims to be an SoCDK. Nothing on arm64 reads it, but it is wrong. | A one-line upstream patch to `Documentation/devicetree/bindings/arm/altera.yaml`, then a one-line DTS change. |
@@ -747,8 +784,8 @@ D1–D6 are changes of *form*; the content drops are in §3.
 | **U8** | Do the residual `fpga-mgr` binding warnings get fixed upstream? | Until then this DTB carries 5 warnings and a CI gate would have to allow-list them. | Watch Khairul's v6 fpga-mgr binding series (implementation path §8 Q4). The `mmc0` half is already closed by `0101`. Re-check on every kernel bump. |
 | ~~U9~~ | ~~Does BL31 hand back the svc buffer we think it does?~~ **Closed from source 2026-11-17:** TF-A v2.15.0 answers `0x80400000` with length `0x1C00000` (`plat/intel/soc/agilex5/include/socfpga_plat_def.h:43-44`, `plat/intel/soc/common/socfpga_sip_svc.c:1962-1966`), which lies inside `service_reserved` (`0x80000000 + 0x2000000`, `no-map`). The debug-print check below is still worth one look on first boot. Original row follows. | `memory-region = <&service_reserved>` is **dead on mainline**: `stratix10-svc.c:865-876` takes the address from the `FPGA_CONFIG_GET_MEM` SMC and `:952-960` `memremap`s *that*, never consulting the `no-map` reserved region. If our `u-boot.itb`'s BL31 answers with a region other than `0x8000_0000 + 32 MiB`, the driver memremaps **live kernel RAM** and the SDM writes into it. | `dyndbg='file stratix10-svc.c +p'` on the kernel command line, then compare the driver's `"SM software provides paddr"` / `"reserved memory ... paddr"` debug line against `/proc/device-tree/reserved-memory/svcbuffer@0/reg`. Do this **before** the first reconfiguration attempt. |
 | **U10** | Can mainline's svc program the fabric, SMMU off, through the patched BL31? | §4.1–§4.2. With stock BL31 it could not, in any SMMU mode; the patch is verified by build and harness only. | Tests T1 (U-Boot `fpga load`) and T3 (Linux load) in [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8. |
-| **U11** | Silicon revision, the revision-A workaround bit, the SDM remap registers, and the SMMU's reset state | They decide whether BL31 programs the remapper and whether untranslated SDM and peripheral traffic passes an SMMU that Linux never enables. If `BOOT_SCRATCH_POR_1` bit 1 is set or `GBPA` resets to abort, the SMMU-on fallback becomes the primary path. | Test T0: `md.l` of `0x10D12210`, `0x10D1225C`, `0x10D12280`/`284`, `0x16000020`, `0x16000044` at the U-Boot prompt. |
-| **U12** | Does Linux's SDHCI reset at probe clear the SD6HC `HRS` and PHY registers U-Boot programmed? | If it does, 7.3.4 cannot use the SD card and the SD6HC driver is a first-boot requirement. No source says; the SD4HC precedent suggests the registers survive. | Test T0: dump `HRS`/PHY, write `0x01` to `0x1080822f`, dump again — at the U-Boot prompt, no Linux needed. |
+| ~~U11~~ | **Closed 2026-11-24 by T0 (#318):** rev-B silicon, `POR_1` bit 1 clear, remap registers 0, SMMU off with `GBPA.ABORT` = 0. Silicon revision, the revision-A workaround bit, the SDM remap registers, and the SMMU's reset state | They decide whether BL31 programs the remapper and whether untranslated SDM and peripheral traffic passes an SMMU that Linux never enables. If `BOOT_SCRATCH_POR_1` bit 1 is set or `GBPA` resets to abort, the SMMU-on fallback becomes the primary path. | Test T0: `md.l` of `0x10D12210`, `0x10D1225C`, `0x10D12280`/`284`, `0x16000020`, `0x16000044` at the U-Boot prompt. |
+| ~~U12~~ | **Closed 2026-11-24 by T0 (#318):** yes, the reset zeroes `HRS07`/`10`/`16`, and 7.4's driver reprograms them (§2.8). Does Linux's SDHCI reset at probe clear the SD6HC `HRS` and PHY registers U-Boot programmed? | If it does, 7.3.4 cannot use the SD card and the SD6HC driver is a first-boot requirement. No source says; the SD4HC precedent suggests the registers survive. | Test T0: dump `HRS`/PHY, write `0x01` to `0x1080822f`, dump again — at the U-Boot prompt, no Linux needed. |
 
 
 ## 8. Corrections owed to sibling documents

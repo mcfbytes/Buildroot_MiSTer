@@ -354,7 +354,7 @@ worse than one that panics loudly.
 ## 4. The DE25 base — what is on, and why
 
 Section numbers match the banners in `board/mister/de25nano/linux.config`.
-60 setting lines as of 2026-11-17 (51 when this section was first written).
+66 setting lines as of 2026-11-24 (51 when this section was first written; the four framebuffer lines of §3a are the latest).
 
 | § | Group | Notes |
 |---|---|---|

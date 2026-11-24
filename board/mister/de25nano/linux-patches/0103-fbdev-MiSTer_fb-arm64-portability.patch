@@ -40,14 +40,25 @@ On the DE25 the DT node is mister-fb@a0000000 (docs/de25-dts-rationale.md).
 
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
- drivers/video/fbdev/MiSTer_fb.c | 34 +++++++++++++++++++++++----------
- 1 file changed, 24 insertions(+), 10 deletions(-)
+ drivers/video/fbdev/MiSTer_fb.c | 40 +++++++++++++++++++++++----------
+ 1 file changed, 28 insertions(+), 12 deletions(-)
 
 diff --git a/drivers/video/fbdev/MiSTer_fb.c b/drivers/video/fbdev/MiSTer_fb.c
-index 5ff4c5265..457861441 100644
+index 5ff4c5265..ab11a71d8 100644
 --- a/drivers/video/fbdev/MiSTer_fb.c
 +++ b/drivers/video/fbdev/MiSTer_fb.c
-@@ -164,7 +164,7 @@ static int fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
+@@ -34,7 +34,9 @@
+  * PL310 outer-cache store buffer, before userspace hands a frame it wrote
+  * through the write-combined mmap to the FPGA scaler (which reads DDR over
+  * an f2sdram port, past the L2).  Userspace can issue "dsb st" itself but
+- * cannot sync the PL310; wmb() on ARM is dsb(st) plus outer_sync().  No
++ * cannot sync the PL310; wmb() on ARM is dsb(st) plus outer_sync().  On
++ * arm64 there is no outer cache and wmb() is dsb(st) alone, which drains
++ * the Normal non-cacheable stores of both mappings.  No
+  * argument, returns 0.  It never waits on a vsync: the fbdev core's
+  * info->lock around it is held only by short paths, because
+  * FBIO_WAITFORVSYNC drops it for its wait.  'F' 0xA0 is unused in
+@@ -164,7 +166,7 @@ static int fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
  
  /*
   * The frame buffer is an FPGA-owned window outside the kernel's page
@@ -56,7 +67,16 @@ index 5ff4c5265..457861441 100644
   *
   * Until v6.7 the fbdev core supplied fb_read()/fb_write()/fb_mmap() itself
   * whenever a driver left those callbacks NULL, using the __iomem accessors
-@@ -194,8 +194,10 @@ static int fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
+@@ -182,7 +184,7 @@ static int fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
+  * ("fbdev: MiSTer_fb: declare explicit fb_ops for read/write/mmap (#83)",
+  * Takiiiiiiii, 2026-09-08). screen_base/screen_buffer are the same union
+  * storage (include/linux/fb.h) and both paths dereference the identical
+- * memremap(MEMREMAP_WT) address; on 32-bit ARM, memcpy_fromio/memcpy_toio's
++ * memremap() address (WT on arm32, WC on arm64); on 32-bit ARM, memcpy_fromio/memcpy_toio's
+  * mmiocpy() (behind fb_io_read/fb_io_write) IS memcpy() (behind
+  * fb_sys_read/fb_sys_write) -- same ENTRY label, same body
+  * (arch/arm/lib/memcpy.S) -- so the two read paths execute byte-identical
+@@ -194,8 +196,10 @@ static int fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
   * The drawing ops stay on the sys_* helpers, as in 5.15: memremap() hands
   * back a normal-memory mapping, so direct dereference is correct there.
   *
@@ -69,7 +89,7 @@ index 5ff4c5265..457861441 100644
   * The two aliases cannot fight: on 32-bit ARM ioremap_wt IS ioremap_wc
   * (arch/arm/include/asm/io.h), Normal non-cacheable like
   * pgprot_writecombine.  Only shareability differs (MT_DEVICE_WC lacks
-@@ -339,8 +341,13 @@ static int fb_probe(struct platform_device *pdev)
+@@ -339,8 +343,13 @@ static int fb_probe(struct platform_device *pdev)
  	fbdev->fb_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
  	if (!fbdev->fb_res) return -ENODEV;
  
@@ -85,7 +105,7 @@ index 5ff4c5265..457861441 100644
  	if (!fbdev->fb_base)
  	{
  		dev_err(&pdev->dev, "memremap fb failed\n");
-@@ -359,9 +366,9 @@ static int fb_probe(struct platform_device *pdev)
+@@ -359,9 +368,9 @@ static int fb_probe(struct platform_device *pdev)
  	retval = register_framebuffer(&fbdev->info);
  	if (retval < 0) goto err_dealloc_cmap;
  
@@ -97,7 +117,7 @@ index 5ff4c5265..457861441 100644
  		 fbdev->info.fix.smem_len, fbdev->info.screen_base);
  
  	fbdev->irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
-@@ -369,9 +376,15 @@ static int fb_probe(struct platform_device *pdev)
+@@ -369,9 +378,15 @@ static int fb_probe(struct platform_device *pdev)
  
  	init_waitqueue_head(&vs_wait);
  
@@ -114,7 +134,7 @@ index 5ff4c5265..457861441 100644
  	}
  
  	p_fbdev = fbdev;
-@@ -390,8 +403,9 @@ static void fb_remove(struct platform_device *dev)
+@@ -390,8 +405,9 @@ static void fb_remove(struct platform_device *dev)
  	{
  		unregister_framebuffer(&fbdev->info);
  		fb_dealloc_cmap(&fbdev->info.cmap);

@@ -335,7 +335,7 @@ and its board DTS); no source file was copied.
 | DE25 | size | DE10 twin | node | who uses it |
 |---|---|---|---|---|
 | `0x8000_0000`–`0x9DEF_FFFF` | 479 MiB | `0x0`–`0x1FEF_FFFF` | Linux, `mem=479M` | the kernel |
-| `0x9DF0_0000` | 1020 KiB | `0x1FF0_0000` | `mister-ddr-low`, `ddr-low` map 0 | nothing in the port (its fabric never reaches it) |
+| `0x9DF0_0000` | 1020 KiB | `0x1FF0_0000` | `mister-ddr-low`, `ddr-low` map 0 | not referenced by the port's Main |
 | `0x9DFF_F000` | 4 KiB | `0x1FFF_F000` | `mister-handoff`, `ddr-low` map 1 | nothing; the port's Main maps an anonymous page instead |
 | `0x9E00_0000` | 32 MiB | `0x2000_0000` (24 MiB) | `mister-scaler` | ascal's scratch: the fabric's `RAMSIZE` is 32 MiB from the base the HPS writes into the fbcfg mailbox |
 | `0xA000_0000` | 32 MiB | `0x2200_0000` (24 MiB) | `mister-fb`; `/dev/fb0` = its first 8 MiB | Main's `FB_ADDR`: three 1080p 8888 buffers, buffer 0 at `+0x1000` is `/dev/fb0`'s `smem_start` |

@@ -509,8 +509,8 @@ PORT's fabric top, its Main and its board DTS; nothing was copied. The full tabl
   three 1080p 8888 buffers there. A root node `mister-fb@a0000000` (`compatible = "MiSTer_fb"`)
   covers buffer 0 only, 8 MiB, as the DE10's stock node does, so `/dev/fb0`'s `smem_start` is
   `0xA000_1000`, the address PORT's Main hands the scaler for buffer 0. No `interrupts`: PORT has
-  no vsync line, and a declared line that never fires would make every `FBIO_WAITFORVSYNC` wait
-  the full 50 ms timeout instead of whatever the fabric gives. `f2h_irq[0]` stays free for it.
+  no vsync line, so every `FBIO_WAITFORVSYNC` times out after 50 ms, as on PORT, whose Main
+  uses it only in a timing probe. `f2h_irq[0]` stays free for a future vsync line.
 - **Core DDRAM, `mister-core@b0000000`, 256 MiB.** PORT's fabric relocates a core's DE10 address
   `0x3xxx_xxxx` by setting bit 31, so its window is `0xB000_0000`–`0xBFFF_FFFF`, the DE10's own
   `0x3000_0000` window plus `0x8000_0000`. `mister-core@a2000000` (224 MiB) fills the rest of the

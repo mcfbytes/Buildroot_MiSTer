@@ -281,7 +281,8 @@ fabric and its Main_MiSTer build can be tried on this card. At a root shell:
 
 The port's own boot service writes the scaler scratch base into the fabric's fbcfg mailbox once
 its MENU fabric is up; this image has no such service, so with that fabric configured (and only
-then: a read of an unconfigured fabric is an SError), do it by hand:
+then: a read of an unconfigured fabric is an SError), do it by hand with BusyBox `devmem` (in the
+image). Until it is written the port's ascal stays gated, so the menu picture needs it:
 
 ```
 devmem 0x2001021c 32              # must print 0x5CA623FB, else stop: wrong or no fabric

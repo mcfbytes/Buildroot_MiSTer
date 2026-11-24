@@ -20,11 +20,11 @@ without renumbering.
 
 **Where each symlink points.** Most shared patches are byte-identical between
 `linux-patches/` (the shipped 6.18 series) and `linux-patches-beta/` (the 7.x series), so they
-link to the canonical file in `linux-patches/`. **Five** — `0013`, `0015`, `0030`, `0031`, `0037` —
+link to the canonical file in `linux-patches/`. **Six** — `0001`, `0013`, `0015`, `0030`, `0031`, `0037` —
 have a **7.x-re-anchored** copy in `linux-patches-beta/`, and those link to the beta copy, because
 this board is on 7.x. (`0013` joined on 2026-10-19: 7.3 moved its Makefile context.) (`0031` rejoined that list on 2026-09-06 for a real 7.x API delta, not a
 re-anchor — see its row below; this intro said "three" until the Wave-4 audit of 2026-09-11
-caught the omission. `0001` is the fifth divergent pair; since 2026-11-24 the DE25 links its beta copy, the one that builds on 7.x.)
+caught the omission. `0001` joined on 2026-11-24, when the DE25 started carrying the framebuffer driver: its beta copy is the one that builds on 7.x.)
 
 That choice is not cosmetic — the shipped 6.18-anchored copies **hard-fail** on 7.2.x at
 Buildroot's `patch -F0`: `0015` 3/5 hunks FAILED, `0030` 1/1 FAILED, `0037` 4/6 FAILED. If you
@@ -102,10 +102,10 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | — | `0064-dwc2-ddma-giveback-on-dequeue-halt` | *post-audit (added 2026-09-26, #205)* | **excluded** — descriptor DMA is off on this board: dwc2 only enables it through `0059`, which is held for hardware qualification, so this code never runs | Same as `0054`. |
 | — | `0065-dwc2-ddma-halt-before-freeing-desc-list` | *post-audit (added 2026-09-26, #205)* | **excluded** — descriptor DMA is off on this board: dwc2 only enables it through `0059`, which is held for hardware qualification, so this code never runs | Same as `0054`. |
 | — | `0066-dwc2-ddma-keep-xfercompl-unmasked` | *post-audit (added 2026-09-26, #205)* | **excluded** — descriptor DMA is off on this board: dwc2 only enables it through `0059`, which is held for hardware qualification, so this code never runs | Same as `0054`. |
-| — | `0070-fbdev-MiSTer_fb-mmap-whole-region-and-flush-ioctl` | *post-audit (added 2026-11-24)* | **included** | Rides with `0001`, as on the DE10: `smem_len` covers the DT region, `FBIO_MISTER_FLUSH` (`wmb()`, `dsb st` on arm64), a `mode` write clears only the header page and the visible frame, and the vsync wait drops the fb lock. Applies at `-F0` on 7.4-rc4 after `0001`. `0071`/`0072` are DE10 DTS hunks and are not carried. |
 | — | `0067-wifi-rtw88-8821c-support-rfe-type-7` | *post-audit (added 2026-09-30)* | **included** | Adds the missing RFE type 7 definition to rtw88's RTL8821C driver; USB-generic, no architecture exposure. |
 | — | `0068-dwc2-host-ack-all-hcint-bits` | *post-audit (added 2026-10-19, fork 3726e2eba)* | **included** | Writes the raw HCINT value back in `dwc2_hc_n_intr()`, as before v6.7; fixes lost low-speed HID packets behind a hub under bulk load on the DE10. Buffer-DMA path, which is this board's mode; generic dwc2 logic. |
 | — | `0069-dwc2-host-drop-partial-int-in-on-cs-timeout` | *post-audit (added 2026-11-10, fork 9fcb1cb21)* | **included** | When a complete split runs past its microframes, drops the partial interrupt IN data instead of joining it to the next packet (phantom pad input under bulk load on the DE10). Buffer-DMA path, which is this board's mode; generic dwc2 logic. |
+| — | `0070-fbdev-MiSTer_fb-mmap-whole-region-and-flush-ioctl` | *post-audit (added 2026-11-24)* | **included** | Rides with `0001`, as on the DE10: `smem_len` covers the DT region, `FBIO_MISTER_FLUSH` (`wmb()`, `dsb st` on arm64), a `mode` write clears only the header page and the visible frame, and the vsync wait drops the fb lock. Applies at `-F0` on 7.4-rc4 after `0001`. `0071`/`0072` are DE10 DTS hunks (the 24 MiB DE10 node and the DE10 `/mister` group) and are not carried; the DE25 DTS has its own node. |
 
 ### DE25-local patches (not in the audit — new work)
 

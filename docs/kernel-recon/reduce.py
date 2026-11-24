@@ -59,6 +59,20 @@ NO_FORK_ORIGIN = {
            "0066-dwc2-ddma-keep-xfercompl-unmasked",
        )},
     # 0067 (rtw88 RFE 7) left 2026-10-19: upstreamed as fork 8ad2b5ad6, whose record maps it.
+    **{f"{p}.patch": "Original MiSTer_fb work for the HD OSD, not a fork commit. Reason, "
+                     "measurements and provenance live in the patch header and "
+                     "docs/patch-provenance.md (0070/0071 sections). Added 2026-11-24."
+       for p in (
+           "0070-fbdev-MiSTer_fb-mmap-whole-region-and-flush-ioctl",
+           "0071-dts-de10nano-MiSTer_fb-region-24MiB",
+       )},
+    **{f"{p}.patch": "Original HPS<->FPGA interface work (UIO nodes), not a fork commit. Reason "
+                     "and provenance live in docs/patch-provenance.md (0045 + 0072 section) and "
+                     "docs/dts-mister-fpga-interface.md. Added 2026-11-24."
+       for p in (
+           "0045-uio-writecombine",
+           "0072-dts-de10nano-MiSTer-fpga-interface",
+       )},
 }
 
 # "carried-upstream-only" is distinct from "carried": the commit is NOT applied to the

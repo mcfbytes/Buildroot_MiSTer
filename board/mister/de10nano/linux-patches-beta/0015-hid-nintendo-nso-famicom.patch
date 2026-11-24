@@ -132,6 +132,8 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  LIC_PRO conditional (context-only change; the nescon branches this patch
  extends are unchanged). Keep in lockstep with
  ../linux-patches/0015-hid-nintendo-nso-famicom.patch.]
+[7.3.6: the procon context now tests USB_VENDOR_ID_HORI and names
+ lic_hori_procon_button_mappings (context only).]
 
 ---
 diff --git a/drivers/hid/hid-nintendo.c b/drivers/hid/hid-nintendo.c
@@ -192,7 +194,7 @@ index e7302ec01..8e7f104ed 100644
  {
  	return joycon_type_is_left_joycon(ctlr) ||
 @@ -1735,9 +1767,13 @@ static void joycon_parse_report(struct joycon_ctlr *ctlr,
- 			joycon_report_buttons(ctlr, rep, lic_procon_button_mappings);
+ 			joycon_report_buttons(ctlr, rep, lic_hori_procon_button_mappings);
  		else
  			joycon_report_buttons(ctlr, rep, procon_button_mappings);
 -	} else if (joycon_type_is_any_nescon(ctlr)) {
@@ -207,7 +209,7 @@ index e7302ec01..8e7f104ed 100644
  		joycon_report_dpad(ctlr, rep);
  		joycon_report_buttons(ctlr, rep, snescon_button_mappings);
 @@ -2184,9 +2220,13 @@ static int joycon_input_create(struct joycon_ctlr *ctlr)
- 			joycon_config_buttons(ctlr->input, lic_procon_button_mappings);
+ 			joycon_config_buttons(ctlr->input, lic_hori_procon_button_mappings);
  		else
  			joycon_config_buttons(ctlr->input, procon_button_mappings);
 -	} else if (joycon_type_is_any_nescon(ctlr)) {

@@ -84,6 +84,9 @@ silicon: 1946160, 2356586, 2743102 and 3888013. The defconfig enables those four
 `BR2_TARGET_ARM_TRUSTED_FIRMWARE_ADDITIONAL_VARIABLES`.
 - TF-A's `cpu-specific-build-macros.rst` lists each one for every A76 revision up to r4p1.
 - Each workaround checks the CPU revision at runtime, so it is inert where it does not apply.
+- Changing `ADDITIONAL_VARIABLES` needs `make arm-trusted-firmware-dirclean`. A plain
+  `-rebuild` keeps the stamped `bl31.bin` (confirmed by the #318 tester, who then found all four
+  `erratum_cortex_a76_*` symbols in `bl31.elf`).
 - The report itself prints only from a `DEBUG=1` BL31. Ours is a release build, so after this
   change the tester's debug build should report them as applied.
 

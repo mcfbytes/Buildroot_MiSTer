@@ -365,11 +365,15 @@ What uses the OCRAM, from source:
 - **No DE10-style warm-boot hazard.** Agilex 5 warm reset goes back through the SDM, which
   reloads the SPL, so no resident image has to survive.
 
-**Hazards, all [U].**
-- **Non-secure access** depends on the OCRAM firewall that the factory SPL leaves. TF-A only opens
-  it explicitly on Stratix 10 (`socfpga_firewall.c:112`). A firewalled read from Linux would be an
-  SError, so test with `md.l`/`mw.l` at the U-Boot prompt (EL2, non-secure) before any client
-  touches the node.
+**Hazards.**
+- **Non-secure access: passes on hardware [V, #318, 2026-11-24].** It depends on the OCRAM
+  firewall the factory SPL leaves, since TF-A opens it explicitly only on Stratix 10
+  (`socfpga_firewall.c:112`). The tester's board, on master `c197eff`:
+  - At the U-Boot prompt (EL2, non-secure), before anything touched the node: `md.l 0x40000`
+    read zeros, and a `mw.l` of `0x12345678` read back unchanged, with no hang and no SError.
+  - Under Linux: `/proc/iomem` lists `00000000-0007ffff : 0.sram sram@0`, `dmesg` has no `sram`
+    lines, and `mister_ocram` is one of the 68 UIO devices.
+  - The `/dev/mister/ocram` symlink was not yet confirmed; that is the udev rule's job.
 - **Fabric reach.** Whether the F2H bridge reaches OCRAM through the CCU under that firewall is
   also open.
 - **Aligned accesses only.** It is Device memory on arm64, so an unaligned access faults; plain

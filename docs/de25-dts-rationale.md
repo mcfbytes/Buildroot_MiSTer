@@ -397,7 +397,7 @@ from DT. The #318 tester's T0 capture showed that the SDHCI soft reset at probe 
 **Evidence [V on hardware, #318].** On 7.4-rc4 after a UHS SDR50 U-Boot, a full 32 GB
 `dd if=/dev/mmcblk0` read had no errors and a clean `dmesg`:
 - 12.0 MB/s at default speed, 25 MHz (the old node);
-- 23.5 MB/s with the same change on the tester's tree.
+- 23.5 MB/s with the same change on the tester's tree, and 23.6 MB/s on master `c197eff`.
 
 **Not done.** UHS stays off under Linux. `no-1-8-v` stays, and there is no `vqmmc-supply` for
 ALTERA's level shifter (U4). Caps1 bit 13 (use tuning for SDR50) stays masked. The `sdhci-caps`

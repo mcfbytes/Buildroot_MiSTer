@@ -34,5 +34,5 @@ config BR2_PACKAGE_ITSALIVE
 # On a musl toolchain Rust's arch gate also needs BR2_TOOLCHAIN_BUILDROOT_CXX=y
 # (package/rustc/Config.in.host); every configuration in this tree is glibc now.
 comment "itsalive needs a Rust-supported toolchain (on musl: BR2_TOOLCHAIN_BUILDROOT_CXX=y)"
-	depends on BR2_arm
+	depends on BR2_arm || BR2_aarch64
 	depends on !BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS

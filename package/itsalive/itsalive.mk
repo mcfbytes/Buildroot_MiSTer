@@ -45,12 +45,12 @@
 #
 # Pinned to a commit, not a tag: the project cuts no releases, and
 # renovate.json's git-refs manager for it tracks master's HEAD exactly like the
-# out-of-tree driver pins. 657b921 is the tip of ItsAlive_MiSTer's `de25`
-# branch, one commit on the master 797378a the 2026-09-21 rig session verified
+# out-of-tree driver pins. a2869a0 is the tip of ItsAlive_MiSTer's `de25`
+# branch, two commits on the master 797378a the 2026-09-21 rig session verified
 # on a DE10-Nano (docs/testlogs/); it adds the DE25 register path and leaves
 # the DE10's words and order unchanged. Until master fast-forwards to it,
 # Renovate will offer 797378a, which is a downgrade.
-ITSALIVE_VERSION = 657b9216fb872e93db3b825c3228ace2914ba943
+ITSALIVE_VERSION = a2869a081be5d058bc5f148bbc338d9879da65fc
 ITSALIVE_SITE = $(call github,mcfbytes,ItsAlive_MiSTer,$(ITSALIVE_VERSION))
 ITSALIVE_LICENSE = GPL-3.0+
 ITSALIVE_LICENSE_FILES = LICENSE

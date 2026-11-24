@@ -550,10 +550,11 @@ digest last. It covers:
 | Workflow | Trigger | Job |
 |---|---|---|
 | `build.yml` | push to `master`, PRs | Both kernels, the image, the parity and ABI suite, patch and defconfig lints |
-| `release.yml` | `v*` tags | Clean rebuild, release archive, draft Release |
-| `publish-db.yml` | release published | Regenerate and deploy `db.json` |
+| `release.yml` | `v*` tags | Clean rebuild, release archive, draft pre-release |
+| `cut-release.yml` | manual | Tag master's commit `v<date>-<suffix>` and dispatch `release.yml` (dry run by default) |
+| `publish-db.yml` | `v*` release published | Regenerate and deploy `db.json` |
 | `reproducibility.yml` | manual | Two independent builds must be byte-identical |
-| `de25-build.yml` | manual | The DE25-Nano build |
+| `de25-build.yml` | manual | The DE25-Nano build; optionally a `de25-YYYYMMDD` pre-release |
 | `renovate-hash-sync.yml` | Renovate PRs | Refresh companion hashes a version bump leaves stale |
 | `renovate-validate.yml` | config changes | Catch an invalid Renovate config, which Renovate would otherwise skip silently |
 | `fork-sync.yml` | weekly | Track new commits on upstream's kernel fork |

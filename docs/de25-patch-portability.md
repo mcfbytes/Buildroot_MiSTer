@@ -320,6 +320,13 @@ requirements (LPDDR4A as the HPS-shared bank per DE25 UM §3.7.4; a `/reserved-m
 node; a per-frame fabric IRQ; a coherency discipline) and marks the address pending the GHRD.
 DP-10 (tabled) may make this a DRM/KMS question instead, which would change the userspace ABI.
 
+**Resolved 2026-11-24.** The DE25 now carries `0001` (beta copy) + `0070` and a DE25-local
+`0103` that fixes blockers 1 and 2 above as this section proposes (`!irq`; `MEMREMAP_WC`) and
+the `%x` truncation. Blocker 3: the node is `mister-fb@a0000000` with 2-cell `reg`, 8 MiB, no
+interrupt, at the address the third-party DE25 port's Main uses
+([`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7). Checked by building the
+object for arm64 on 7.4-rc4; capabilities 1–5 below are owed to hardware.
+
 > **Capability to preserve — framebuffer.**
 > 1. **Pixel round trip.** Write a known 32-bit pattern at offset 0 through whatever userspace
 >    mapping replaces `/dev/mem@0x22001000`; it must (a) appear on HDMI and (b) read back

@@ -77,10 +77,10 @@ label de25
 	menu label MiSTer DE25-Nano developer OS
 	kernel /Image
 	fdt /socfpga_agilex5_de25nano.dtb
-	append root=/dev/mmcblk0p2 rw rootwait console=ttyS0,115200 earlycon mem=511M uio_pdrv_genirq.of_id=generic-uio
+	append root=/dev/mmcblk0p2 rw rootwait console=ttyS0,115200 earlycon mem=479M uio_pdrv_genirq.of_id=generic-uio
 ```
 
-`mem=511M` keeps Linux below the FPGA-shared LPDDR at `0x9ff0_0000` and the `of_id` binds the
+`mem=479M` keeps Linux below the FPGA-shared LPDDR at `0x9df0_0000` and the `of_id` binds the
 `/dev/mister` UIO nodes ([`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7);
 `check-sdcard-de25.sh` asserts both.
 
@@ -267,6 +267,26 @@ does **not** appear localises the failure to one link of the chain
 | 6 | Kernel `Booting Linux on physical CPU`, then `earlycon` output | Kernel loaded but the console argument is wrong, or `Image`/DTB mismatch. |
 | 7 | `EXT4-fs (mmcblk0p2): mounted filesystem` | The root device is not there yet or is not what we think. `rootwait` is in the args; a persistent failure here points at mmc0 under the SMMU (implementation-path §8 Q2), not at the card. |
 | 8 | `Welcome to MiSTer DE25-Nano (developer OS)` and a login prompt on `ttyS0` | getty/console mismatch. |
+
+**The framebuffer and the scaler (2026-11-24).** The image lays out LPDDR4 as the third-party
+DE25 port does ([`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7), so its MENU
+fabric and its Main_MiSTer build can be tried on this card. At a root shell:
+
+| Check | Expect |
+|---|---|
+| `dmesg \| grep -i mister_fb` | `fb0: MiSTer_fb frame buffer device at 0xa0001000+0x7ff000`, then `no vsync IRQ in the DT node` |
+| `cat /sys/class/graphics/fb0/name` | `MiSTer_fb` |
+| `ls /proc/device-tree/reserved-memory/` | the six `mister-*` nodes, from `mister-ddr-low@9df00000` to `mister-core@b0000000` |
+| `head -1 /proc/meminfo` | `MemTotal` under 479 MiB (`mem=479M`, less the kernel's own reservations) |
+
+The port's own boot service writes the scaler scratch base into the fabric's fbcfg mailbox once
+its MENU fabric is up; this image has no such service, so with that fabric configured (and only
+then: a read of an unconfigured fabric is an SError), do it by hand:
+
+```
+devmem 0x2001021c 32              # must print 0x5CA623FB, else stop: wrong or no fabric
+devmem 0x20010200 32 0x9e000000   # the scaler scratch base
+```
 
 Log the whole session. Several of the dossier's open `[U]`s (Q3 in particular) are answered by
 lines 2–3 of a single boot log, and that log is worth more than any further desk work.

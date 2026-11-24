@@ -1,0 +1,128 @@
+From: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+Date: Tue, 24 Nov 2026 12:08:42 -0600
+Subject: [PATCH] fbdev: MiSTer_fb: build and map correctly on arm64
+ (DE25-Nano)
+
+Origin:       original, this repo (not from the fork, not upstream).
+Author:       Michael C. Ferguson; applies on top of 0001 (Sorgelig's
+              driver, the 7.x copy) and 0070. DE25-local: the DE10 series
+              does not carry it, so 0001's text keeps its parity with stock.
+Upstream:     No (MiSTer-specific driver).
+Disposition:  carry -- DE25 only, until 0001 itself is made arch-neutral.
+
+The DE10's MiSTer_fb driver, built for the DE25-Nano's Agilex 5 (arm64),
+with the three blockers docs/de25-patch-portability.md section 4.1 found:
+
+1. NO_IRQ is defined only by arch/arm/include/asm/irq.h, so 0001 does not
+   compile on arm64. irq_of_parse_and_map() returns 0 when the node has no
+   interrupt, on every architecture, so the test is !irq. A node without
+   an interrupt now probes quietly (FBIO_WAITFORVSYNC then times out after
+   VSYNC_TIMEOUT_MSEC, as before with a dead IRQ), and a failed
+   request_irq() clears irq so fb_remove() does not free it.
+
+2. free_irq() now passes fbdev, the dev_id request_irq() registered. 0001
+   passed the platform_device, which never matches an IRQF_SHARED action.
+
+3. memremap(MEMREMAP_WT) becomes MEMREMAP_WC. arm64 has no ioremap_wt(),
+   so asm-generic aliases it to ioremap(), Device-nGnRE: memset()'s DC ZVA
+   and the sys_* drawing helpers' unaligned stores fault there, and a
+   mode write would take that fault with console_lock held. MEMREMAP_WC
+   is ioremap_wc(), Normal non-cacheable -- what arm32 gets for WT, and
+   the attribute fb_io_mmap() gives userspace, so the kernel and user
+   aliases now agree.
+
+4. The probe line printed smem_start through (unsigned) and %x, which
+   truncates a 64-bit address; it is unsigned long, so %lx.
+
+No ABI change: /dev/fb0, FBIO_WAITFORVSYNC, FBIO_MISTER_FLUSH and
+/sys/module/MiSTer_fb/parameters/* are as 0001 and 0070 define them.
+On the DE25 the DT node is mister-fb@a0000000 (docs/de25-dts-rationale.md).
+
+Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
+---
+ drivers/video/fbdev/MiSTer_fb.c | 34 +++++++++++++++++++++++----------
+ 1 file changed, 24 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/video/fbdev/MiSTer_fb.c b/drivers/video/fbdev/MiSTer_fb.c
+index 5ff4c5265..457861441 100644
+--- a/drivers/video/fbdev/MiSTer_fb.c
++++ b/drivers/video/fbdev/MiSTer_fb.c
+@@ -164,7 +164,7 @@ static int fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
+ 
+ /*
+  * The frame buffer is an FPGA-owned window outside the kernel's page
+- * allocator, reached with memremap(MEMREMAP_WT).
++ * allocator, reached with memremap(MEMREMAP_WC) on arm64 (see fb_probe()).
+  *
+  * Until v6.7 the fbdev core supplied fb_read()/fb_write()/fb_mmap() itself
+  * whenever a driver left those callbacks NULL, using the __iomem accessors
+@@ -194,8 +194,10 @@ static int fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
+  * The drawing ops stay on the sys_* helpers, as in 5.15: memremap() hands
+  * back a normal-memory mapping, so direct dereference is correct there.
+  *
+- * The kernel mapping stays MEMREMAP_WT, as stock has it, while userspace
+- * may write the same bytes through fb_io_mmap's write-combined mapping.
++ * Stock maps the window MEMREMAP_WT; this arm64 build maps it MEMREMAP_WC,
++ * exactly pgprot_writecombine, so it matches fb_io_mmap's userspace alias.
++ * On arm32, where stock's WT runs, userspace may write the same bytes
++ * through fb_io_mmap's write-combined mapping.
+  * The two aliases cannot fight: on 32-bit ARM ioremap_wt IS ioremap_wc
+  * (arch/arm/include/asm/io.h), Normal non-cacheable like
+  * pgprot_writecombine.  Only shareability differs (MT_DEVICE_WC lacks
+@@ -339,8 +341,13 @@ static int fb_probe(struct platform_device *pdev)
+ 	fbdev->fb_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+ 	if (!fbdev->fb_res) return -ENODEV;
+ 
+-	/* MiSTer: memremap() returns NULL on failure, never an ERR_PTR */
+-	fbdev->fb_base = memremap(fbdev->fb_res->start, resource_size(fbdev->fb_res), MEMREMAP_WT);
++	/*
++	 * arm64 has no ioremap_wt(), so MEMREMAP_WT would give Device memory,
++	 * where memset()'s DC ZVA and unaligned stores fault.  WC is Normal
++	 * non-cacheable, the attribute arm32 gets for WT and fb_io_mmap gives
++	 * userspace.  memremap() returns NULL on failure, never an ERR_PTR.
++	 */
++	fbdev->fb_base = memremap(fbdev->fb_res->start, resource_size(fbdev->fb_res), MEMREMAP_WC);
+ 	if (!fbdev->fb_base)
+ 	{
+ 		dev_err(&pdev->dev, "memremap fb failed\n");
+@@ -359,9 +366,9 @@ static int fb_probe(struct platform_device *pdev)
+ 	retval = register_framebuffer(&fbdev->info);
+ 	if (retval < 0) goto err_dealloc_cmap;
+ 
+-	dev_info(&pdev->dev, "fb%d: %s frame buffer device at 0x%x+0x%x, virt: 0x%p\n",
++	dev_info(&pdev->dev, "fb%d: %s frame buffer device at 0x%lx+0x%x, virt: 0x%p\n",
+ 		 fbdev->info.node, fbdev->info.fix.id,
+-		 (unsigned)fbdev->info.fix.smem_start,
++		 fbdev->info.fix.smem_start,
+ 		 fbdev->info.fix.smem_len, fbdev->info.screen_base);
+ 
+ 	fbdev->irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
+@@ -369,9 +376,15 @@ static int fb_probe(struct platform_device *pdev)
+ 
+ 	init_waitqueue_head(&vs_wait);
+ 
+-	if (fbdev->irq == NO_IRQ || request_irq(fbdev->irq, &irq_handler, IRQF_SHARED, "MiSTer_fb", fbdev))
++	/* irq_of_parse_and_map() returns 0, not NO_IRQ (arm32-only), for no IRQ. */
++	if (!fbdev->irq)
++	{
++		dev_info(&pdev->dev, "no vsync IRQ in the DT node; FBIO_WAITFORVSYNC times out.\n");
++	}
++	else if (request_irq(fbdev->irq, &irq_handler, IRQF_SHARED, "MiSTer_fb", fbdev))
+ 	{
+ 		dev_err(&pdev->dev, "request_irq failed. fb won't use IRQ.\n");
++		fbdev->irq = 0;
+ 	}
+ 
+ 	p_fbdev = fbdev;
+@@ -390,8 +403,9 @@ static void fb_remove(struct platform_device *dev)
+ 	{
+ 		unregister_framebuffer(&fbdev->info);
+ 		fb_dealloc_cmap(&fbdev->info.cmap);
+-		if(fbdev->irq != NO_IRQ) free_irq(fbdev->irq, dev);
+-		fbdev->irq = NO_IRQ;
++		/* dev_id must be the one request_irq() was given: fbdev. */
++		if (fbdev->irq) free_irq(fbdev->irq, fbdev);
++		fbdev->irq = 0;
+ 	}
+ }
+ 

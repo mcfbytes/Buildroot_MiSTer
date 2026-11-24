@@ -324,22 +324,49 @@ carries the same `/mister` group with the **same UIO names**, so the shared
 write-combined mapping. Owner decision 2026-11-17: these windows are a **starting point** for an
 aarch64 Main_MiSTer, not a frozen ABI — they may move.
 
-**Memory: the DE10 layout plus `0x8000_0000`.** The DE25's 1 GiB of HPS LPDDR4 starts at
-`0x8000_0000`; the public DE25 port (`ahmadexp/MiSTer-DE25-Nano`) boots `mem=512M`, keeps a 4 KiB
-handoff page at `0x9fff_f000` and gives cores `0xa000_0000`–`0xbfff_ffff`, with its Main patch
-adding `0x8000_0000` to every DE10 address below 1 GiB. That is exactly the DE10 map shifted, so
-the DE25 takes the DE10's tiles (§2.1) at the same offset rather than the port's coarser two:
+**Memory: the third-party DE25 port's video layout, the DE10's names (2026-11-24).** The DE25's
+1 GiB of HPS LPDDR4 starts at `0x8000_0000`. The goal is compatibility: the bitstreams and the
+Main_MiSTer build of the third-party DE25 port (the one with an observed boot on DE25 silicon)
+must run on this image unchanged, so the framebuffer and the scaler scratch sit where that port's
+fabric and Main put them, and greenfield takes the same layout. Every address below is a fact
+read from that port's sources (its fabric top, its Main's `video.cpp`/`scaler.cpp`/`user_io.cpp`
+and its board DTS); no source file was copied.
 
-| DE10 | DE25 | node |
-|---|---|---|
-| `0x1ff0_0000` +1020 KiB | `0x9ff0_0000` | `mister-ddr-low`, `/dev/mister/ddr-low` (first `reg`) |
-| `0x1fff_f000` +4 KiB | `0x9fff_f000` | `mister-handoff`, `ddr-low`'s second `reg` |
-| `0x2000_0000` +24 MiB / `0x2180_0000` +8 MiB / `0x2200_0000` +24 MiB / `0x2380_0000` +456 MiB | `0xa000_0000` / `0xa180_0000` / `0xa200_0000` / `0xa380_0000` | scaler / core-lo / fb / core-hi tiles |
-| `0x2000_0000` +512 MiB | `0xa000_0000` | `ddr-aperture` (WC) |
+| DE25 | size | DE10 twin | node | who uses it |
+|---|---|---|---|---|
+| `0x8000_0000`–`0x9DEF_FFFF` | 479 MiB | `0x0`–`0x1FEF_FFFF` | Linux, `mem=479M` | the kernel |
+| `0x9DF0_0000` | 1020 KiB | `0x1FF0_0000` | `mister-ddr-low`, `ddr-low` map 0 | nothing in the port (its fabric never reaches it) |
+| `0x9DFF_F000` | 4 KiB | `0x1FFF_F000` | `mister-handoff`, `ddr-low` map 1 | nothing; the port's Main maps an anonymous page instead |
+| `0x9E00_0000` | 32 MiB | `0x2000_0000` (24 MiB) | `mister-scaler` | ascal's scratch: the fabric's `RAMSIZE` is 32 MiB from the base the HPS writes into the fbcfg mailbox |
+| `0xA000_0000` | 32 MiB | `0x2200_0000` (24 MiB) | `mister-fb`; `/dev/fb0` = its first 8 MiB | Main's `FB_ADDR`: three 1080p 8888 buffers, buffer 0 at `+0x1000` is `/dev/fb0`'s `smem_start` |
+| `0xA200_0000` | 224 MiB | `0x2400_0000` | `mister-core@a2000000` (`mister_core_lo`) | nothing in the port; kept out of Linux because it is inside the aperture |
+| `0xB000_0000` | 256 MiB | `0x3000_0000` | `mister-core@b0000000` (`mister_core_hi`) | core DDRAM: the port's fabric sets bit 31 on a core's DE10 address, so `0x3E00_0000` lands at `0xBE00_0000` |
+| `0xA000_0000` | 512 MiB | `0x2000_0000` | `mister_ddr_aperture`, write-combined | the aperture, mask `0x1FFF_FFFF`; now holds the fb at `+0` and the cores |
 
-`mem=511M` is on the extlinux `append` line (`post-image.sh`, checked by
-`check-sdcard-de25.sh`) as well as the `no-map` tiles, as on the DE10. Nothing in the base DTB
-claims `mister-fb`: there is no DE25 `MiSTer_fb` yet (`0001` is DE10-only).
+What moved from the 2026-11-17 layout (the DE10's tiles at `+0x8000_0000`): the scaler went from
+`0xA000_0000` (24 MiB) to `0x9E00_0000` (32 MiB), below the aperture; the fb went from
+`0xA200_0000` (24 MiB) to `0xA000_0000` (32 MiB); `ddr-low` and the handoff page moved down by
+32 MiB to sit under the scaler, as they sit under it on the DE10; the core tiles re-cut at the
+fb's end and at `0xB000_0000`; and `mem=` dropped from `511M` to `479M`. UIO names did not change;
+`mister_ddr_low`'s two maps moved. The aperture is unchanged.
+
+Every window the port's Main touches through `/dev/mem` (`0x9E00_0000`, `0xA000_0000`,
+`0xB000_0000`–`0xBFFF_FFFF`) is above the `mem=` line and `no-map`, so `CONFIG_STRICT_DEVMEM=y`
+lets it map them. There is **no UIO node for the scaler**: it lies below the aperture and needs
+its own `mister_scaler` rule in the shared `65-mister-uio.rules`, which is a DE10 file; that line
+is owed when greenfield needs the window.
+
+`mem=479M` is on the extlinux `append` line (`post-image.sh`, checked by
+`check-sdcard-de25.sh`) as well as the `no-map` tiles, as on the DE10. The DTB's
+`mister-fb@a0000000` node (`compatible = "MiSTer_fb"`, 8 MiB, no interrupt) is claimed by the
+DE10's `MiSTer_fb` driver, `0001` + `0070` + the arm64 fix `0103`. It has no vsync interrupt yet:
+`FBIO_WAITFORVSYNC` times out after 50 ms, as on the port, until a fabric line is chosen
+(`f2h_irq[0]`, SPI 17, is kept free for it).
+
+**The scaler base is a register, not a constant.** The port's fabric gates ascal until the HPS
+writes the scratch base into an fbcfg mailbox word in the LW bridge (`0x2001_0200`, magic
+`0x5CA6_23FB` at `+0x1C`), and its Main reads that word back to find the scaler. The port sets it
+from a boot service; this image has none yet (`de25-dts-rationale.md`, "The video layout").
 
 **Bridges.** `lw-bridge@2000_0000` (LWH2F, 2 MiB as on the DE10; the port's shell decodes the
 first 4 MiB and puts its GPO/GPI PIOs at `+0x2_0000`/`+0x2_0010`) and `h2f-bridge@4000_0000`

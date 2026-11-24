@@ -163,40 +163,49 @@
 	clock-frequency = <25000000>;
 };
 
-/* MiSTer HPS<->FPGA interface: DE10 names, at the DE10 address + 0x80000000. */
-/* docs/dts-mister-fpga-interface.md §7 */
+/* MiSTer HPS<->FPGA interface: DE10 names, the DE25 port's video layout. */
+/* docs/dts-mister-fpga-interface.md §7; docs/de25-dts-rationale.md "The video layout" */
 / {
-	/* FPGA-shared LPDDR, kept from the kernel by the DTB as well as by mem=511M. */
+	/* FPGA-shared LPDDR from 0x9df00000 up, kept from the kernel by the DTB and by mem=479M. */
 	reserved-memory {
-		mister_ddr_low: mister-ddr-low@9ff00000 {
-			reg = <0x0 0x9ff00000 0x0 0x000ff000>;
+		mister_ddr_low: mister-ddr-low@9df00000 {
+			reg = <0x0 0x9df00000 0x0 0x000ff000>;
 			no-map;
 		};
 
-		mister_handoff: mister-handoff@9ffff000 {
-			reg = <0x0 0x9ffff000 0x0 0x00001000>;
+		mister_handoff: mister-handoff@9dfff000 {
+			reg = <0x0 0x9dfff000 0x0 0x00001000>;
 			no-map;
 		};
 
-		mister_scaler: mister-scaler@a0000000 {
-			reg = <0x0 0xa0000000 0x0 0x01800000>;
+		/* ascal's scratch: the fabric's RAMSIZE is 32 MiB from the base the HPS writes. */
+		mister_scaler: mister-scaler@9e000000 {
+			reg = <0x0 0x9e000000 0x0 0x02000000>;
 			no-map;
 		};
 
-		mister_core_lo: mister-core@a1800000 {
-			reg = <0x0 0xa1800000 0x0 0x00800000>;
+		/* Main's FB_ADDR: three 1080p 8888 buffers; /dev/fb0 is the first. */
+		mister_fb_mem: mister-fb@a0000000 {
+			reg = <0x0 0xa0000000 0x0 0x02000000>;
 			no-map;
 		};
 
-		mister_fb_mem: mister-fb@a2000000 {
-			reg = <0x0 0xa2000000 0x0 0x01800000>;
+		mister_core_lo: mister-core@a2000000 {
+			reg = <0x0 0xa2000000 0x0 0x0e000000>;
 			no-map;
 		};
 
-		mister_core_hi: mister-core@a3800000 {
-			reg = <0x0 0xa3800000 0x0 0x1c800000>;
+		/* The DE10's 0x30000000 core DDRAM window with bit 31 set by the fabric. */
+		mister_core_hi: mister-core@b0000000 {
+			reg = <0x0 0xb0000000 0x0 0x10000000>;
 			no-map;
 		};
+	};
+
+	/* /dev/fb0. Buffer 0 only, 8 MiB, as on the DE10. No interrupt: no vsync line yet. */
+	mister-fb@a0000000 {
+		compatible = "MiSTer_fb";
+		reg = <0x0 0xa0000000 0x0 0x00800000>;
 	};
 
 	/* Map-only UIO nodes, uio name mister_<name>; MAP_SHARED only. */
@@ -227,11 +236,11 @@
 			mister,map-writecombine;
 		};
 
-		ddr-low@9ff00000 {
+		ddr-low@9df00000 {
 			compatible = "generic-uio";
 			linux,uio-name = "mister_ddr_low";
-			reg = <0x0 0x9ff00000 0x0 0x000ff000>,
-			      <0x0 0x9ffff000 0x0 0x00001000>;
+			reg = <0x0 0x9df00000 0x0 0x000ff000>,
+			      <0x0 0x9dfff000 0x0 0x00001000>;
 		};
 
 		/* HPS on-chip RAM below the SPL handoff page; Device memory, so aligned accesses only. */

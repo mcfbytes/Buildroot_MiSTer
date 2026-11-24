@@ -598,8 +598,8 @@ else
 			*) bad "kernel args do not include rootwait -- the root device may not exist yet when the kernel looks for it" ;;
 		esac
 		case " $append " in
-			*" mem=511M "*) ok "kernel args include mem=511M (Linux stays below the MiSTer windows at 0x9ff00000)" ;;
-			*) bad "kernel args do not include mem=511M -- Linux would allocate the FPGA-shared LPDDR" ;;
+			*" mem=479M "*) ok "kernel args include mem=479M (Linux stays below the MiSTer windows at 0x9df00000)" ;;
+			*) bad "kernel args do not include mem=479M -- Linux would allocate the FPGA-shared LPDDR" ;;
 		esac
 		case " $append " in
 			*" uio_pdrv_genirq.of_id=generic-uio "*) ok "kernel args bind the generic-uio nodes (/dev/mister)" ;;

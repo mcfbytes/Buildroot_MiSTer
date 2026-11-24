@@ -488,7 +488,19 @@ or reachable by default, so each needs saying.
 | `PCI` | no host bridge is wired and none is in the DTS. Load-bearing for the shared Wi-Fi set: it is what makes every `RTW88_*E` / `BRCMFMAC_PCIE` / ath10k-PCIe sibling unreachable. |
 | `VIRTUALIZATION` | `default y` on arm64; nothing here runs guests. |
 | `COMPAT` | 32-bit EL0. Buildroot builds one ABI and it is aarch64. |
-| `DRM` + `FB` | no display path exists on the DE25 in wave 1, and DRM alone is ~40 MB of modules. |
+| `DRM` | nothing here is a KMS device, and DRM alone is ~40 MB of modules. The display path is fbdev, below. |
+
+**`FB` is on (2026-11-24), with the DE10's four lines.** `FB`, `FB_MISTER`,
+`FRAMEBUFFER_CONSOLE` and `FRAMEBUFFER_CONSOLE_DETECT_PRIMARY` are `=y` in `linux.config` §3a,
+exactly the DE10's set. `FB_MISTER` comes from `linux-patches/0001` + `0070` (shared with the
+DE10 by symlink) and `0103`, the arm64 fix. It binds `mister-fb@a0000000`, which sits where the
+third-party DE25 port's Main puts its framebuffer, so that port's Main finds `/dev/fb0` and
+`/sys/module/MiSTer_fb/parameters/mode` as it expects; fbcon gives the on-HDMI console that port
+also has. Resolved on 7.4-rc4 against master, the only changes are those four, their `select`s
+(`FB_CORE`, `FB_DEVICE`, `FB_NOTIFY`, `FB_SYS_*`, `FB_SYSMEM_FOPS`, `FB_IOMEM_FOPS`), fbcon's
+`FONT_SUPPORT`/`FONT_8x8`/`FONT_8x16`, `VIDEO=y`, `VT_HW_CONSOLE_BINDING=y`, and their `not set`
+siblings. They live in the board file, not the shared fragment, because the fragment must stay a
+no-op on the DE10.
 
 **`MEDIA_SUPPORT` is no longer in this list (corrected 2026-11-17).** The base
 used to say `# CONFIG_MEDIA_SUPPORT is not set`, but the shared fragment sets
@@ -522,9 +534,9 @@ reader can overturn it with evidence rather than rediscover it.
 
 | DE10 symbol(s) | Why not shared |
 |---|---|
-| `FB`, `FB_MISTER`, `FRAMEBUFFER_CONSOLE{,_DETECT_PRIMARY}` | `FB_MISTER` comes from `linux-patches/0001`, which the DE25 **does not carry** — it targets the Cyclone V fabric-memory aperture. Naming it would make a line that is a driver on one board and a silent no-op on the other. Until an Agilex 5 framebuffer path exists there is nothing for fbdev to drive. |
+| `FB`, `FB_MISTER`, `FRAMEBUFFER_CONSOLE{,_DETECT_PRIMARY}` | Both boards set them now (DE25 since 2026-11-24, `linux.config` §3a), but in each board file: moving them into the fragment would change the fragment's DE10 input for no gain, and `FB_MISTER` needs a different patch set per board (`0103` is DE25-only). |
 | `SND_MISTER_AUDIO` | same shape: `linux-patches/0002`, not carried on the DE25 (its exclusion is an open owner decision, tasks item 5). |
-| `CMA`, `CMA_AREAS=7` | not driver support; on the DE10 it is stock-parity carry-over and nothing on the DE25 (no fbdev, no DRM, no V4L) allocates from it. `CMA_SIZE_MBYTES` would reserve DRAM for no consumer. **Revisit the moment a DE25 framebuffer lands.** |
+| `CMA`, `CMA_AREAS=7` | not driver support; on the DE10 it is stock-parity carry-over and nothing on the DE25 allocates from it: `MiSTer_fb` maps a fixed `no-map` region and never calls the DMA allocator, and there is no DRM. `CMA_SIZE_MBYTES` would reserve DRAM for no consumer. Re-checked 2026-11-24 when the framebuffer landed. |
 | `CPU_FREQ` + its six governors, `CPU_IDLE`, `CPU_IDLE_GOV_MENU` | the DE10's cpufreq exists to host the Cyclone V overclock driver (`linux-patches/0003`); mainline 7.2 has **no cpufreq driver for Agilex 5** and the board DTS has no OPP table or idle-states, so the whole subsystem would be a userland-visible interface with nothing behind it. |
 | `COREDUMP` | the DE10's own file marks this a **temporary** debug divergence from stock, to be reverted as one block ([`debug-tooling.md`](debug-tooling.md)). Carrying a temporary divergence into a shared file entrenches it. (It is `default y` in `fs/Kconfig.binfmt` anyway, so the DE25 gets it regardless.) |
 | `FRAME_WARN=1024` | word-size dependent — 1024 is the 32-bit default and would emit `-Wframe-larger-than` noise on arm64, where the default is 2048. |
@@ -807,6 +819,10 @@ failure mode that is otherwise silent.
     child devices on its own. It already creates RSU and hwmon without a DT node;
     an upstream FCS client would arrive the same way, gated only by Kconfig.
 11. **DE25 — prune the temporary PHY set** (§4.3) if the PHY ID has been read.
+12. **DE25, added 2026-11-24 — `FB_MISTER=y` and the `0001`/`0070`/`0103` stack.**
+    Confirm `FB_MISTER` resolved `=y` (a dropped `0001` makes it a silent no-op),
+    the three patches apply at `-F0`, and `MiSTer_fb.o` still builds with no
+    `NO_IRQ` (arm32-only) and with `MEMREMAP_WC`, never `_WT`, on arm64.
 
 ## 11. CI wiring
 

@@ -24,7 +24,7 @@ link to the canonical file in `linux-patches/`. **Five** — `0013`, `0015`, `00
 have a **7.x-re-anchored** copy in `linux-patches-beta/`, and those link to the beta copy, because
 this board is on 7.x. (`0013` joined on 2026-10-19: 7.3 moved its Makefile context.) (`0031` rejoined that list on 2026-09-06 for a real 7.x API delta, not a
 re-anchor — see its row below; this intro said "three" until the Wave-4 audit of 2026-09-11
-caught the omission. `0001` is the fifth divergent pair; it is DE10-only and excluded either way.)
+caught the omission. `0001` is the fifth divergent pair; since 2026-11-24 the DE25 links its beta copy, the one that builds on 7.x.)
 
 That choice is not cosmetic — the shipped 6.18-anchored copies **hard-fail** on 7.2.x at
 Buildroot's `patch -F0`: `0015` 3/5 hunks FAILED, `0030` 1/1 FAILED, `0037` 4/6 FAILED. If you
@@ -41,7 +41,7 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 
 | Audit # | Patch | Audit verdict / series | Here? | Reason |
 |---|---|---|---|---|
-| 1 | `0001-fbdev-add-MiSTer_fb-driver` | board-specific / de10-only | **excluded** | DE10 fabric frame-reader at `0x22000000` + GIC SPI 40; also arm-only `NO_IRQ` and a `MEMREMAP_WT` correctness argument that is false on arm64 (audit §4.1). |
+| 1 | `0001-fbdev-add-MiSTer_fb-driver` | board-specific / de10-only | **included 2026-11-24 (beta copy) + `0103`** | The driver is board-neutral; what was DE10-only is the DT node, which lives in the DE25 DTS (`mister-fb@a0000000`). The two arm64 blockers the audit found (§4.1: arm-only `NO_IRQ`, and `MEMREMAP_WT` being Device memory on arm64) are fixed by the DE25-local `0103`, so `0001`'s text keeps its parity with stock. Links to the 7.x beta copy (`core/fbcon.h`). |
 | 2 | `0002-sound-add-MiSTer-audio-spi-and-snd-dummy-MiSTer-model` | portable-**with-rework** / shared (gated) | **excluded** | The only non-`portable-as-is` row in the shared set. It does **not compile on aarch64** (`&MrBufferInfo.addr`, an `unsigned int *`, passed where `dma_alloc_coherent()` wants `dma_addr_t *`), and the audit shows the C fix alone is wrong — the field is a 32-bit FPGA **wire** descriptor and Agilex 5 DRAM starts at `0x80000000` (§4.4). Audit §7 Q8 makes "widen the descriptor or constrain the ring below 4 GiB" an **open owner decision**, and ADR 0027 scopes the first DE25 image to a bare developer OS with no MiSTer binaries, so nothing here consumes `/dev/MrAudio`. **Re-add once Q8 is decided and the type/descriptor fix exists** — at that point it is a shared patch behind a defconfig gate, per audit §3.2(a) Option 1. |
 | 3 | `0003-cpufreq-cyclone5-de10nano-overclock` | board-specific / de10-only | **excluded** | Cyclone V gen5 clock-manager MMIO at fixed offsets; Agilex 5 has a different clkmgr. |
 | 4 | `0004-dts-de10nano-MiSTer` | board-specific / de10-only | **excluded** | The DE10 board DTS. The DE25 gets its own arm64 DTS (separate work item). |
@@ -102,6 +102,7 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | — | `0064-dwc2-ddma-giveback-on-dequeue-halt` | *post-audit (added 2026-09-26, #205)* | **excluded** — descriptor DMA is off on this board: dwc2 only enables it through `0059`, which is held for hardware qualification, so this code never runs | Same as `0054`. |
 | — | `0065-dwc2-ddma-halt-before-freeing-desc-list` | *post-audit (added 2026-09-26, #205)* | **excluded** — descriptor DMA is off on this board: dwc2 only enables it through `0059`, which is held for hardware qualification, so this code never runs | Same as `0054`. |
 | — | `0066-dwc2-ddma-keep-xfercompl-unmasked` | *post-audit (added 2026-09-26, #205)* | **excluded** — descriptor DMA is off on this board: dwc2 only enables it through `0059`, which is held for hardware qualification, so this code never runs | Same as `0054`. |
+| — | `0070-fbdev-MiSTer_fb-mmap-whole-region-and-flush-ioctl` | *post-audit (added 2026-11-24)* | **included** | Rides with `0001`, as on the DE10: `smem_len` covers the DT region, `FBIO_MISTER_FLUSH` (`wmb()`, `dsb st` on arm64), a `mode` write clears only the header page and the visible frame, and the vsync wait drops the fb lock. Applies at `-F0` on 7.4-rc4 after `0001`. `0071`/`0072` are DE10 DTS hunks and are not carried. |
 | — | `0067-wifi-rtw88-8821c-support-rfe-type-7` | *post-audit (added 2026-09-30)* | **included** | Adds the missing RFE type 7 definition to rtw88's RTL8821C driver; USB-generic, no architecture exposure. |
 | — | `0068-dwc2-host-ack-all-hcint-bits` | *post-audit (added 2026-10-19, fork 3726e2eba)* | **included** | Writes the raw HCINT value back in `dwc2_hc_n_intr()`, as before v6.7; fixes lost low-speed HID packets behind a hub under bulk load on the DE10. Buffer-DMA path, which is this board's mode; generic dwc2 logic. |
 | — | `0069-dwc2-host-drop-partial-int-in-on-cs-timeout` | *post-audit (added 2026-11-10, fork 9fcb1cb21)* | **included** | When a complete split runs past its microframes, drops the partial interrupt IN data instead of joining it to the next packet (phantom pad input under bulk load on the DE10). Buffer-DMA path, which is this board's mode; generic dwc2 logic. |
@@ -111,6 +112,7 @@ Source of the verdicts: [`docs/de25-patch-portability.md`](../../../../docs/de25
 | # | Patch | Why |
 |---|---|---|
 | ~~101~~ | `0101-mmc-sdhci-cadence-agilex5-40-bit-dma-mask` — **DROPPED 2026-11-17 at the 7.4 move**: v7.4's `altr,agilex5-sd6hc` carries the same 40-bit mask, and the DTS now uses it. Original rationale: | **Optional: not needed to boot.** Gives `intel,agilex5-sd4hc` its own `of_device_id` entry whose driver data installs a 40-bit DMA mask via the existing `sdhci_ops->set_dma_mask` hook. With the SMMU disabled, as the board DTS ships, the mask changes nothing (all DRAM is below 4 GiB); it matters only on an SMMU-on leg (`docs/de25-implementation-path.md` §8 Q2). Kept for that leg and for its binding hunk, which completes `Documentation/devicetree/bindings/mmc/cdns,sdhci.yaml` for this integration — the new compatible string, `clocks` widened to 2 with `clock-names` (`biu`, `ciu`), and `iommus`/`dma-coherent` declared — and is what keeps the DE25 `mmc0` node dtbs_check-clean (`docs/de25-dts-rationale.md` §2.4). **Not an upstream candidate:** Linux v7.4 adds `altr,agilex5-sd6hc` with the same 40-bit mask, and that entry replaces this patch when the pin moves ([`docs/de25-vendor-kernel-delta.md`](../../../../docs/de25-vendor-kernel-delta.md) §6). |
+| 103 | `0103-fbdev-MiSTer_fb-arm64-portability` (2026-11-24) | Makes `0001` + `0070` build and map correctly on arm64: `!irq` for no IRQ (`NO_IRQ` is arm32-only), `free_irq()` with the `dev_id` `request_irq()` got, `MEMREMAP_WC` instead of `_WT` (arm64's WT is Device memory, where `memset()`'s `DC ZVA` faults), and `%lx` for the 64-bit `smem_start`. Numbered past the dropped `0101`/`0102` so no number means two things. Without it 7.4-rc4 stops at `'NO_IRQ' undeclared`. |
 
 `0102-firmware-stratix10-svc-match-agilex5-svc` was **dropped on 2026-11-17**. The board DTS
 now sets `/firmware/svc`'s compatible to `intel,agilex-svc`, which the stock driver matches, so
@@ -125,15 +127,16 @@ runs against upstream; and it would not apply at v7.4 anyway.
 | | |
 |---|---|
 | Audit rows | 40 |
-| Included from the audit | **31** (`0045` since 2026-11-17, plus 32 `portable-as-is` + `shared` rows, minus the two retired on 2026-09-12 — `0040`, `0041`) |
-| Excluded from the audit | **7** — 6 `de10-only` (`0001` `0003` `0004` `0043` `0044` `0046`) + `0002` (`portable-with-rework`, deferred); `0045` moved to included 2026-11-17 |
+| Included from the audit | **32** (`0045` since 2026-11-17, `0001` since 2026-11-24, plus 32 `portable-as-is` + `shared` rows, minus the two retired on 2026-09-12 — `0040`, `0041`) |
+| Excluded from the audit | **6** — 5 `de10-only` (`0003` `0004` `0043` `0044` `0046`) + `0002` (`portable-with-rework`, deferred); `0045` moved to included 2026-11-17, `0001` on 2026-11-24 |
 | Post-audit patches considered | 6 (`0047` excluded — already upstream at 7.2, and retired 2026-09-21 when 6.18.53 took it too; `0048`, `0049` included — 2026-09-11; `0050` excluded — 7.2.3 already carries mainline's own plugged read-ahead, 2026-09-11; `0051` excluded — a revert of a 6.18.y-only backport defect 7.x never had, 2026-09-14; `0052` excluded — DesignWare MMC hook, this board is Cadence SDHCI, 2026-09-21; `0053` excluded — 7.x has no `exfat_dir_readahead()` to bound, 2026-09-21) |
 | dwc2 series `0054`–`0066` (#205) | 13 considered, **3** included (`0056`, `0060`, `0061`); 10 held: the descriptor-DMA set and `0058`/`0059`/`0062` wait for hardware qualification (`docs/dwc2-usb-irq.md`) |
 | rtw88 `0067` (2026-09-30) | 1 considered, **1** included |
 | dwc2 `0068` (2026-10-19, fork #114) | 1 considered, **1** included |
 | dwc2 `0069` (2026-11-10, fork #115) | 1 considered, **1** included |
-| DE25-local patches | **0** (`0101` and `0102` both dropped 2026-11-17) |
-| **Total applied here** | **39** (seven of them DE25-local 7.4 copies) |
+| `0070` (2026-11-24) | 1 considered, **1** included, with `0001` |
+| DE25-local patches | **1**, `0103` (`0101` and `0102` both dropped 2026-11-17) |
+| **Total applied here** | **42** (seven of them DE25-local 7.4 copies, plus `0103`). Buildroot's `apply-patches.sh` on a fresh 7.4-rc4: 42/42, zero fuzz, exit 0 (2026-11-24) |
 
 ## Note for the DE25 DTS
 

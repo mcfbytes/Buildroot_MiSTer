@@ -468,7 +468,7 @@ file is named.
 | `disable-over-current` on `&watchdog4` | TERASIC → ALTERA → PORT | **dropped** | A copy-paste of the `usb0` property onto a watchdog. Meaningless to `snps,dw-wdt`, absent from its binding, propagated unchanged through all three trees. |
 | `&osc1 { clock-frequency = <25000000> }` | all three | **kept** | MAINLINE declares `osc1` as a `fixed-clock` with `clock-frequency = <0>` (`socfpga_agilex5.dtsi:139-143`); it is the root of the peripheral clock tree, so leaving it at 0 gives a zero rate everywhere downstream. Exactly the `osc1` question [`dts-comparison.md`](dts-comparison.md) §4.1 asked for the DE10 — and here, unlike there, the answer is that it *does* need setting. |
 | `&qspi` + `flash@0` + partitions | ALTERA only | **dropped** | Not in the §3.1 node set; TERASIC and PORT both leave QSPI disabled. Enabling it exposes the **factory boot image** to `/dev/mtd` writes, and the QSPI contents are the board's un-recoverable-without-Quartus state ([`de25-boot-chain.md`](de25-boot-chain.md) §7 rows 14/15). Nothing in wave 1 needs it. |
-| `mister_fb`, `ascal_scratch`, `x86ram`, `mister_fb_mem` reserved regions | PORT only | **replaced 2026-11-17** | Not copied. The DTS now carries the DE10's own `reserved-memory` tiles and `/mister` UIO group at DE10 address + `0x8000_0000` (the port's convention), with the DE10's names; see [`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7. |
+| `mister_fb`, `ascal_scratch`, `x86ram`, `mister_fb_mem` reserved regions | PORT only | **same addresses, our names (2026-11-24)** | Not copied. The DTS carries the DE10's tile and UIO names at PORT's addresses: scaler scratch `0x9E00_0000` +32 MiB, fb `0xA000_0000` +32 MiB with the `MiSTer_fb` node over its first 8 MiB, the core window `0xB000_0000` +256 MiB. See "The video layout" below and [`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7. |
 | `&i2c1`'s vendor `status` whitespace, `&mmc` label | — | n/a | We define our own label `mmc0`; the references' `&mmc` label lives in a `.dtsi` we do not patch. |
 
 ### The MiSTer `/mister` group, the f2h lines and the HPS key (2026-11-17)
@@ -492,6 +492,39 @@ Two `reg`-only children of `&ocram`, `mister-ocram@0` and `handoff-sram@7f000`, 
 kernel's sram pool empty. The page left out is the SPL handoff block (`SOC64_HANDOFF_BASE` =
 `0x7f000` on Agilex 5). The interface doc, `dts-mister-fpga-interface.md` §7, has the
 boot-stage usage and the hazards.
+
+### The video layout — PORT's addresses, so PORT's bitstreams and Main run here (2026-11-24)
+
+**Goal: compatibility.** PORT's fabric and its Main_MiSTer build must run on this image
+unchanged, and greenfield's DE25 row follows the same map. The addresses are facts read from
+PORT's fabric top, its Main and its board DTS; nothing was copied. The full table is in
+[`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7. In short:
+
+- **Scaler scratch, `mister-scaler@9e000000`, 32 MiB.** PORT's ascal has `RAMSIZE` = 32 MiB and
+  adds the base the HPS writes into the fbcfg mailbox (LW `0x2001_0200`) to every access. PORT's
+  Main reads that word to find the scaler. 32 MiB from `0x9E00_0000` ends at `0xA000_0000`, so the
+  scratch covers the old `ddr-low`/handoff addresses; those two moved down by 32 MiB, to
+  `0x9DF0_0000` and `0x9DFF_F000`, and `mem=` went from `511M` to `479M` to stay below them.
+- **Framebuffer, `mister-fb@a0000000`, 32 MiB.** PORT's Main sets `FB_ADDR = 0xA000_0000` and maps
+  three 1080p 8888 buffers there. A root node `mister-fb@a0000000` (`compatible = "MiSTer_fb"`)
+  covers buffer 0 only, 8 MiB, as the DE10's stock node does, so `/dev/fb0`'s `smem_start` is
+  `0xA000_1000`, the address PORT's Main hands the scaler for buffer 0. No `interrupts`: PORT has
+  no vsync line, and a declared line that never fires would make every `FBIO_WAITFORVSYNC` wait
+  the full 50 ms timeout instead of whatever the fabric gives. `f2h_irq[0]` stays free for it.
+- **Core DDRAM, `mister-core@b0000000`, 256 MiB.** PORT's fabric relocates a core's DE10 address
+  `0x3xxx_xxxx` by setting bit 31, so its window is `0xB000_0000`–`0xBFFF_FFFF`, the DE10's own
+  `0x3000_0000` window plus `0x8000_0000`. `mister-core@a2000000` (224 MiB) fills the rest of the
+  aperture; PORT gives those bytes to Linux, we keep them reserved so the 512 MiB aperture stays
+  whole.
+
+Every window PORT's Main maps through `/dev/mem` is above `mem=` and `no-map`, which is what
+`CONFIG_STRICT_DEVMEM=y` needs. Two things PORT does at boot that this image does not do yet:
+
+1. **Program the scaler base.** PORT's `mister-fb` service waits for its MENU fabric, then writes
+   `0x9E00_0000` to the fbcfg word. Until something writes it, ascal is gated and PORT's Main falls
+   back to the Cyclone V scaler constant. On this image the step is manual (the `devmem` lines in
+   `de25-sdcard.md`); a boot service needs a DE25-only overlay, because the DE25 takes the DE10's.
+2. **Load `stratix10_rsu`** for its core switching. Not a layout question; not done here.
 
 ### The svc node — described as `intel,agilex-svc`
 
@@ -794,7 +827,7 @@ D1–D6 are changes of *form*; the content drops are in §3.
 |---|---|---|
 | [`de25-implementation-path.md`](de25-implementation-path.md) §3.1 | The authored node set overrides `/firmware/svc`'s compatible to `"intel,agilex-svc"` | Superseded. We keep MAINLINE's `"intel,agilex5-svc"` and carry `linux-patches/0102` (a one-line match-table addition) instead. The override is retained as the documented fallback. Rationale: the vendor treats the agilex5 string as semantic, so a kernel that will one day want that distinction should not have the DT lie about the SoC. **Reversed again 2026-11-17:** §3.1's override is what ships after all, and `0102` is dropped (see the row added below). |
 | [`de25-implementation-path.md`](de25-implementation-path.md) §2.5 | The two-string fpga-mgr form "warns" under `dtbs_check` | Confirmed and quantified: **five** warning lines, from **two** schemas (`intel,stratix10-svc.yaml` validating the child in place, and `intel,stratix10-soc-fpga-mgr.yaml` validating it standalone), plus the "failed to match any schema" summary. Simulating Khairul's v6 `oneOf`/`items` shape clears all five (§2.4). |
-| [`de25-reference-implementation.md`](de25-reference-implementation.md) (open question, line ~664) | "Does the DE25-Nano HPS actually have 2 GiB of DRAM? The port's memory node hard-codes `reg = <0 0x80000000 0 0x80000000>`…" | **Answered as far as any desk source can: every DE25 bootloader source says 1 GiB.** The port's Linux node over-claims 2×, and its `x86ram@b0000000 + 0x10000000` would sit past the top of RAM. Our node states 1 GiB — but see the row below: "1 GiB" is a vendor *declaration*, not a measurement. |
+| [`de25-reference-implementation.md`](de25-reference-implementation.md) (open question, line ~664) | "Does the DE25-Nano HPS actually have 2 GiB of DRAM? The port's memory node hard-codes `reg = <0 0x80000000 0 0x80000000>`…" | **Answered as far as any desk source can: every DE25 bootloader source says 1 GiB.** The port's Linux node over-claims 2×. Its `x86ram@b0000000 + 0x10000000` ends at `0xC000_0000`, exactly the top of 1 GiB, so it fits; it is the DE10 core window relocated, and our `mister-core@b0000000` reserves the same bytes. Our node states 1 GiB — but see the row below: "1 GiB" is a vendor *declaration*, not a measurement. |
 | [`de25-boot-chain.md`](de25-boot-chain.md) §3 | "the factory SPL DTB's memory node reads `reg = <0x0 0x80000000 0x0 0x40000000>` = 1 GiB at 0x8000_0000 **[V SPL-dtb]**" | **The `[V]` overstates it.** That is a *constant in Terasic's U-Boot device tree* (Terasic's public branch, `github.com/terasic/u-boot-socfpga` @ `de25-nano-v2025.01`, `arch/arm/dts/socfpga_agilex5_de25_nano-u-boot.dtsi`, commented `/* 1GB */`), not a readout. The authoritative size comes from the IO96B controller at runtime: `drivers/ddr/altera/sdram_agilex5.c` derives `hw_size` from `io96b_ctrl->overall_size`, caps the DT value at it, and prints `DDR: Warning …` on mismatch. Downgrade to `[V, vendor DTS constant] / [U, hardware]` and capture U-Boot's `DDR:` lines on first boot. |
 | [`de25-implementation-path.md`](de25-implementation-path.md) §3.1 and §2.6 step 4 | `&smmu { status = "okay"; }` is part of the authored node set, and the two SMMU legs of the programming test are symmetric | **Both corrected.** Mainline's `stratix10-svc` hands the SDM raw physical addresses with no `iommu_map`/`dma_map` anywhere, while the inherited `iommus = <&smmu 10>` puts the svc device on a *translated* default domain — so **SMMU-on cannot program the fabric on a mainline kernel** (§4.1, traced at 7.2.2). Wave 1 ships `status = "disabled"`. The two legs are therefore **not** symmetric: SMMU-off must be run **first**, because a SMMU-on failure is predicted by source and carries no information. |
 | [`de25-implementation-path.md`](de25-implementation-path.md) §8 Q2 | The `mmc0` DMA-width question is the leading first-boot risk | Still real, but **not reachable in the shipped configuration**: with the SMMU off there are no IOVAs to truncate and all DRAM is below 4 GiB (§4.4). `linux-patches/0101` remains correct and wanted — it is what makes the SMMU-on leg survivable — but it is not load-bearing for first boot. The *actual* leading first-boot SD risk is PHY timing, which mainline does not program at all; hence the 25 MHz cap ([U3]). |

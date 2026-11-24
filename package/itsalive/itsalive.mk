@@ -5,10 +5,13 @@
 ################################################################################
 
 # ItsAlive_MiSTer: bring up HDMI + /dev/fb0 on a MiSTer with no Main_MiSTer
-# running. Ships ONLY in the DE10 stage-1 cpio (never the rootfs), where it
-# draws the first-boot installer's "installing, do not power off" splash
-# (ADR 0020 section 9, issue #185; ADR 0033) and the boot-time exFAT repair's
-# (ADR 0026 section 6). Upstream Buildroot 2026.08 has
+# running. On the DE10 it ships ONLY in the stage-1 cpio (never the rootfs),
+# where it draws the first-boot installer's "installing, do not power off"
+# splash (ADR 0020 section 9, issue #185; ADR 0033) and the boot-time exFAT
+# repair's (ADR 0026 section 6). On the DE25, which has no stage-1 cpio yet,
+# it ships in the rootfs as /usr/bin/itsalive, a manual tool that nothing runs
+# at boot: its fabric guard refuses an unconfigured fabric, but a boot script
+# calling it would still need one. Upstream Buildroot 2026.08 has
 # no such package (checked: nothing under work/buildroot/package/its*).
 #
 # THE FIRST CARGO PACKAGE IN THIS TREE. Three things worth knowing:
@@ -40,11 +43,14 @@
 #      HASH_SYNC_PACKAGES (case 1's curl-and-hash loop would write a
 #      plausible-looking wrong value).
 #
-# Pinned to a commit on master, not a tag: the project cuts no releases, and
+# Pinned to a commit, not a tag: the project cuts no releases, and
 # renovate.json's git-refs manager for it tracks master's HEAD exactly like the
-# out-of-tree driver pins. The pinned commit is the one the 2026-09-21 rig
-# session verified on a DE10-Nano (ItsAlive_MiSTer docs/testlogs/).
-ITSALIVE_VERSION = 797378a7d06f9e1175151a18b98e64d17aa79a77
+# out-of-tree driver pins. 657b921 is the tip of ItsAlive_MiSTer's `de25`
+# branch, one commit on the master 797378a the 2026-09-21 rig session verified
+# on a DE10-Nano (docs/testlogs/); it adds the DE25 register path and leaves
+# the DE10's words and order unchanged. Until master fast-forwards to it,
+# Renovate will offer 797378a, which is a downgrade.
+ITSALIVE_VERSION = 657b9216fb872e93db3b825c3228ace2914ba943
 ITSALIVE_SITE = $(call github,mcfbytes,ItsAlive_MiSTer,$(ITSALIVE_VERSION))
 ITSALIVE_LICENSE = GPL-3.0+
 ITSALIVE_LICENSE_FILES = LICENSE

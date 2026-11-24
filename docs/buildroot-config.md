@@ -2653,6 +2653,10 @@ describes the earlier bare image.
 > 7.3 builds compile exactly as before: `package/rtl8852cu-morrownr/0002` (`ndo_do_ioctl` gone)
 > and `package/xone/0001` (`snd_card_free_on_error()` gone). Still not carried: `zaparoo-scanout`
 > (a DE10 kmod), the RT variant, the stage-1 initramfs. The paragraphs below are the history.
+>
+> **2026-11-24:** one package the DE10 does not carry in its rootfs: `BR2_PACKAGE_ITSALIVE`, the
+> HDMI/framebuffer bring-up tool, as `/usr/bin/itsalive` for testing the DE25 framebuffer by hand.
+> The DE10 has it only in its stage-1 cpio; the DE25 has no cpio yet. Nothing runs it at boot.
 
 BusyBox is Buildroot's own default (`BR2_PACKAGE_BUSYBOX` is `default y` in
 `package/busybox/Config.in`) and so does not appear as a line; it is the

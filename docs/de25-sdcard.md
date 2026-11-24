@@ -306,6 +306,13 @@ devmem 0x2001021c 32              # must print 0x5CA623FB, else stop: wrong or n
 devmem 0x20010200 32 0x9e000000   # the scaler scratch base
 ```
 
+`itsalive hdmi` does the same two steps behind a fabric guard (it refuses, touching nothing, if
+`/proc/cmdline` and `fpga0`'s state do not show a configured fabric), and `itsalive up` then
+switches the scaler to `/dev/fb0`, a 1280x720 frame buffer on the fabric's 1080p output, so
+`itsalive say hello` or fbcon's console shows on HDMI. `itsalive probe` reads only. Exit 10 is
+the guard refusing, 15 a wrong MAGIC. Never run it while the port's Main or its `mister-fb`
+service is running: two writers on one mailbox corrupt each other.
+
 Log the whole session. Several of the dossier's open `[U]`s (Q3 in particular) are answered by
 lines 2–3 of a single boot log, and that log is worth more than any further desk work.
 

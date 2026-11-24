@@ -19,10 +19,13 @@ config BR2_PACKAGE_ITSALIVE
 	  It is also a rescue tool: a shell on a MiSTer with a core
 	  loaded gets a screen back with two commands.
 
-	  About 900 KB static on glibc. It ships in exactly one place,
-	  the DE10 stage-1 initramfs (BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE,
-	  which keeps it out of the rootfs), where both the first-boot
-	  installer (ADR 0033) and the exFAT repair (ADR 0026) use it.
+	  About 900 KB static on glibc. On the DE10 it ships in exactly
+	  one place, the stage-1 initramfs
+	  (BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE, which keeps it out of
+	  the rootfs), where both the first-boot installer (ADR 0033) and
+	  the exFAT repair (ADR 0026) use it. On the DE25 it is in the
+	  rootfs as a manual tool: it detects the board, refuses an
+	  unconfigured fabric, and takes the LW-bridge mailbox path.
 	  Never run it while Main_MiSTer is up: two writers on the
 	  mailbox corrupt each other.
 

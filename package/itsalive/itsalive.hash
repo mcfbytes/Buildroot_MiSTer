@@ -57,7 +57,7 @@
 # point 2 claims: `file` on the installed binary reports "ELF 32-bit LSB
 # executable, ARM, EABI5 ... statically linked, stripped", 444,964 bytes (musl,
 # the installer's old toolchain; on glibc since ADR 0033 it is 911,320 bytes).
-sha256  4e61820b3b7de754e211f3d53eb7f38c2939bec09186d7b416b671e050c8ce05  itsalive-657b9216fb872e93db3b825c3228ace2914ba943-cargo6.tar.gz
+sha256  ac176ff164f04af7bfd95fea692db47456268f313d05fc2f24eddb55cb4c6cfc  itsalive-a2869a081be5d058bc5f148bbc338d9879da65fc-cargo6.tar.gz
 # LICENSE at the tree root: the GPL-3.0 text. Unaffected by the vendoring
 # above, so unlike the tarball this IS an ordinary `sha256sum` of a file you
 # can fetch and check.

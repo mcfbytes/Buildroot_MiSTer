@@ -1,0 +1,4 @@
+# /dev/mister/<name> for the DE25's UIO nodes the DE10 has no twin of. Layered after the DE10
+# overlay, whose 65-mister-uio.rules names exactly the DE10's nodes (scripts/ci-tests.sh) and
+# whose mister_* GROUP/MODE line covers these too. docs/dts-mister-fpga-interface.md §7
+SUBSYSTEM=="uio", ATTR{name}=="mister_scaler", SYMLINK+="mister/scaler"

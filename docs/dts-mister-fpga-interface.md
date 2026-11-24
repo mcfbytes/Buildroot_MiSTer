@@ -321,7 +321,10 @@ The DE25 board DTS (`board/mister/de25nano/socfpga_agilex5_de25nano.dts`, last `
 carries the same `/mister` group with the **same UIO names**, so the shared
 `65-mister-uio.rules` (the DE25 takes the DE10's whole rootfs overlay) builds the same
 `/dev/mister/*` tree and `0045` (symlinked into the DE25 series) gives `ddr-aperture` the same
-write-combined mapping. Owner decision 2026-11-17: these windows are a **starting point** for an
+write-combined mapping. The one DE25-only node, `mister_scaler`, gets its rule from
+`board/mister/de25nano/rootfs-overlay/etc/udev/rules.d/65-mister-uio-de25.rules`, an overlay
+layered after the DE10's: the shared file names exactly the DE10's nodes (`ci-tests.sh` checks
+both ways), and the DE25 `post-build.sh` checks every DTS UIO name against the two files. Owner decision 2026-11-17: these windows are a **starting point** for an
 aarch64 Main_MiSTer, not a frozen ABI — they may move.
 
 **Memory: the third-party DE25 port's video layout, the DE10's names (2026-11-24).** The DE25's
@@ -339,7 +342,7 @@ and its board DTS); no source file was copied.
 | `0x9DFF_F000` | 4 KiB | `0x1FFF_F000` | `mister-handoff`, `ddr-low` map 1 | nothing; the port's Main maps an anonymous page instead |
 | `0x9E00_0000` | 32 MiB | `0x2000_0000` (24 MiB) | `mister-scaler` | ascal's scratch: the fabric's `RAMSIZE` is 32 MiB from the base the HPS writes into the fbcfg mailbox |
 | `0xA000_0000` | 32 MiB | `0x2200_0000` (24 MiB) | `mister-fb`; `/dev/fb0` = its first 8 MiB | Main's `FB_ADDR`: three 1080p 8888 buffers, buffer 0 at `+0x1000` is `/dev/fb0`'s `smem_start` |
-| `0xA200_0000` | 224 MiB | `0x2400_0000` | `mister-core@a2000000` (`mister_core_lo`) | nothing in the port; kept out of Linux because it is inside the aperture |
+| `0xA200_0000` | 224 MiB | `0x2200_0000` | `mister-core@a2000000` (`mister_core_lo`) | nothing in the port; kept out of Linux because it is inside the aperture, where DE10 cores' `0x2xxx_xxxx` addresses land under a whole-window translation (Minimig's share `0x27FF_4000`, SNES MSU-1 data from `0x2060_0000`) |
 | `0xB000_0000` | 256 MiB | `0x3000_0000` | `mister-core@b0000000` (`mister_core_hi`) | core DDRAM: the port's fabric sets bit 31 on a core's DE10 address, so `0x3E00_0000` lands at `0xBE00_0000` |
 | `0xA000_0000` | 512 MiB | `0x2000_0000` | `mister_ddr_aperture`, write-combined | the aperture, mask `0x1FFF_FFFF`; now holds the fb at `+0` and the cores |
 
@@ -352,9 +355,10 @@ fb's end and at `0xB000_0000`; and `mem=` dropped from `511M` to `479M`. UIO nam
 
 Every window the port's Main touches through `/dev/mem` (`0x9E00_0000`, `0xA000_0000`,
 `0xB000_0000`–`0xBFFF_FFFF`) is above the `mem=` line and `no-map`, so `CONFIG_STRICT_DEVMEM=y`
-lets it map them. There is **no UIO node for the scaler**: it lies below the aperture and needs
-its own `mister_scaler` rule in the shared `65-mister-uio.rules`, which is a DE10 file; that line
-is owed when greenfield needs the window.
+lets it map them. The scaler scratch lies below the aperture, so it has its own UIO node,
+`scaler@9e000000` = `mister_scaler` = `/dev/mister/scaler`, 32 MiB, write-combined like the
+aperture: a scaler-out reader (a screenshot) maps it there instead of through `/dev/mem`. The
+fabric writes it continuously once `fbcfg` is set; nothing on the HPS should write it.
 
 `mem=479M` is on the extlinux `append` line (`post-image.sh`, checked by
 `check-sdcard-de25.sh`) as well as the `no-map` tiles, as on the DE10. The DTB's

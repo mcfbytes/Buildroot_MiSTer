@@ -26,19 +26,20 @@ or policy document rather than restating it.
 
 ## The pipeline today (2026-09-11, after ADR 0030)
 
-Ten workflows, two composite actions, one Buildroot recipe. A build is
+Eleven workflows, two composite actions, one Buildroot recipe. A build is
 `make mister_de10nano_defconfig && make`, and every check CI runs is a script you can run locally.
 
 | Workflow | Runs on | What it does |
 |---|---|---|
 | `build.yml` | push to master, PRs | `gate` (skip doc-only changes) → `lint-config` (kernel patch headers, `scripts/check-defconfigs.sh`) → `build` (the action below, then `scripts/ci-tests.sh` via `verify-image`) → `status` |
 | `lint.yml` | push, PRs | actionlint on the workflows, shellcheck on every script and on the composite actions' `run:` bodies |
-| `release.yml` | `v*` tags | the same build, then `scripts/mk-release.sh` (stage assets, fetch + verify the pinned stock archive, assemble `release_YYYYMMDD.7z` and round-trip it under the pinned ARM `7za`, `SHA256SUMS`) and `scripts/mk-sdcard.sh`; then a draft release with provenance and the SBOM to the dependency graph. Runs locally: `MISTER_VERSION=… scripts/mk-release.sh` with the `STOCK_*` pins in the environment |
+| `release.yml` | `v*` tags, or dispatch on a tag | the same build, then `scripts/mk-release.sh` (stage assets, fetch + verify the pinned stock archive, assemble `release_YYYYMMDD.7z` and round-trip it under the pinned ARM `7za`, `SHA256SUMS`) and `scripts/mk-sdcard.sh`; then a draft pre-release with provenance and the SBOM to the dependency graph; never re-uploads onto a published release ([guard](#published-release-guard)). Runs locally: `MISTER_VERSION=… scripts/mk-release.sh` with the `STOCK_*` pins in the environment |
+| `cut-release.yml` | manual | derive `v<YYYY.MM.DD>-<suffix>` from master's commit date, check it, create the tag and dispatch `release.yml` on it ([cut-release](#cut-release)) |
 | `reproducibility.yml` | manual | two independent builds of one commit, hashes compared |
-| `de25-build.yml` | manual | `make de25` cold, then `check-sdcard-de25.sh` and the aarch64 QEMU leg; uploads the card ([why manual](#de25-manual-lane)) |
+| `de25-build.yml` | manual | `make de25` cold, then `check-sdcard-de25.sh`, `scripts/mk-release-de25.sh` and the aarch64 QEMU leg; uploads `dist-de25/`, and with `publish` on master creates a `de25-YYYYMMDD` pre-release ([lane](#de25-manual-lane)) |
 | `renovate-hash-sync.yml` | Renovate PRs | refresh the companion hash of whatever pin the PR bumped (each case is one `scripts/hash-sync-*.sh`) |
 | `renovate-validate.yml` | push, PRs | `renovate.json` validates |
-| `publish-db.yml` | published release | regenerate + publish `db.json` to Pages |
+| `publish-db.yml` | published `v*` release | regenerate + publish `db.json` to Pages |
 | `cache-prune.yml` | closed PRs, daily, after each master build | delete a closed PR's Actions caches |
 | `fork-sync.yml` | weekly | backport queue against the upstream kernel fork |
 
@@ -1410,6 +1411,45 @@ Its shape is ADR 0027 Decision 5, confirmed by the owner on 2026-09-23:
   board parameter (readiness-ledger D1.2) is only worth doing once the DE25
   needs caches, which is when it becomes a per-PR target.
 
+**Packaging and publishing (ADR 0027 D4/D6).** Every run exports
+`MISTER_VERSION` from the commit's UTC date (as `release.yml` does), runs
+`make O=output-de25 legal-info` and `scripts/mk-release-de25.sh output-de25
+dist-de25`, and uploads `dist-de25/` as `de25-dist-<sha>`. Both run before the
+stage-1 step, because that step edits `output-de25/.config`. Locally:
+
+```sh
+make de25 && make O=output-de25 legal-info && scripts/mk-release-de25.sh
+```
+
+The assets are `sdcard-de25.img.xz`, the loose p1 boot files (`u-boot.itb`,
+`Image`, `socfpga_agilex5_de25nano.dtb`, `bl31.bin`) for updating only the FAT
+partition, `buildroot.config`, `linux.config`, `legal-info.tar.gz` (the same
+`patches-only` mode as the DE10, see [#legal-info-2gib-cap](#legal-info-2gib-cap))
+and `SHA256SUMS`. `rootfs.ext4` and `bl31.elf` are not shipped: the rootfs is
+inside the card, and the ELF is a debug artefact.
+
+Dispatching with **`publish`** ticked (default off) adds the `publish` job,
+which runs only on `refs/heads/master`. It has `contents`, `id-token` and
+`attestations` write. It checks `SHA256SUMS`, attests provenance for the card
+and the four boot files, picks the tag, and creates the release:
+
+- **Tag:** `de25-YYYYMMDD` from the commit's UTC date, so it matches
+  `/MiSTer.version`. If that tag, or a release (draft included) with that tag
+  name, already exists, it uses `-2`, `-3`, … and never overwrites.
+- **Release:** a non-draft **pre-release**, `--latest=false`, `--target` the
+  built SHA. It is created as a draft first, then the assets upload, then it
+  is flipped to published. So if a run is cancelled part-way (the lane has
+  `cancel-in-progress`), the most it leaves is a draft. A leftover draft holds
+  its tag name, and the next run takes the next suffix.
+- **Notes:** the commit, the Linux/U-Boot/TF-A versions read from the shipped
+  `buildroot.config` (the resolved `BR2_*_VERSION` strings, never typed by
+  hand), a link to `docs/de25-sdcard.md` at that commit, the corresponding-source
+  note, and the optional `notes` input.
+- **No `db.json`.** A release created with `GITHUB_TOKEN` fires no `release`
+  event. As a second guard, `publish-db.yml` skips release events whose tag is
+  not `v*` and fails a manual dispatch that names one. The README badge
+  filters to `v*` too.
+
 ---
 
 ## Part VI — release.yml
@@ -1588,20 +1628,20 @@ human should sanity-check this sourcing choice before the first real tag
 push, not just this comment. Flagged as an open decision, not a settled one.
 
 <a id="tag-convention"></a>
-### Tag convention (unratified)
+### Tag convention
 
-> ⚠ **Stale as of 2026-08-01.** The paragraph below records the state at the workflow's
-> authoring and is kept as-is. Since then **nine** `v*` tags have been cut
-> (`v2026.07.23-rc1` … `v2026.07.31-beta`, the last a published release serving the live
-> `db.json`), all of the shape `v<YYYY.MM.DD>-<rcN|beta>`. **UNCHECKED:** whether that
-> shape is the ratified convention or merely accreted — nothing in `TASKS.md` or an ADR
-> states it. Ratify or replace it before the next release.
+Ratified 2026-11-24. Two tag namespaces, one per board (ADR 0027 D4):
 
-No tag convention exists anywhere in this repo as of the workflow's
-authoring (`git tag -l` was empty; `TASKS.md` never specifies one). `v*`
-(e.g. `v1.0.0`, `v2026.07.13-1`) was picked purely because the task brief
-suggested it as a default — it is **not** derived from any existing project
-decision and should be revisited/ratified by a human.
+| Board | Tag | Date in the tag | Published by |
+|---|---|---|---|
+| DE10-Nano | `v<YYYY.MM.DD>-<suffix>` (suffix e.g. `beta`, `rc1`) | the tagged commit's **UTC committer date** | `release.yml` (tag push or [`cut-release.yml`](#cut-release)) → draft → human publishes → `publish-db.yml` |
+| DE25-Nano | `de25-YYYYMMDD`, then `-2`, `-3`, … | the built commit's **UTC committer date** | `de25-build.yml` with `publish` ([lane](#de25-manual-lane)); no `db.json` |
+
+The date in the tag is the date baked into `/MiSTer.version` and, for the
+DE10, into `release_YYYYMMDD.7z` ([coupling](#mister-version-coupling)).
+`cut-release.yml` derives it that way, so the tag and the version always
+agree. A tag pushed by hand should follow the same rule; `release.yml` takes
+the version from the commit either way. Only `v*` tags reach `db.json`.
 
 <a id="mister-version-coupling"></a>
 ### MiSTer.version / filename / db.json coupling (load-bearing)
@@ -1639,12 +1679,63 @@ from the archive filename and passes it to `gen-db-json.py` as `--version` —
 archive name, image stamp, and published version are the same value by
 construction, never independently derived.
 
+<a id="cut-release"></a>
+### Cutting a DE10 release from the web UI (`cut-release.yml`)
+
+A thin dispatcher, so a release can be cut without a terminal. Actions →
+**Cut release (DE10)** → Run workflow on `master`, with:
+
+- `dry_run` (default **true**): run every check, print the tag, SHA,
+  `/MiSTer.version` and archive name to the job summary, and create nothing.
+- `suffix` (default `beta`): the tag is `v<YYYY.MM.DD>-<suffix>`, dated by
+  HEAD's UTC commit date ([convention](#tag-convention)).
+- `build_full_sdcard`: passed to `release.yml` as-is
+  ([full sdcard](#manual-full-sdcard-dispatch)).
+
+It refuses a ref other than `master`, a tag that already exists, and a commit
+date whose `release_YYYYMMDD.7z` a **published** release already ships. That
+last one matters because both releases would carry the same
+`/MiSTer.version`, so devices would never see the second as an update. A
+draft carrying that archive only gets a warning. If the latest `Build` run on
+the SHA is not green, that is also only a warning. With `dry_run` off, it
+creates a lightweight tag through the API with `GITHUB_TOKEN` (`contents:
+write`). That fires no `push` event, so it then runs `gh workflow run
+release.yml --ref <tag>` (`actions: write`). `release.yml` runs once, the same
+build as a tag push, with `prerelease=true`. If that dispatch fails, the tag
+is left behind: dispatch `release.yml` on it by hand, or delete it.
+
+Pushing a `v*` tag from a terminal is unchanged and still the reference path.
+
+A `release.yml` run on a tag ref saves no caches. Every save in
+`buildroot-build` (ccache's `save:`, `dl/`, the tarball, the toolchain, and the
+superseded-generation prune) is gated on `github.ref == 'refs/heads/master'`,
+and `build-azcopy` is restore-only.
+
+<a id="published-release-guard"></a>
+### Published releases are never re-uploaded
+
+`release.yml` checks the release's state twice. It checks once at the start of
+`build`, so it fails in seconds instead of after the build. It checks again in
+`publish`, because a human may publish in between.
+
+| State of the tag's release | Ordinary run | `build_full_sdcard` dispatch |
+|---|---|---|
+| none | create a **draft**, pre-release ticked unless `prerelease=false` | same |
+| draft | upload all assets `--clobber` (upsert, as before) | same |
+| published | **refuse** | upload `sdcard-full.img.xz` only, without `--clobber`; refuse if it is already there |
+
+A tag push always creates the draft as a pre-release. Publishing a release is
+what moves the fleet, through `publish-db.yml`, and the assets the fleet's
+`db.json` hashes must never change underneath it. A wrong published release is
+fixed with a new tag, not a re-upload.
+
 <a id="manual-full-sdcard-dispatch"></a>
 ### Manual workflow_dispatch: opt-in full sdcard variant
 
-Manual dispatch builds ONLY the opt-in full sdcard variant (bundles
-`_Console` cores) — tagged pushes already produce the minimal
-`sdcard.img.xz`. **MUST be dispatched against a tag ref**, not a branch: the
+With `build_full_sdcard` ticked, a dispatch builds the full sdcard variant
+(bundles `_Console` cores) **instead of** the minimal `sdcard.img.xz`. Tag
+pushes produce the minimal one. On a published release only the full card is
+added ([guard](#published-release-guard)). **MUST be dispatched against a tag ref**, not a branch: the
 GitHub UI's "Use workflow from" ref picker accepts tags, so `github.ref_name`
 becomes the release tag and the `publish` job attaches the assets to that
 tag's draft release. A dispatch on a branch still builds + verifies the
@@ -1917,7 +2008,9 @@ the opt-in full-sdcard dispatch (which runs AGAINST that existing tag) must
 ADD `sdcard-full.img.xz` to the draft rather than fail with an
 already-exists error. This also lets a re-pushed/corrected tag re-attach
 assets once the first run has finished. `gh release create` only ever
-creates; `gh release upload --clobber` refreshes in place.
+creates; `gh release upload --clobber` refreshes in place. All of this
+applies to a **draft** only; a published release is never clobbered
+([guard](#published-release-guard)).
 
 The release-notes prose (the human-readable "PREEMPT_RT beta" paragraph) is
 **not** derived from the variant registry — it stays a hand-edit for any

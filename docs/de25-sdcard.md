@@ -220,6 +220,23 @@ can check it.
 
 ## 5. Writing the card
 
+**Prebuilt cards.** Instead of building (§4), you can download a card from the newest
+`de25-YYYYMMDD` pre-release on the repository's
+[Releases page](https://github.com/mcfbytes/Buildroot_MiSTer/releases). Those releases are cut
+by hand from `de25-build.yml` ([`ci.md#de25-manual-lane`](ci.md#de25-manual-lane)). They are
+never offered by `db.json` and never marked "latest". Verify the download, then decompress:
+
+```sh
+sha256sum -c --ignore-missing SHA256SUMS
+gh attestation verify sdcard-de25.img.xz --owner mcfbytes   # optional: build provenance
+xz -d sdcard-de25.img.xz                                     # -> sdcard-de25.img
+```
+
+The same release also has the loose p1 files (`u-boot.itb`, `Image`,
+`socfpga_agilex5_de25nano.dtb`). To update only the boot partition of a card that already
+boots, copy those three over the files of the same name on `DE25BOOT`. `bl31.bin` is already
+inside `u-boot.itb`, so do not copy it on its own.
+
 > **Writing erases the entire card.** All partitions, not just files. Identify the device with
 > `lsblk` (Linux) or `diskutil list` (macOS) before you type it — getting this wrong overwrites
 > the wrong disk.

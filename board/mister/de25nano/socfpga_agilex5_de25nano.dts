@@ -91,7 +91,8 @@
 		no-1-8-v;
 		no-sdio;
 
-		/* <caps1 caps>: mask SDR50 tuning and the base clock field, which comes from ciu. */
+		/* <caps1 caps0>: mask SDR50 tuning (CAPS1 bit 13) and the CAPS0 base-clock field
+		 * (bits 15:8), since ciu supplies the clock. High speed (bit 21) is not masked. */
 		sdhci-caps = <0x00000000 0x0000c800>;
 		sdhci-caps-mask = <0x00002000 0x0000ff00>;
 

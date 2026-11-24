@@ -342,7 +342,7 @@ and its board DTS); no source file was copied.
 | `0x9DFF_F000` | 4 KiB | `0x1FFF_F000` | `mister-handoff`, `ddr-low` map 1 | nothing; the port's Main maps an anonymous page instead |
 | `0x9E00_0000` | 32 MiB | `0x2000_0000` (24 MiB) | `mister-scaler` | ascal's scratch: the fabric's `RAMSIZE` is 32 MiB from the base the HPS writes into the fbcfg mailbox |
 | `0xA000_0000` | 32 MiB | `0x2200_0000` (24 MiB) | `mister-fb`; `/dev/fb0` = its first 8 MiB | Main's `FB_ADDR`: three 1080p 8888 buffers, buffer 0 at `+0x1000` is `/dev/fb0`'s `smem_start` |
-| `0xA200_0000` | 224 MiB | `0x2200_0000` | `mister-core@a2000000` (`mister_core_lo`) | nothing in the port; kept out of Linux because it is inside the aperture, where DE10 cores' `0x2xxx_xxxx` addresses land under a whole-window translation (Minimig's share `0x27FF_4000`, SNES MSU-1 data from `0x2060_0000`) |
+| `0xA200_0000` | 224 MiB | `0x2200_0000` | `mister-core@a2000000` (`mister_core_lo`) | nothing in the port; kept out of Linux because it is inside the aperture, where DE10 cores' `0x2xxx_xxxx` addresses land under a whole-window translation (Minimig's share `0x27FF_4000`; SNES MSU-1 data, which starts at `0x2060_0000` inside `mister-fb` and runs through this tile when large) |
 | `0xB000_0000` | 256 MiB | `0x3000_0000` | `mister-core@b0000000` (`mister_core_hi`) | core DDRAM: the port's fabric sets bit 31 on a core's DE10 address, so `0x3E00_0000` lands at `0xBE00_0000` |
 | `0xA000_0000` | 512 MiB | `0x2000_0000` | `mister_ddr_aperture`, write-combined | the aperture, mask `0x1FFF_FFFF`; now holds the fb at `+0` and the cores |
 

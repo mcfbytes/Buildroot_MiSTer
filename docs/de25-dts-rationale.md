@@ -516,7 +516,9 @@ PORT's fabric top, its Main and its board DTS; nothing was copied. The full tabl
   `0x3000_0000` window plus `0x8000_0000`. `mister-core@a2000000` (224 MiB) fills the rest of the
   aperture; PORT gives those bytes to Linux, we keep them reserved so the 512 MiB aperture stays
   whole: it is the DE10's core window translated, and DE10 cores use `0x2xxx_xxxx` too (Minimig's
-  share at `0x27FF_4000`; SNES MSU-1 data from `0x2060_0000`, up to `0x1F20_0000` bytes).
+  share at `0x27FF_4000`). SNES MSU-1 data starts at `0x2060_0000`, which translates into
+  `mister-fb`, not here, and a large data file runs on through this tile (up to `0x1F20_0000`
+  bytes).
 - **The scaler scratch's UIO node, `scaler@9e000000` = `mister_scaler`.** Below the aperture, so
   `mister_ddr_aperture` cannot reach it; a scaler-out reader maps it through this node. Its
   `/dev/mister/scaler` rule is in the DE25's own overlay (`65-mister-uio-de25.rules`), because the

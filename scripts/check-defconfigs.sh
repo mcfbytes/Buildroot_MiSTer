@@ -93,9 +93,11 @@ for name in "${names[@]}"; do
 		[ -n "$sym" ] || continue
 		grep -qx "$sym=y" "$odir/.config" || continue
 		missing=""
-		while IFS= read -r sel; do
+		# Each select counts only under its own `config` block, and only when that symbol is y.
+		while read -r owner sel; do
+			grep -qx "$owner=y" "$odir/.config" || continue
 			grep -qx "$sel=y" "$odir/.config" || missing="$missing $sel"
-		done < <(sed -n 's/^[[:space:]]*select \(BR2_[A-Za-z0-9_]*\)[[:space:]]*$/\1/p' "$cfgin")
+		done < <(awk '/^config BR2_/ { owner = $2 } /^[[:space:]]*select BR2_[A-Za-z0-9_]*[[:space:]]*$/ { print owner, $2 }' "$cfgin")
 		if [ -n "$missing" ]; then
 			fail "$name: profile $sym is enabled but these selects did not land:$missing -- a select of a kconfig 'choice' member is ignored silently (move the line into the defconfig), or the package's own dependencies are unmet on this board (${cfgin#"$ROOT"/})"
 		else

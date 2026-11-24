@@ -9,6 +9,10 @@ carries the [installer flag](#the-flag). This page carries the explanation that 
 live in the script's own comments; the script keeps one- or two-line pointers into the
 headings below.
 
+The DE25-Nano has its own, much smaller installer, because its boot partition is p1 and never
+moves. It shares the flag, `install-flag` and `mkfs.exfat` with this one but none of the RAM
+staging; see [`de25-sdcard.md`](de25-sdcard.md) §3.
+
 > **THIS FILE CAN BRICK THE BOARD.** Read this page, [ADR 0020][adr], [ADR 0033][adr33]
 > and `docs/boot-chain.md` §2.1/§3.1/§5 before touching a single line of it. Every edit
 > must keep `shellcheck -s sh -x`, `scripts/test-installer-splash.sh`,

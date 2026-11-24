@@ -236,7 +236,7 @@ jobs:
             echo "| U-Boot | \`${uboot}\` |"
             echo "| TF-A | \`${tfa}\` |"
             echo ""
-            echo "**Assets:** \`sdcard-de25.img.xz\` is the whole card (\`xz -d\`, then write it raw). \`u-boot.itb\`, \`Image\`, \`socfpga_agilex5_de25nano.dtb\` and \`bl31.bin\` are the loose boot files, for updating the FAT partition (p1) of an existing card; \`bl31.bin\` is already inside \`u-boot.itb\` and is attached for inspection. Writing, layout and first-boot checks: [docs/de25-sdcard.md](${docs})."
+            echo "**Assets:** \`sdcard-de25.img.xz\` is the whole card (\`xz -d\`, then write it raw; the first boot installs onto it and reboots). \`u-boot.itb\`, \`Image\`, \`socfpga_agilex5_de25nano.dtb\` and \`bl31.bin\` are the loose boot files, for updating the boot partition (p1, hidden from Windows) of an existing card; \`bl31.bin\` is already inside \`u-boot.itb\` and is attached for inspection. Writing, layout and first-boot checks: [docs/de25-sdcard.md](${docs})."
             echo ""
             echo "Hashes are in \`SHA256SUMS\`; verify provenance with \`gh attestation verify <asset> --owner ${OWNER}\`."
             echo ""

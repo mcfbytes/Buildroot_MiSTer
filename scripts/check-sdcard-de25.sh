@@ -17,28 +17,29 @@
 #
 # The assertions, and why each one exists:
 #
-#  1. PARTITION TABLE IS MBR, WITH EXACTLY TWO PARTITIONS, AND NO 0xA2.
+#  1. PARTITION TABLE IS MBR: boot, data, installer flag, AND NO 0xA2.
 #     MBR because that is the only partition-table type any evidence says a
 #     DE25-Nano has been seen booting from (board/mister/de25nano/
 #     genimage-sdcard.cfg's `partition-table-type` note has the full argument
-#     and its two citations). Exactly two, because ADR 0029 D3 fixes the
-#     partition COUNT — a third partition means somebody re-opened a settled
-#     decision without saying so. No 0xA2, because a 0xA2 partition here is
+#     and its two citations). Two partitions (ADR 0029 D3) plus the transient
+#     installer flag in entry 3, which the first boot deletes (ADR 0033; the
+#     layout is docs/de25-sdcard.md §1). No 0xA2, because a 0xA2 partition here is
 #     DE10 lore transplanted onto a board whose BootROM does not scan for it:
 #     harmless in itself, and a reliable sign that the DE10's genimage config
 #     or its `updateboot` habits are being cargo-culted across.
 #
-#  2. p1 IS FAT32, LABELLED, AND HOLDS THE FOUR FILES THE BOOT CHAIN NEEDS.
+#  2. p1 IS HIDDEN FAT32 (0x1c), BOOTABLE, LABELLED, AND HOLDS THE BOOT FILES.
 #     `u-boot.itb` is the whole interface between this card and the board's
 #     boot firmware: the factory SPL loads it BY NAME from a FAT filesystem on
 #     partition 1 (CONFIG_SPL_FS_FAT=y, SYS_MMCSD_FS_BOOT_PARTITION=1,
 #     docs/de25-boot-chain.md §2 step 4 / §8.3). `Image`, the DTB and
-#     `extlinux/extlinux.conf` are what U-Boot proper then needs. FAT32
-#     specifically — not FAT16 — because the partition-type byte says 0x0c and
+#     `extlinux/extlinux.conf` are what U-Boot proper then needs, and
+#     `mister-payload/linux/linux.img.gz` is the installer's source. FAT32
+#     specifically — not FAT16 — because the partition-type byte says FAT32 and
 #     a type byte that lies about its filesystem is how a card boots on one
 #     reader and not another.
 #
-#     p1 IS AN ALLOW-LIST, NOT A REQUIRED-SET: anything beyond those four
+#     p1 IS AN ALLOW-LIST, NOT A REQUIRED-SET: anything beyond those
 #     entries fails the image. U-Boot's distro boot runs `scan_dev_for_scripts`
 #     immediately after `scan_dev_for_extlinux` on the SAME partition, so a
 #     stray `/boot.scr` is not decoration — it executes the moment extlinux
@@ -61,8 +62,8 @@
 #     attached, is indistinguishable from a bad card.
 #
 #  4. extlinux.conf PARSES, NAMES THE RIGHT ROOT DEVICE AND CONSOLE, AND
-#     MENTIONS NO FLASH. `root=/dev/mmcblk0p2` is the interim p2 decision
-#     (docs/de25-sdcard.md); `console=ttyS0,115200` is HPS uart1, the only
+#     MENTIONS NO FLASH. `root=/dev/mmcblk0p2 loop=linux/linux.img ro` is the
+#     DE10's two-stage boot (docs/de25-sdcard.md); `console=ttyS0,115200` is HPS uart1, the only
 #     enabled 8250 port on this board, and getting it wrong produces a board
 #     that looks dead rather than one that prints an error. The `sf probe` /
 #     `ubi` / `mtd` grep is the paper-thin but real enforcement of "nothing on
@@ -70,14 +71,17 @@
 #     recoverable only with JTAG and a PC, with no RSU safety net
 #     (docs/de25-boot-chain.md §6, §7 rows 1/5/10/11/12).
 #
-#  5. p2 IS A CLEAN ext4 LABELLED `rootfs`. Written verbatim from Buildroot's
-#     rootfs.ext4 (BR2_TARGET_ROOTFS_EXT2 + _EXT2_4). `e2fsck -fn` is the cheap
-#     proof that the bytes genimage copied are a filesystem and not a truncated
-#     one; the `extent` feature is what distinguishes an actual ext4 from an
-#     ext2 image that merely got named .ext4.
+#  5. THE PAYLOAD IS THIS BUILD'S ROOTFS, AND A CLEAN ext4 LABELLED `rootfs`.
+#     linux.img.gz gunzips to rootfs.ext4 byte for byte; `e2fsck -fn` and the
+#     `extent` feature prove it is a real, untruncated ext4.
 #
-#  6. THE IMAGE FITS A BUDGET. p1 (256 MiB) + p2 (rootfs.ext4, 512 MiB = the DE10's
-#     size since 2026-11-17) + 1 MiB of alignment ≈ 769 MiB. $EXPECT_MAX_IMAGE_BYTES defaults to 1 GiB:
+#  5b. p2 IS THE SETUP VOLUME AND ENTRY 3 IS AN ARMED FLAG. p2 is FAT labelled
+#     MISTERSETUP holding only README.txt (the installer keys on the label);
+#     entry 3 is type 0xda at LBA 1024 for 1024 sectors, and its first sector is
+#     mister-install-flag.bin, or stage 1 boots straight past the installer.
+#
+#  6. THE IMAGE FITS A BUDGET. 1 MiB + p1 (512 MiB) + p2 (16 MiB) ≈ 529 MiB.
+#     $EXPECT_MAX_IMAGE_BYTES defaults to 1 GiB:
 #     enough headroom that a modest rootfs bump does not trip it, tight enough
 #     that a runaway one does. Raise it deliberately, in the commit that grows
 #     the rootfs — never to make a red run go green.
@@ -99,9 +103,10 @@
 #   $EXPECT_ROOTFS_LABEL    default rootfs
 #   $EXPECT_DTB_NAME        default socfpga_agilex5_de25nano.dtb
 #   $EXPECT_ROOT_DEV        default /dev/mmcblk0p2
+#   $EXPECT_SETUP_LABEL     default MISTERSETUP
 #   $EXPECT_CONSOLE         default ttyS0,115200
 #   $EXPECT_MAX_IMAGE_BYTES default 1073741824 (1 GiB)
-#   $MIN_BOOT_PART_SECTORS  default 524288 (256 MiB)
+#   $MIN_BOOT_PART_SECTORS  default 1048576 (512 MiB)
 #
 # Host tools: sfdisk (util-linux), mtools (mdir/mcopy/mlabel), e2fsprogs
 # (dumpe2fs/e2fsck), u-boot-tools (dumpimage), dtc, dd, cmp. Resolved from
@@ -128,23 +133,29 @@ fail=0
 
 # --- pinned layout contract --------------------------------------------------
 BOOT_PART_NUM=1
-BOOT_PART_TYPE=c              # 0x0c, FAT32 LBA -- genimage-sdcard.cfg
-ROOTFS_PART_NUM=2
-ROOTFS_PART_TYPE=83           # 0x83, Linux    -- genimage-sdcard.cfg
-EXPECT_PART_COUNT=2           # ADR 0029 D3: two partitions, full stop
+BOOT_PART_TYPE=1c             # 0x1c, hidden FAT32 LBA -- genimage-sdcard.cfg
+DATA_PART_NUM=2
+DATA_PART_TYPE=c              # 0x0c, the shipped setup volume; exFAT 0x07 after install
+FLAG_PART_NUM=3
+FLAG_PART_TYPE=da             # install-flag.conf: FLAG_TYPE, FLAG_LBA, FLAG_SECTORS
+FLAG_LBA=1024
+FLAG_SECTORS=1024
+EXPECT_PART_COUNT=3           # boot, data, flag (docs/de25-sdcard.md §1)
 FORBIDDEN_PART_TYPE=a2        # the Cyclone V BootROM's type byte; alien here
 
 : "${EXPECT_FAT_LABEL:=DE25BOOT}"
 : "${EXPECT_ROOTFS_LABEL:=rootfs}"
 : "${EXPECT_DTB_NAME:=socfpga_agilex5_de25nano.dtb}"
 : "${EXPECT_ROOT_DEV:=/dev/mmcblk0p2}"
+: "${EXPECT_SETUP_LABEL:=MISTERSETUP}"
 : "${EXPECT_CONSOLE:=ttyS0,115200}"
 : "${EXPECT_MAX_IMAGE_BYTES:=1073741824}"
-: "${MIN_BOOT_PART_SECTORS:=524288}"
+: "${MIN_BOOT_PART_SECTORS:=1048576}"
 
 EXPECT_KERNEL_NAME=Image
 EXPECT_FIT_NAME=u-boot.itb
 EXTLINUX_PATH=extlinux/extlinux.conf
+PAYLOAD_IMG=mister-payload/linux/linux.img.gz
 
 # Substrings that must not appear anywhere in extlinux.conf. Matched
 # case-insensitively and as plain substrings, deliberately over-broad: there is
@@ -223,6 +234,7 @@ dumpimage_bin=$(find_tool dumpimage)
 dtc_bin=$(find_tool dtc)
 command -v dd >/dev/null 2>&1 || { echo "$prog: dd not found on PATH" >&2; exit 2; }
 command -v cmp >/dev/null 2>&1 || { echo "$prog: cmp not found on PATH" >&2; exit 2; }
+command -v gzip >/dev/null 2>&1 || { echo "$prog: gzip not found on PATH" >&2; exit 2; }
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/check-sdcard-de25.XXXXXX")
 # shellcheck disable=SC2329 # invoked indirectly via `trap cleanup EXIT` below
@@ -273,9 +285,9 @@ part_count=$(printf '%s\n' "$part_lines" | grep -c . || true)
 note "sfdisk -d reports $part_count partition(s)"
 
 if [ "$part_count" -eq "$EXPECT_PART_COUNT" ]; then
-	ok "exactly $EXPECT_PART_COUNT partitions (ADR 0029 D3)"
+	ok "exactly $EXPECT_PART_COUNT partitions (boot, data, installer flag)"
 else
-	bad "$part_count partition(s), expected exactly $EXPECT_PART_COUNT (ADR 0029 D3 fixes the partition count)"
+	bad "$part_count partition(s), expected exactly $EXPECT_PART_COUNT (boot, data, installer flag -- docs/de25-sdcard.md §1)"
 fi
 
 field() {  # field LINE NAME -> value
@@ -299,7 +311,8 @@ else
 fi
 
 boot_line=$(get_part "$BOOT_PART_NUM")
-rootfs_line=$(get_part "$ROOTFS_PART_NUM")
+data_line=$(get_part "$DATA_PART_NUM")
+flag_line=$(get_part "$FLAG_PART_NUM")
 
 boot_start=""
 if [ -z "$boot_line" ]; then
@@ -310,30 +323,63 @@ else
 	boot_type=$(field "$boot_line" type | tr 'A-F' 'a-f')
 	note "partition $BOOT_PART_NUM: start=$boot_start size=$boot_size(sectors) type=$boot_type"
 	if [ "$boot_type" = "$BOOT_PART_TYPE" ]; then
-		ok "partition $BOOT_PART_NUM type=0x$BOOT_PART_TYPE (FAT32 LBA) -- the partition SYS_MMCSD_FS_BOOT_PARTITION=1 makes the factory SPL read"
+		ok "partition $BOOT_PART_NUM type=0x$BOOT_PART_TYPE (hidden FAT32 LBA: no drive letter in Windows; the factory SPL reads it as partition 1)"
 	else
-		bad "partition $BOOT_PART_NUM type='$boot_type', expected '$BOOT_PART_TYPE' (0x0c FAT32 LBA)"
+		bad "partition $BOOT_PART_NUM type='$boot_type', expected '$BOOT_PART_TYPE' (0x1c hidden FAT32 LBA)"
 	fi
+	case "$boot_line" in
+		*bootable*) ok "partition $BOOT_PART_NUM is marked bootable (distro boot scans only bootable partitions, so p2 is never searched)" ;;
+		*) bad "partition $BOOT_PART_NUM is not marked bootable -- distro boot would also scan the user-writable p2 for extlinux.conf and boot.scr" ;;
+	esac
 	if [ "$boot_size" -ge "$MIN_BOOT_PART_SECTORS" ]; then
-		ok "partition $BOOT_PART_NUM size $boot_size sectors >= $MIN_BOOT_PART_SECTORS (256 MiB floor)"
+		ok "partition $BOOT_PART_NUM size $boot_size sectors >= $MIN_BOOT_PART_SECTORS (512 MiB floor)"
 	else
-		bad "partition $BOOT_PART_NUM size $boot_size sectors < $MIN_BOOT_PART_SECTORS (256 MiB floor)"
+		bad "partition $BOOT_PART_NUM size $boot_size sectors < $MIN_BOOT_PART_SECTORS (512 MiB floor)"
 	fi
 fi
 
-rootfs_start=""
-rootfs_size=""
-if [ -z "$rootfs_line" ]; then
-	bad "MBR partition $ROOTFS_PART_NUM (ext4 rootfs) not found"
+data_start=""
+data_size=""
+if [ -z "$data_line" ]; then
+	bad "MBR partition $DATA_PART_NUM (setup / data) not found"
 else
-	rootfs_start=$(field "$rootfs_line" start)
-	rootfs_size=$(field "$rootfs_line" size)
-	rootfs_type=$(field "$rootfs_line" type | tr 'A-F' 'a-f')
-	note "partition $ROOTFS_PART_NUM: start=$rootfs_start size=$rootfs_size(sectors) type=$rootfs_type"
-	if [ "$rootfs_type" = "$ROOTFS_PART_TYPE" ]; then
-		ok "partition $ROOTFS_PART_NUM type=0x$ROOTFS_PART_TYPE (Linux)"
+	data_start=$(field "$data_line" start)
+	data_size=$(field "$data_line" size)
+	data_type=$(field "$data_line" type | tr 'A-F' 'a-f')
+	note "partition $DATA_PART_NUM: start=$data_start size=$data_size(sectors) type=$data_type"
+	if [ "$data_type" = "$DATA_PART_TYPE" ]; then
+		ok "partition $DATA_PART_NUM type=0x$DATA_PART_TYPE (the shipped setup volume; the installer makes it exFAT)"
 	else
-		bad "partition $ROOTFS_PART_NUM type='$rootfs_type', expected '$ROOTFS_PART_TYPE' (0x83 Linux)"
+		bad "partition $DATA_PART_NUM type='$data_type', expected '$DATA_PART_TYPE' (0x0c FAT32 LBA)"
+	fi
+	if [ -n "$boot_start" ] && [ "$data_start" -ge $(( boot_start + boot_size )) ] &&
+	   [ $(( data_start % 2048 )) -eq 0 ]; then
+		ok "partition $DATA_PART_NUM starts after p1, on a 1 MiB boundary (the installer refuses anything else)"
+	else
+		bad "partition $DATA_PART_NUM start $data_start is not after p1 on a 1 MiB boundary"
+	fi
+fi
+
+if [ -z "$flag_line" ]; then
+	bad "MBR partition $FLAG_PART_NUM (installer flag) not found -- stage 1 would boot past the installer"
+else
+	flag_start=$(field "$flag_line" start)
+	flag_size=$(field "$flag_line" size)
+	flag_type=$(field "$flag_line" type | tr 'A-F' 'a-f')
+	if [ "$flag_type" = "$FLAG_PART_TYPE" ] && [ "$flag_start" = "$FLAG_LBA" ] && [ "$flag_size" = "$FLAG_SECTORS" ]; then
+		ok "partition $FLAG_PART_NUM is the installer flag: type 0x$FLAG_PART_TYPE at LBA $FLAG_LBA, $FLAG_SECTORS sectors"
+	else
+		bad "partition $FLAG_PART_NUM is type=$flag_type start=$flag_start size=$flag_size, expected 0x$FLAG_PART_TYPE/$FLAG_LBA/$FLAG_SECTORS (install-flag.conf)"
+	fi
+	ref_flag="$ref_dir/mister-install-flag.bin"
+	if [ -f "$ref_flag" ]; then
+		if dd if="$img" bs=512 skip="$FLAG_LBA" count=1 status=none 2>/dev/null | cmp -s - "$ref_flag"; then
+			ok "LBA $FLAG_LBA holds this build's mister-install-flag.bin (the flag is armed)"
+		else
+			bad "LBA $FLAG_LBA does not hold $ref_flag -- the installer would never run"
+		fi
+	else
+		bad "no reference mister-install-flag.bin at $ref_flag -- cannot prove the flag is armed"
 	fi
 fi
 
@@ -357,7 +403,7 @@ else
 	fat_type=$(dd if="$img" bs=1 skip=$(( boot_offset + 82 )) count=8 status=none 2>/dev/null | tr -d '\0' || true)
 	case $fat_type in
 		FAT32*)
-			ok "p1 filesystem is FAT32 (BPB fs-type = '$fat_type'), matching its 0x0c type byte"
+			ok "p1 filesystem is FAT32 (BPB fs-type = '$fat_type'), matching its 0x1c type byte"
 			;;
 		*)
 			bad "p1 BPB fs-type at offset 0x52 is '$fat_type', not FAT32 -- mkfs.vfat picks FAT16 at this size unless '-F 32' is forced (genimage-sdcard.cfg extraargs)"
@@ -386,7 +432,7 @@ else
 			| sed -e 's#^::##' -e 's#^/##' -e '/^$/d' \
 			| LC_ALL=C sort -u > "$actual"
 		note "p1 holds $(wc -l < "$actual" | tr -d ' ') entries"
-		for want in "$EXPECT_FIT_NAME" "$EXPECT_KERNEL_NAME" "$EXPECT_DTB_NAME" "$EXTLINUX_PATH"; do
+		for want in "$EXPECT_FIT_NAME" "$EXPECT_KERNEL_NAME" "$EXPECT_DTB_NAME" "$EXTLINUX_PATH" "$PAYLOAD_IMG"; do
 			if grep -qxF "$want" "$actual"; then
 				ok "p1 holds $want"
 			else
@@ -417,9 +463,10 @@ else
 		# and to genimage-sdcard.cfg's `files` list in the same commit. That
 		# is the point: growing the card is a decision, not an accident.
 		extras=$(grep -vxF -e "$EXPECT_FIT_NAME" -e "$EXPECT_KERNEL_NAME" \
-			-e "$EXPECT_DTB_NAME" -e "$EXTLINUX_PATH" -e 'extlinux/' "$actual" || true)
+			-e "$EXPECT_DTB_NAME" -e "$EXTLINUX_PATH" -e 'extlinux/' \
+			-e "$PAYLOAD_IMG" -e 'mister-payload/' -e 'mister-payload/linux/' "$actual" || true)
 		if [ -z "$extras" ]; then
-			ok "p1 holds nothing beyond the four expected files (no boot.scr, no *.scr, no uboot.env)"
+			ok "p1 holds nothing beyond the expected files (no boot.scr, no *.scr, no uboot.env)"
 		else
 			bad "p1 holds entries outside the allow-list -- p1 is an allow-list, not a required-set:"
 			printf '%s\n' "$extras" | sed 's/^/    + /' >&2
@@ -585,8 +632,16 @@ else
 		note "append = $append"
 		case " $append " in
 			*" root=$EXPECT_ROOT_DEV "*)
-				ok "kernel args name root=$EXPECT_ROOT_DEV (the interim p2 decision -- docs/de25-sdcard.md)" ;;
+				ok "kernel args name root=$EXPECT_ROOT_DEV (the exFAT data partition -- docs/de25-sdcard.md)" ;;
 			*)  bad "kernel args do not name root=$EXPECT_ROOT_DEV" ;;
+		esac
+		case " $append " in
+			*" loop=linux/linux.img "*) ok "kernel args name loop=linux/linux.img (stage 1 loop-mounts the rootfs off p2, as on the DE10)" ;;
+			*)  bad "kernel args lack loop=linux/linux.img -- stage 1 would mount p2 itself as the root filesystem" ;;
+		esac
+		case " $append " in
+			*" ro "*) ok "kernel args mount the root read-only (ro), as on the DE10" ;;
+			*)  bad "kernel args lack ro -- the loop-mounted rootfs would come up read-write" ;;
 		esac
 		case " $append " in
 			*" console=$EXPECT_CONSOLE "*)
@@ -636,45 +691,81 @@ fi
 # =============================================================================
 # 5. p2: a clean ext4 labelled `rootfs`
 # =============================================================================
-if [ -z "$rootfs_start" ]; then
-	bad "cannot inspect p2 -- partition $ROOTFS_PART_NUM was not found above"
+# --- the payload: this build's rootfs, gzipped ---------------------------------
+if [ -z "$boot_start" ]; then
+	bad "cannot inspect the payload -- partition $BOOT_PART_NUM was not found above"
 else
-	p2="$work/p2.img"
-	# conv=sparse keeps this cheap: a Buildroot rootfs.ext4 is mostly holes.
-	dd if="$img" of="$p2" bs=512 skip="$rootfs_start" count="$rootfs_size" \
-		conv=sparse status=none 2>/dev/null ||
-		{ echo "$prog: dd failed extracting partition $ROOTFS_PART_NUM" >&2; exit 2; }
-
-	if hdr=$("$dumpe2fs_bin" -h "$p2" 2>/dev/null); then
-		ok "p2 is an ext2/3/4 filesystem (dumpe2fs -h succeeded)"
-
-		p2_label=$(printf '%s\n' "$hdr" | sed -n 's/^Filesystem volume name:[[:space:]]*//p')
-		if [ "$p2_label" = "$EXPECT_ROOTFS_LABEL" ]; then
-			ok "p2 volume label = '$EXPECT_ROOTFS_LABEL'"
+	gz="$work/linux.img.gz"
+	p2="$work/linux.img"
+	if mt "$mcopy_bin" "::/$PAYLOAD_IMG" "$gz" > "$work/mcopy-gz.out" 2> "$work/mcopy-gz.err" &&
+	   gzip -dc "$gz" > "$p2" 2> "$work/gunzip.err"; then
+		ok "p1's $PAYLOAD_IMG gunzips cleanly"
+		ref_rootfs="$ref_dir/rootfs.ext4"
+		if [ -f "$ref_rootfs" ]; then
+			if cmp -s "$p2" "$ref_rootfs"; then
+				ok "the payload's linux.img is byte-identical to $ref_rootfs"
+			else
+				bad "the payload's linux.img DIFFERS from $ref_rootfs -- the card would install a rootfs this build did not produce"
+			fi
 		else
-			bad "p2 volume label = '$p2_label', expected '$EXPECT_ROOTFS_LABEL' (BR2_TARGET_ROOTFS_EXT2_LABEL)"
+			bad "no reference rootfs.ext4 at $ref_rootfs -- cannot prove the payload is this build's rootfs"
 		fi
-
-		features=$(printf '%s\n' "$hdr" | sed -n 's/^Filesystem features:[[:space:]]*//p')
-		note "p2 features: $features"
-		case " $features " in
-			*" extent "*)
-				ok "p2 has the 'extent' feature -- it is a real ext4, not an ext2 image wearing the name" ;;
-			*)  bad "p2 lacks the 'extent' feature -- BR2_TARGET_ROOTFS_EXT2_4 selects ext4, and this is not one" ;;
-		esac
-
-		if "$e2fsck_bin" -fn "$p2" > "$work/e2fsck.out" 2>&1; then
-			ok "p2 is fsck-clean (e2fsck -fn)"
+		if hdr=$("$dumpe2fs_bin" -h "$p2" 2>/dev/null); then
+			ok "the payload's linux.img is an ext2/3/4 filesystem (dumpe2fs -h succeeded)"
+			p2_label=$(printf '%s\n' "$hdr" | sed -n 's/^Filesystem volume name:[[:space:]]*//p')
+			if [ "$p2_label" = "$EXPECT_ROOTFS_LABEL" ]; then
+				ok "linux.img volume label = '$EXPECT_ROOTFS_LABEL'"
+			else
+				bad "linux.img volume label = '$p2_label', expected '$EXPECT_ROOTFS_LABEL' (BR2_TARGET_ROOTFS_EXT2_LABEL)"
+			fi
+			features=$(printf '%s\n' "$hdr" | sed -n 's/^Filesystem features:[[:space:]]*//p')
+			case " $features " in
+				*" extent "*) ok "linux.img has the 'extent' feature -- a real ext4" ;;
+				*)  bad "linux.img lacks the 'extent' feature -- BR2_TARGET_ROOTFS_EXT2_4 selects ext4, and this is not one" ;;
+			esac
+			if "$e2fsck_bin" -fn "$p2" > "$work/e2fsck.out" 2>&1; then
+				ok "linux.img is fsck-clean (e2fsck -fn)"
+			else
+				bad "e2fsck -fn found problems in linux.img (exit $?)"
+				sed 's/^/    /' "$work/e2fsck.out" >&2
+			fi
 		else
-			bad "e2fsck -fn found problems on p2 (exit $?) -- the partition may be truncated"
-			sed 's/^/    /' "$work/e2fsck.out" >&2
+			bad "the payload's linux.img is not an ext2/3/4 filesystem (dumpe2fs -h failed)"
 		fi
+		rm -f "$gz" "$p2"
 	else
-		bad "p2 is not an ext2/3/4 filesystem (dumpe2fs -h failed)"
+		bad "could not read and gunzip $PAYLOAD_IMG from p1"
+		cat "$work/mcopy-gz.err" "$work/gunzip.err" 2>/dev/null | sed 's/^/    /' >&2
 	fi
 fi
 
-# =============================================================================
+# --- p2: the setup volume --------------------------------------------------------
+if [ -z "$data_start" ]; then
+	bad "cannot inspect p2 -- partition $DATA_PART_NUM was not found above"
+else
+	data_offset=$(( data_start * 512 ))
+	if MTOOLS_SKIP_CHECK=1 "$mlabel_bin" -i "${img}@@${data_offset}" -s :: > "$work/mlabel2.out" 2>&1; then
+		setup_label=$(sed -n 's/^[[:space:]]*Volume label is[[:space:]]*//p' "$work/mlabel2.out" | head -n1 | sed 's/[[:space:]]*$//')
+		if [ "$setup_label" = "$EXPECT_SETUP_LABEL" ]; then
+			ok "p2 volume label = '$EXPECT_SETUP_LABEL' (the installer's 'fresh card' test)"
+		else
+			bad "p2 volume label = '${setup_label:-<none>}', expected '$EXPECT_SETUP_LABEL' -- the installer would treat the card as foreign and skip the install"
+		fi
+	else
+		bad "could not read p2's volume label -- p2 is not a FAT filesystem"
+	fi
+	if MTOOLS_SKIP_CHECK=1 "$mdir_bin" -i "${img}@@${data_offset}" -b -/ :: > "$work/mdir2.out" 2>&1; then
+		p2_files=$(tr -d '\r' < "$work/mdir2.out" | sed -e 's#^::##' -e 's#^/##' -e '/^$/d' | LC_ALL=C sort -u | tr '\n' ' ')
+		if [ "$p2_files" = "README.txt " ]; then
+			ok "p2 holds README.txt and nothing else"
+		else
+			bad "p2 holds '$p2_files', expected only README.txt"
+		fi
+	else
+		bad "could not list p2's files"
+	fi
+fi
+
 if [ "$fail" -eq 0 ]; then
 	echo "$prog: all assertions passed"
 else

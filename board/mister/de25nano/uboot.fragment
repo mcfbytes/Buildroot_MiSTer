@@ -287,7 +287,7 @@ CONFIG_FS_EXFAT=y
 #       label de25
 #           kernel /Image
 #           fdt /socfpga_agilex5_de25nano.dtb
-#           append console=ttyS0,115200 root=/dev/mmcblk0p2 rw rootwait
+#           append console=ttyS0,115200 root=/dev/mmcblk0p2 loop=linux/linux.img ro rootwait
 CONFIG_DISTRO_DEFAULTS=y
 #
 # Fallback bootargs. With extlinux these are REPLACED by the config's `append`
@@ -296,4 +296,4 @@ CONFIG_DISTRO_DEFAULTS=y
 # nosmp string aimed at Simics emulation; leaving that in place would make a
 # manual `booti` do something surprising on real hardware.
 CONFIG_USE_BOOTARGS=y
-CONFIG_BOOTARGS="console=ttyS0,115200 root=/dev/mmcblk0p2 rw rootwait"
+CONFIG_BOOTARGS="console=ttyS0,115200 root=/dev/mmcblk0p2 loop=linux/linux.img ro rootwait mem=479M"

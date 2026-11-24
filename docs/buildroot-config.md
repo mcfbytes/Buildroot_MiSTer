@@ -2506,7 +2506,7 @@ applies here: 4 of the 40 differ in content between the main and beta series
 alone, and the beta series' 6.18-vs-7.2 re-anchoring lessons apply again for
 aarch64.
 
-### 6.5 Kernel config, image format, device tree, no initramfs
+### 6.5 Kernel config, image format, device tree, stage-1 initramfs
 
 KERNEL CONFIG = a pinned minimal base + the shared MiSTer driver fragment:
 `# BR2_LINUX_KERNEL_USE_ARCH_DEFAULT_CONFIG is not set`,
@@ -2577,22 +2577,19 @@ complements; mainline's socdk board file was the placeholder before D2.3
 landed and is not the DE25-Nano (no mmc0, fpga-mgr or fpga-region). The
 Makefile asserts the .dtb by GLOB, not by name, for exactly this reason.
 
-NO STAGE-1 INITRAMFS IN THIS KERNEL — YET. The DE10 embeds an armv7 BusyBox
-cpio into its zImage because U-Boot passes `-` for bootz's initrd argument and
-the real root is a loop-mounted ext4 image sitting on a FAT partition
-(`docs/boot-chain.md`). ADR 0029 D11 (2026-09-03) makes that two-stage layout
-the DE25's TARGET too, while the shipped card keeps the interim plain-ext4
-root (`root=/dev/mmcblk0p2`, decision 3: p1 FAT, p2 everything else) until a
-board has booted it. So today `external.mk`'s initramfs-embedding kernel
-fixup is guarded off for this build (it keys on `BR2_arm`) — but the aarch64
-stage 1 itself already exists: the `initramfs-de25nano` stack (§8) builds the
-same `/init` for this board into `output-initramfs-de25/`, `make
-de25-initramfs` verifies it, and `scripts/test-initramfs.sh --board de25nano`
-boots it through all eight cases on `qemu-system-aarch64` — using THIS
-board's `linux.config` + the shared fragment as the test kernel's base. The
-guard's comment in `external.mk` spells out the one-commit switch.
+STAGE-1 INITRAMFS: EMBEDDED, AS ON THE DE10 (since 2026-11-24). ADR 0029 D11
+made the DE10's two-stage layout the DE25's target, and the card now uses it:
+`BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS=y` embeds `package/mister-initramfs`'s
+cpio (the shared, arch-neutral `/init`, plus this board's first-boot installer)
+into `Image`, and the real root is `linux/linux.img` loop-mounted off the exFAT
+p2 (`docs/de25-sdcard.md` §1, §3). The kernel hook
+(`linux/linux-ext-mister-initramfs.mk`) has no architecture test.
 
-### 6.6 Root filesystem — ext4 on p2, modest and plain
+### 6.6 Root filesystem — ext4, modest and plain
+
+(Since 2026-11-24 it ships as `linux/linux.img` on the exFAT p2, not as p2
+itself, and `BR2_TARGET_ROOTFS_EXT2_SIZE` is `512M`, the DE10's size since
+2026-11-17. The measurements below are from the 256M era.)
 
 `BR2_TARGET_ROOTFS_EXT2=y`, `BR2_TARGET_ROOTFS_EXT2_4=y`,
 `BR2_TARGET_ROOTFS_EXT2_LABEL="rootfs"`, `BR2_TARGET_ROOTFS_EXT2_SIZE="256M"`.
@@ -2656,7 +2653,8 @@ describes the earlier bare image.
 >
 > **2026-11-24:** one package the DE10 does not carry in its rootfs: `BR2_PACKAGE_ITSALIVE`, the
 > HDMI/framebuffer bring-up tool, as `/usr/bin/itsalive` for testing the DE25 framebuffer by hand.
-> The DE10 has it only in its stage-1 cpio; the DE25 has no cpio yet. Nothing runs it at boot.
+> The DE10 has it only in its stage-1 cpio. The DE25's cpio (since the same day) has no splash,
+> because `BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE` is ARM-only. Nothing runs it at boot.
 
 BusyBox is Buildroot's own default (`BR2_PACKAGE_BUSYBOX` is `default y` in
 `package/busybox/Config.in`) and so does not appear as a line; it is the
@@ -2850,10 +2848,10 @@ way on the first build. (It selects `BR2_PACKAGE_HOST_DTC`.)
 `BR2_PACKAGE_HOST_DOSFSTOOLS=y`,
 `BR2_ROOTFS_POST_IMAGE_SCRIPT=".../board/mister/de25nano/post-image.sh"`.
 
-Two partitions, fixed by the factory SPL's `CONFIG_SPL_FS_FAT` + boot
-partition 1: p1 FAT32 (`u-boot.itb`, `Image`, the dtb,
-`extlinux/extlinux.conf`), p2 the ext4 root of §6.6, written directly (an
-interim p2 decision — `docs/de25-sdcard.md`). There is explicitly NO shared SD
+p1 is fixed by the factory SPL's `CONFIG_SPL_FS_FAT` + boot partition 1: hidden
+FAT32 (`u-boot.itb`, `Image`, the dtb, `extlinux/extlinux.conf`, and the
+installer's payload). p2 is the exFAT `/media/fat` holding `linux/linux.img` =
+the ext4 of §6.6, created by the first boot (`docs/de25-sdcard.md`). There is explicitly NO shared SD
 card with the DE10 (ADR 0029 D3). Layout:
 `board/mister/de25nano/genimage-sdcard.cfg`; assembled and verified by
 `post-image.sh` + `scripts/check-sdcard-de25.sh`.

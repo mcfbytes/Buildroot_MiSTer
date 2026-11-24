@@ -810,13 +810,13 @@ the card layout.
 
 | Item | Confirmed | Note |
 |---|---|---|
-| p1 FAT32, MBR (no GPT), label `DE25BOOT` | **yes** | U-Boot reads FAT on an MBR/DOS partition table; `CONFIG_DOS_PARTITION` is on. The label is not used by anything in U-Boot |
+| p1 FAT32, MBR (no GPT), label `DE25BOOT` | **yes** | U-Boot reads FAT on an MBR/DOS partition table; `CONFIG_DOS_PARTITION` is on. The label is not used by anything in U-Boot. Since 2026-11-24 p1's type is `0x1c` (hidden), which `part_dos.c` accepts like any non-zero type ([`de25-sdcard.md`](de25-sdcard.md) §1) |
 | p1 holds `u-boot.itb`, `Image`, `socfpga_agilex5_de25nano.dtb`, `/extlinux/extlinux.conf` | **yes** | `/extlinux/...`, **not** `/boot/extlinux/...` — and `/` is the first prefix tried, so root-level is also the faster path |
-| append `root=/dev/mmcblk0p2 rw rootwait console=ttyS0,115200 earlycon` | **yes** | extlinux's `append` **replaces** `bootargs` entirely; the fragment's `CONFIG_BOOTARGS` is only a hand-boot fallback |
+| append `root=/dev/mmcblk0p2 loop=linux/linux.img ro rootwait console=ttyS0,115200 earlycon` (`rw`, no `loop=`, before 2026-11-24) | **yes** | extlinux's `append` **replaces** `bootargs` entirely; the fragment's `CONFIG_BOOTARGS` is only a hand-boot fallback |
 | SD enumerates as **`mmc 0`** | **yes**, and now pinned | the board DTS declares `aliases { mmc0 = &mmc; }`; `boot_targets=mmc0`, `bootcmd_mmc0=devnum=0`, `ENV_FAT_DEVICE_AND_PART="0:1"` all agree |
 | kernel format | **`Image`**, uncompressed | unchanged from D2.1 (`BR2_LINUX_KERNEL_IMAGE=y`). Nothing here needs `Image.gz`, and switching it would change three files at once |
 | **MBR boot flag** | **already correct** | `scan_dev_for_boot_part` runs `part list mmc 0 -bootable devplist` and only falls back to `devplist=1` when **nothing** is bootable **[V, from the built env]**, so the flag is not inert — it *selects* which partition gets scanned. `genimage-sdcard.cfg` sets `bootable = "true"` on **p1 only** **[V, read]**, which is the right answer. The rule to keep: p1 bootable or nothing bootable; never p2 |
-| `/extlinux/extlinux.conf` content | **matches** | `post-image.sh` generates `timeout 10` / `default de25` / `kernel /Image` / `fdt /socfpga_agilex5_de25nano.dtb` / `append root=/dev/mmcblk0p2 rw rootwait console=ttyS0,115200 earlycon` **[V, read]** — the same console and root this fragment's fallback `CONFIG_BOOTARGS` names |
+| `/extlinux/extlinux.conf` content | **matches** | `post-image.sh` generates `timeout 10` / `default de25` / `kernel /Image` / `fdt /socfpga_agilex5_de25nano.dtb` / `append root=/dev/mmcblk0p2 loop=linux/linux.img ro rootwait console=ttyS0,115200 earlycon` **[V, read]** — the same console and root this fragment's fallback `CONFIG_BOOTARGS` names |
 | `uboot.env` on p1 | **not shipped, and should not be** | §10 |
 
 ---

@@ -53,7 +53,7 @@ Accept the nine decisions below as the bounding constraints for DE25 wave 1.
 | D8 | Fix mainline's unbindable Agilex 5 svc node **upstream** | §3.1 note | **DP-9** |
 | D9 | A vendor `svc` carry is a hardware-gated escape hatch | §1 row 9, §2.6 | **DP-9**, **DP-1** |
 | D10 | The SMMU ships **disabled**; DMA isolation is a non-goal (DE10 parity) | [`de25-dts-rationale.md`](../de25-dts-rationale.md) §4 | **DP-9**, **DP-1** |
-| D11 | Card layout **target** is the DE10-style two-stage layout; the plain-ext4 card stays until hardware | [`de25-sdcard.md`](../de25-sdcard.md) | **DP-3** |
+| D11 | Card layout is the DE10-style two-stage layout (switched 2026-11-24, after the plain-ext4 card booted on hardware) | [`de25-sdcard.md`](../de25-sdcard.md) | **DP-3** |
 | D12 | The DE25 mirrors the DE10's `linux-firmware` selection; seccomp stays off as on the DE10 | [`de25-kernel-config.md`](../de25-kernel-config.md) §7.1 | **DP-1**, 0027 **Decision 6** |
 
 ### D1 — Core loading goes through `fpga_manager` + a DT overlay
@@ -308,6 +308,11 @@ isolates the factory-SPL, DTS and SD-controller questions the first boot has to 
   that patch 0031 Oopses on every 7.x kernel (ADR 0002 §8b) — a fix is owed before the switch,
   and it applies to the DE10's RT kernel as well. The cpio is built and proven but NOT embedded
   until the card switches (`external.mk` guard comment had the one-commit recipe; since ADR 0030 (2026-09-11) the stage-1 cpio is `package/mister-initramfs` and the switch is `BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS=y` in the DE25 stack — `docs/de25-sdcard.md` §2).
+  **Switched 2026-11-24**, after a tester's board booted the interim card 10/10 (#318) and before
+  the first `de25-*` pre-release: stage 1 embedded, p2 exFAT `MiSTer_Data` holding
+  `linux/linux.img`, created by a DE25 first-boot installer that grows p2 to fill the card. p1
+  is hidden from Windows (type `0x1c`). The layout and the installer are in
+  [`de25-sdcard.md`](../de25-sdcard.md) §1 and §3.
 - **Re-open if.** The first hardware boot shows U-Boot cannot read the FAT boot files reliably,
   or Main_MiSTer's DE25 port needs a layout the loop root cannot provide.
 

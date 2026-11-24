@@ -1,0 +1,324 @@
+#!/bin/sh
+# DE25-Nano first-boot SD-card installer, exec'd by stage-1 /init as PID 1 on an armed flag.
+# Grows p2 to the card, formats it exFAT and installs from p1, which it never writes. docs/de25-sdcard.md §3
+set -u
+
+# --- Tunables ---------------------------------------------------------------
+PAYLOAD_DIR="mister-payload"           # on p1: the tree the installer copies onto the new p2
+SETUP_LABEL="MISTERSETUP"              # the shipped p2's FAT label (genimage-sdcard.cfg)
+DATA_LABEL="MiSTer_Data"               # the exFAT label the installed p2 carries
+DATA_TYPE=7                            # MBR type of the installed p2 (exFAT/NTFS)
+MBR_MAX_SECTORS=4294967295             # an MBR entry holds a 32-bit LBA and length
+ALIGN_SECTORS=2048                     # 1 MiB
+
+FLAG_CONF="/usr/lib/mister/install-flag.conf"
+INSTALL_FLAG="/usr/lib/mister/install-flag"
+MKFS_EXFAT="/usr/libexec/mister-installer/mkfs.exfat"
+# Written right after mkfs: the only exFAT this installer will format a second time.
+INSTALL_TOKEN="linux/.mister-install-in-progress"
+PRESEED_DIR="linux/.mister-preseed"
+PRESEED_ITEMS="wpa_supplicant.conf _wpa_supplicant.conf samba.sh _samba.sh Scripts config"
+
+cmdline=""; DATA_PART="${1:-}"; DISK=""; disk_name=""; P1=""; P2=""
+p2_type=""; p2_label=""; card_state=""; stage="starting up"; stop_after_stage=""
+
+log() { printf '[installer] %s\n' "$*"; }
+
+# PID 1 must never exit (instant kernel panic): every terminal path respawns a shell.
+respawn_shell() {
+	while :; do
+		setsid cttyhack /bin/sh || /bin/sh || sleep 5
+	done
+}
+
+rescue() {
+	printf '\n################################################################\n'
+	printf '#  MiSTer INSTALLER: FAILED\n'
+	printf '#  %s\n' "$*"
+	printf '#  (failed during: %s)\n' "$stage"
+	printf '################################################################\n'
+	printf '  cmdline    : %s\n' "$cmdline"
+	printf '  disk       : %s   p1 %s   p2 %s\n' "$DISK" "$P1" "$P2"
+	printf '  p2         : %s, label "%s"   card state: %s\n' "$p2_type" "$p2_label" "$card_state"
+	printf -- '--- /proc/partitions ---\n';  cat /proc/partitions 2>/dev/null
+	printf -- '--- /proc/mounts ---\n';      cat /proc/mounts 2>/dev/null
+	printf -- '--- last kernel messages ---\n'; dmesg 2>/dev/null | tail -n 25
+	printf '\nThe boot partition (p1) was not changed, so powering off and on runs the\n'
+	printf 'installer again. If the same error repeats, re-flash sdcard-de25.img.\n\n'
+	respawn_shell
+}
+
+# Simulated power cut; needs /.installer-test-hook in the initramfs (docs/installer-init.md#test-hook).
+stop_after() {
+	[ -e /.installer-test-hook ] && [ "$stop_after_stage" = "$1" ] || return 0
+	sync
+	log "TEST-STOP after \"$1\" -- simulating a power cut here"
+	reboot -f
+	rescue "reboot returned after the test stop at $1"
+}
+
+# --- MBR bytes: the same encoders as the DE10 installer (test-installer-mbr.sh) ---
+oct() { printf '\\%03o' "$(( $1 & 255 ))"; }
+le32() {
+	printf '%s%s%s%s' "$(oct "$1")" "$(oct $(( $1 >> 8 )))" \
+		"$(oct $(( $1 >> 16 )))" "$(oct $(( $1 >> 24 )))"
+}
+chs() {
+	_c=$(( $1 / (255 * 63) ))
+	if [ "$_c" -gt 1023 ]; then printf '%s' '\376\377\377'; return 0; fi
+	printf '%s%s%s' "$(oct $(( ($1 / 63) % 255 )))" \
+		"$(oct $(( ($1 % 63 + 1) | ((_c >> 2) & 192) )))" "$(oct "$_c")"
+}
+mbr_entry() {
+	printf '%s%s%s%s%s%s' '\000' "$(chs "$2")" "$(oct "$1")" \
+		"$(chs $(( $2 + $3 - 1 )))" "$(le32 "$2")" "$(le32 "$3")"
+}
+MBR_EMPTY_ENTRY='\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000\000'
+
+# mbr_replace_entry N BYTES -- the live MBR with entry N swapped; every other byte kept.
+mbr_replace_entry() {
+	_off=$(( 446 + 16 * ($1 - 1) ))
+	dd if="$DISK" of=/run/mbr.old bs=512 count=1 2>/dev/null || return 1
+	{
+		dd if=/run/mbr.old bs=1 count="$_off" 2>/dev/null
+		# shellcheck disable=SC2059  # the format IS the bytes
+		printf "$2"
+		dd if=/run/mbr.old bs=1 skip=$(( _off + 16 )) count=$(( 512 - _off - 16 )) 2>/dev/null
+	} > /run/mbr.new || return 1
+	[ "$(wc -c < /run/mbr.new)" -eq 512 ] || return 1
+	dd if=/run/mbr.new of="$DISK" bs=512 count=1 conv=notrunc,fsync 2>/dev/null || return 1
+	sync
+	blockdev --flushbufs "$DISK" 2>/dev/null || true
+	dd if="$DISK" of=/run/mbr.check bs=512 count=1 2>/dev/null || return 1
+	cmp -s /run/mbr.new /run/mbr.check
+}
+
+sysfs_val() { _v=""; read -r _v < "/sys/block/$disk_name/${1#/dev/}/$2" 2>/dev/null; printf '%s' "$_v"; }
+flag_state() { "$INSTALL_FLAG" state "$DISK" 2>/dev/null; }
+require_armed() {
+	[ "$(flag_state)" = armed ] || rescue "the installer flag on $DISK is not armed -- refusing to $1"
+}
+blkid_field() {
+	_out="$(blkid "$1" 2>/dev/null)" || return 0
+	case "$_out" in *" $2=\""*) _l="${_out#* "$2"=\"}"; printf '%s' "${_l%%\"*}" ;; esac
+}
+
+flag_spend() {
+	dd if=/dev/zero of="$DISK" bs=512 seek="$FLAG_LBA" count=1 conv=notrunc,fsync 2>/dev/null || return 1
+	sync
+	blockdev --flushbufs "$DISK" 2>/dev/null || true
+	[ "$(flag_state)" = spent ]
+}
+
+# Re-read the table; nothing on the disk may be mounted while the kernel does it.
+reread_table() {
+	blockdev --rereadpt "$DISK" 2>/dev/null || return 1
+	_w=0
+	while [ ! -b "$P2" ] && [ "$_w" -lt 10 ]; do sleep 1; _w=$((_w + 1)); done
+	[ -b "$P2" ]
+}
+
+commit_and_reboot() {
+	stage="spending the installer flag (the commit point)"
+	require_armed "commit the install"
+	flag_spend || rescue "could not spend the installer flag on $DISK"
+	log "installer flag spent -- this card is a MiSTer now, not an installer"
+	stop_after committed
+	stage="removing the spent flag's partition entry"
+	if mbr_replace_entry "$FLAG_SLOT" "$MBR_EMPTY_ENTRY" && [ "$(flag_state)" = absent ]; then
+		log "flag partition entry removed from the MBR"
+	else
+		log "WARNING: could not remove MBR entry $FLAG_SLOT (harmless: the flag is spent)"
+	fi
+	sync
+	log "rebooting into MiSTer"
+	reboot -f
+	rescue "reboot returned unexpectedly"
+}
+
+# ------------------------------------------------------- what /init handed us
+mkdir -p /mnt/boot /mnt/dst /run/preseed
+[ -r /proc/cmdline ] && [ -d /sys/block ] && [ -c /dev/null ] ||
+	rescue "/init did not hand over /proc, /sys and /dev"
+[ -r "$FLAG_CONF" ] && [ -x "$INSTALL_FLAG" ] && [ -x "$MKFS_EXFAT" ] ||
+	rescue "this initramfs is missing $FLAG_CONF, $INSTALL_FLAG or $MKFS_EXFAT -- nothing was changed"
+# shellcheck source=board/mister/common/initramfs-overlay/usr/lib/mister/install-flag.conf
+. "$FLAG_CONF"
+
+cmdline="$(cat /proc/cmdline)"
+set -f
+# shellcheck disable=SC2086  # deliberate word splitting: that IS the parse
+set -- $cmdline
+for tok in "$@"; do
+	case "$tok" in
+	mister_installer_stop_after=*) stop_after_stage="${tok#mister_installer_stop_after=}" ;;
+	esac
+done
+set +f
+log "MiSTer DE25-Nano first-boot install: do not power off until the board reboots"
+
+stage="identifying the boot disk"
+[ -n "$DATA_PART" ] && [ -b "$DATA_PART" ] || rescue "/init handed over no data partition ('$DATA_PART')"
+DISK="$("$INSTALL_FLAG" disk "$DATA_PART" 2>/dev/null)" || DISK=""
+[ -n "$DISK" ] && [ -b "$DISK" ] || rescue "could not find the parent disk of $DATA_PART in sysfs"
+disk_name="${DISK#/dev/}"
+P1="$(partdev "$DISK" 1)"
+P2="$(partdev "$DISK" 2)"
+[ "$DATA_PART" = "$P2" ] || rescue "data partition $DATA_PART is not p2 ($P2) of $DISK"
+[ -b "$P1" ] || rescue "$DISK has no boot partition $P1"
+require_armed "install onto this card"
+log "disk=$DISK  p1(boot)=$P1  p2(data)=$P2  flag armed"
+
+# ------------------------------------------------------- the payload on p1
+stage="checking the payload on the boot partition"
+mount -t vfat -o ro "$P1" /mnt/boot || rescue "cannot mount the boot partition $P1 read-only"
+SRC="/mnt/boot/$PAYLOAD_DIR"
+[ -s "$SRC/linux/linux.img.gz" ] || rescue "no $PAYLOAD_DIR/linux/linux.img.gz on $P1 -- re-flash sdcard-de25.img"
+log "verifying linux.img.gz (a corrupt download fails here, before anything is written)"
+zcat "$SRC/linux/linux.img.gz" > /dev/null ||
+	rescue "$PAYLOAD_DIR/linux/linux.img.gz on $P1 is corrupt -- re-flash sdcard-de25.img"
+
+# ------------------------------------------------------- what is on p2?
+stage="assessing the card"
+p2_type="$(blkid_field "$P2" TYPE)"
+p2_label="$(blkid_field "$P2" LABEL)"
+dev_sectors="$(cat "/sys/block/$disk_name/size" 2>/dev/null)" || dev_sectors=""
+p2_start="$(sysfs_val "$P2" start)"; p2_size="$(sysfs_val "$P2" size)"
+p1_start="$(sysfs_val "$P1" start)"; p1_size="$(sysfs_val "$P1" size)"
+for _v in "$dev_sectors" "$p2_start" "$p2_size" "$p1_start" "$p1_size"; do
+	case "$_v" in ''|*[!0-9]*) rescue "cannot read the geometry of $DISK from sysfs" ;; esac
+done
+[ "$p2_start" -ge $((p1_start + p1_size)) ] && [ $((p2_start % ALIGN_SECTORS)) -eq 0 ] ||
+	rescue "p2 does not start on a 1 MiB boundary after p1 -- not a card this installer made"
+full_size=$((dev_sectors - p2_start))
+[ "$full_size" -le "$MBR_MAX_SECTORS" ] || full_size=$((MBR_MAX_SECTORS / ALIGN_SECTORS * ALIGN_SECTORS))
+token=0; has_img=0
+if [ "$p2_type" = exfat ] && [ "$p2_label" = "$DATA_LABEL" ]; then
+	mount -t exfat -o ro "$P2" /mnt/dst 2>/dev/null && {
+		[ -f "/mnt/dst/$INSTALL_TOKEN" ] && token=1
+		[ -s /mnt/dst/linux/linux.img ] && has_img=1
+		if [ "$token" = 1 ]; then
+			for item in $PRESEED_ITEMS; do
+				[ -e "/mnt/dst/$PRESEED_DIR/$item" ] && cp -a "/mnt/dst/$PRESEED_DIR/$item" /run/preseed/
+			done
+		fi
+		umount /mnt/dst
+	}
+fi
+if [ "$p2_type" = vfat ] && [ "$p2_label" = "$SETUP_LABEL" ]; then
+	card_state="fresh"
+elif [ "$token" = 1 ]; then
+	card_state="resume"
+elif [ "$p2_type" = exfat ] && [ "$p2_label" = "$DATA_LABEL" ] && [ "$has_img" = 1 ]; then
+	card_state="finish"
+elif [ "$p2_size" = "$full_size" ]; then
+	card_state="resume"        # our own geometry with an unreadable p2: mkfs was cut short
+else
+	card_state="foreign"
+fi
+log "card state: $card_state (p2 is ${p2_type:-unformatted}, label '${p2_label}', $p2_size sectors)"
+
+if [ "$card_state" = foreign ]; then
+	umount /mnt/boot 2>/dev/null || true
+	log "$P2 is not a card this installer made -- leaving it alone and booting normally"
+	stage="spending the installer flag on a card it will not install to"
+	commit_and_reboot
+fi
+if [ "$card_state" = finish ]; then
+	umount /mnt/boot 2>/dev/null || true
+	commit_and_reboot
+fi
+
+# ------------------------------------------------------- user pre-seed (fresh card)
+if [ "$card_state" = fresh ]; then
+	stage="collecting user pre-seed"
+	if mount -t vfat -o ro "$P2" /mnt/dst 2>/dev/null; then
+		for item in $PRESEED_ITEMS; do
+			[ -e "/mnt/dst/$item" ] || continue
+			if cp -a "/mnt/dst/$item" /run/preseed/ 2>/dev/null; then
+				log "pre-seed: captured $item"
+			else
+				log "pre-seed: WARNING could not capture $item (ignored)"
+			fi
+		done
+		umount /mnt/dst || rescue "cannot unmount $P2"
+	fi
+fi
+
+# =========== from here p2 is being rewritten; p1 never is ===========
+stage="growing p2 to the end of the card"
+if [ "$p2_size" != "$full_size" ]; then
+	require_armed "repartition $DISK"
+	umount /mnt/boot || rescue "cannot unmount $P1 to re-read the partition table"
+	mbr_replace_entry 2 "$(mbr_entry "$DATA_TYPE" "$p2_start" "$full_size")" ||
+		rescue "writing the new p2 entry to the MBR of $DISK failed"
+	reread_table || rescue "the kernel did not re-read the partition table of $DISK"
+	[ "$(sysfs_val "$P2" start)" = "$p2_start" ] && [ "$(sysfs_val "$P2" size)" = "$full_size" ] ||
+		rescue "after the re-read, $P2 is not [$p2_start,+$full_size)"
+	mount -t vfat -o ro "$P1" /mnt/boot || rescue "cannot remount the boot partition $P1"
+	log "p2 = [$p2_start,+$full_size) sectors, to the end of the card"
+fi
+stop_after grown
+
+stage="formatting $P2 as exFAT"
+card_au="$(cat "/sys/block/$disk_name/device/preferred_erase_size" 2>/dev/null)" || card_au=""
+case "$card_au" in
+1048576|2097152|4194304|8388608|16777216|33554432|67108864) au="$card_au" ;;
+25165824) au=8388608 ;;
+*) au=4194304 ;;
+esac
+log "formatting exFAT, aligned to $((au / 1048576)) MiB (preferred_erase_size '${card_au:-none}')"
+require_armed "format $P2"
+"$MKFS_EXFAT" -n "$DATA_LABEL" -b "$au" --pack-bitmap "$P2" || rescue "mkfs.exfat on $P2 failed"
+sync
+mount -t exfat -o rw,noatime "$P2" /mnt/dst || rescue "cannot mount the new exFAT $P2"
+mkdir -p "/mnt/dst/linux" "/mnt/dst/$PRESEED_DIR" || rescue "cannot create linux/ on $P2"
+printf 'MiSTer first-boot install in progress; the installer removes this file.\n' \
+	> "/mnt/dst/$INSTALL_TOKEN" || rescue "cannot write $INSTALL_TOKEN on $P2"
+cp -a /run/preseed/. "/mnt/dst/$PRESEED_DIR/" || rescue "cannot stage the user pre-seed on $P2"
+sync
+stop_after formatted
+
+stage="writing files to the card"
+log "copying the payload"
+# Everything but linux.img.gz, which is expanded below instead of copied.
+for entry in "$SRC"/* "$SRC"/.[!.]* "$SRC"/linux/* "$SRC"/linux/.[!.]*; do
+	[ -e "$entry" ] || continue
+	case "$entry" in "$SRC/linux"|"$SRC/linux/linux.img.gz") continue ;; esac
+	dest="/mnt/dst/${entry#"$SRC"/}"
+	cp -a "$entry" "$dest" || rescue "copying ${entry#"$SRC"/} onto $P2 failed"
+done
+log "expanding linux.img (the longest step)"
+zcat "$SRC/linux/linux.img.gz" > /mnt/dst/linux/linux.img.part ||
+	rescue "expanding linux/linux.img onto $P2 failed (card out of space?)"
+mv /mnt/dst/linux/linux.img.part /mnt/dst/linux/linux.img || rescue "cannot rename linux.img on $P2"
+sync
+stop_after expanded
+
+stage="applying user pre-seed"
+apply_preseed() {
+	[ -e "/mnt/dst/$PRESEED_DIR/$1" ] || return 0
+	mkdir -p "/mnt/dst/${2%/*}"
+	if cp -a "/mnt/dst/$PRESEED_DIR/$1" "/mnt/dst/$2" 2>/dev/null; then
+		log "pre-seed applied: $1 -> $2"
+	else
+		log "pre-seed: WARNING failed to apply $1 (ignored)"
+	fi
+}
+apply_preseed wpa_supplicant.conf  linux/wpa_supplicant.conf
+apply_preseed _wpa_supplicant.conf linux/_wpa_supplicant.conf
+apply_preseed samba.sh             linux/_samba.sh
+apply_preseed _samba.sh            linux/_samba.sh
+for d in Scripts config; do
+	[ -d "/mnt/dst/$PRESEED_DIR/$d" ] || continue
+	if cp -a "/mnt/dst/$PRESEED_DIR/$d" /mnt/dst/; then log "pre-seed applied: $d/"; else log "pre-seed: WARNING $d/ failed (ignored)"; fi
+done
+rm -rf "/mnt/dst/$PRESEED_DIR" 2>/dev/null || log "WARNING: could not remove $PRESEED_DIR/ (harmless clutter)"
+rm -f "/mnt/dst/$INSTALL_TOKEN" || rescue "cannot remove $INSTALL_TOKEN from $P2"
+
+stage="flushing the data partition"
+sync
+umount /mnt/dst || rescue "cannot unmount $P2 (data not fully flushed)"
+umount /mnt/boot 2>/dev/null || true
+sync
+commit_and_reboot

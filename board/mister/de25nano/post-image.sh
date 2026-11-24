@@ -62,15 +62,16 @@ KERNEL_NAME=Image                            # BR2_LINUX_KERNEL_IMAGE=y (uncompr
 DTB_NAME=socfpga_agilex5_de25nano.dtb        # BR2_LINUX_KERNEL_CUSTOM_DTS_PATH basename
 ROOTFS_NAME=rootfs.ext4                      # BR2_TARGET_ROOTFS_EXT2 + _EXT2_4
 SDCARD_NAME="sdcard-de25.img"                # the `image` section in the cfg
+PAYLOAD_DIR=mister-payload                   # on p1; the installer's source (docs/de25-sdcard.md §3)
+SETUP_DIR=de25-setup                         # the shipped p2's one file
+FLAG_NAME=mister-install-flag.bin            # package/mister-initramfs; written to MBR entry 3
 
 # Kernel command line, and the two halves of it that can silently produce a
 # board that looks dead:
 #
-#   root=/dev/mmcblk0p2  — the INTERIM p2 decision. ADR 0029 D3 fixes the
-#     partition count and p1's FAT type ONLY; p2's filesystem is still an open
-#     owner decision (implementation-path §6.3, §8 Q7). For this developer-OS
-#     card p2 is the ext4 rootfs written verbatim and mounted directly: no
-#     loop-mounted linux.img, no initramfs. See docs/de25-sdcard.md.
+#   root=/dev/mmcblk0p2 loop=linux/linux.img ro — the DE10's two-stage boot
+#     (ADR 0029 D11): stage-1 /init mounts the exFAT p2, loop-mounts linux.img
+#     off it and moves p2 to /media/fat. See docs/de25-sdcard.md.
 #
 #   console=ttyS0,115200 — the DE25-Nano's header UART is HPS **uart1**
 #     (serial@10c02100), aliased serial0 with stdout-path "serial0:115200n8" in
@@ -85,7 +86,7 @@ CONSOLE_ARG=ttyS0,115200
 # (docs/dts-mister-fpga-interface.md §7).
 MEM_ARG=479M
 UIO_ARG=uio_pdrv_genirq.of_id=generic-uio
-BOOTARGS="root=$ROOT_DEV rw rootwait console=$CONSOLE_ARG earlycon mem=$MEM_ARG $UIO_ARG"
+BOOTARGS="root=$ROOT_DEV loop=linux/linux.img ro rootwait console=$CONSOLE_ARG earlycon mem=$MEM_ARG $UIO_ARG"
 
 die() {
 	echo "$prog: FATAL: $*" >&2
@@ -110,7 +111,7 @@ check_cfg_mentions() {
 	grep -q -- "$1" "$genimage_cfg" ||
 		die "genimage-sdcard.cfg does not mention '$1' — this script and that config have drifted apart; fix both in the same commit"
 }
-for _n in "$FIT_NAME" "$KERNEL_NAME" "$DTB_NAME" "$ROOTFS_NAME" "$SDCARD_NAME"; do
+for _n in "$FIT_NAME" "$KERNEL_NAME" "$DTB_NAME" "$PAYLOAD_DIR" "$SETUP_DIR" "$FLAG_NAME" "$SDCARD_NAME"; do
 	check_cfg_mentions "$_n"
 done
 
@@ -161,7 +162,7 @@ export BINARIES_DIR="$binaries_dir"
 # Every missing input is reported, not just the first: someone whose build is
 # missing both the kernel and the rootfs should learn that in one run.
 missing=""
-for _f in "$KERNEL_NAME" "$DTB_NAME" "$ROOTFS_NAME"; do
+for _f in "$KERNEL_NAME" "$DTB_NAME" "$ROOTFS_NAME" "$FLAG_NAME"; do
 	[ -f "$binaries_dir/$_f" ] || missing="$missing $_f"
 done
 if [ -n "$missing" ]; then
@@ -169,6 +170,7 @@ if [ -n "$missing" ]; then
 	echo "$prog:   $KERNEL_NAME     <- BR2_LINUX_KERNEL_IMAGE=y" >&2
 	echo "$prog:   $DTB_NAME        <- BR2_LINUX_KERNEL_CUSTOM_DTS_PATH" >&2
 	echo "$prog:   $ROOTFS_NAME     <- BR2_TARGET_ROOTFS_EXT2 + BR2_TARGET_ROOTFS_EXT2_4" >&2
+	echo "$prog:   $FLAG_NAME <- BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS (package/mister-initramfs)" >&2
 	exit 1
 fi
 
@@ -181,7 +183,7 @@ if [ ! -f "$binaries_dir/$FIT_NAME" ]; then
 		# A card from an EARLIER run must not survive this one: the de25 recipe
 		# reports whatever sdcard-de25.img it finds, and a stale image would make
 		# the skip above a lie. Remove the card and its p1 filesystem image.
-		rm -f "$binaries_dir/$SDCARD_NAME" "$binaries_dir/boot-de25.vfat"
+		rm -f "$binaries_dir/$SDCARD_NAME" "$binaries_dir/boot-de25.vfat" "$binaries_dir/setup-de25.vfat"
 		exit 0
 	fi
 	die "no $FIT_NAME in $binaries_dir.
@@ -247,6 +249,29 @@ mv "$tmp_conf" "$extlinux_conf"
 trap - EXIT
 note "wrote $extlinux_conf"
 sed 's/^/  | /' "$extlinux_conf"
+
+# =============================================================================
+# 2b. Stage the installer's payload (p1) and the shipped p2's README
+# =============================================================================
+# gzip -n: no name or timestamp in the header, so BR2_REPRODUCIBLE holds.
+payload="$binaries_dir/$PAYLOAD_DIR"
+rm -rf "${payload:?}" "${binaries_dir:?}/${SETUP_DIR:?}"
+mkdir -p "$payload/linux" "$binaries_dir/$SETUP_DIR"
+gzip -n -c "$binaries_dir/$ROOTFS_NAME" > "$payload/linux/linux.img.gz.tmp"
+mv "$payload/linux/linux.img.gz.tmp" "$payload/linux/linux.img.gz"
+note "staged $PAYLOAD_DIR/linux/linux.img.gz ($(wc -c <"$payload/linux/linux.img.gz" | tr -d ' ') bytes)"
+cat > "$binaries_dir/$SETUP_DIR/README.txt" <<'EOF'
+MiSTer for the DE25-Nano -- this card is not installed yet.
+
+Put it in the DE25-Nano and power on once. The first boot takes a few
+minutes: it grows this partition to fill the card, formats it exFAT
+(label MiSTer_Data) and installs Linux onto it, then reboots. Do not
+power off while it runs; if you do, the next power-on starts it again.
+
+Optional: files placed here before that first boot are kept --
+wpa_supplicant.conf (Wi-Fi), samba.sh, and Scripts/ or config/.
+Everything else on this partition is erased by the install.
+EOF
 
 # =============================================================================
 # 3. Assemble

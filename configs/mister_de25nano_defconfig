@@ -12,8 +12,9 @@
 # differs: kernel, DTS, TF-A, U-Boot and the image, plus a DE25 overlay layered
 # after the DE10's that carries only the /dev/mister rules for UIO nodes the
 # DE10 has no twin of. Still no MiSTer binaries
-# (no aarch64 Main_MiSTer exists) and no stage-1 initramfs yet (ADR 0029 D11):
-# that switch is enabling BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS here.
+# (no aarch64 Main_MiSTer exists). The card is the DE10's two-stage layout
+# (ADR 0029 D11): stage-1 initramfs, linux.img on exFAT, a first-boot
+# installer of its own (docs/de25-sdcard.md).
 #
 # U-Boot rides Buildroot's own BR2_TARGET_UBOOT_LATEST_VERSION pin (2026.07
 # under Buildroot 2026.08) instead of a custom version + a board-local hash
@@ -47,6 +48,7 @@ BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de
 BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/common/linux-mister.fragment"
 BR2_LINUX_KERNEL_DTS_SUPPORT=y
 BR2_LINUX_KERNEL_CUSTOM_DTS_PATH="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/socfpga_agilex5_de25nano.dts"
+BR2_LINUX_KERNEL_EXT_MISTER_INITRAMFS=y
 BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de10nano/busybox.fragment"
 BR2_PACKAGE_ZLIB_NG=y
 BR2_PACKAGE_TAR=y
@@ -77,4 +79,6 @@ BR2_PACKAGE_HOST_UBOOT_TOOLS_FIT_SUPPORT=y
 BR2_PACKAGE_MISTER_FIRMWARE=y
 BR2_PACKAGE_MISTER_DRIVERS=y
 BR2_PACKAGE_MISTER_USERSPACE=y
+BR2_PACKAGE_MISTER_INITRAMFS_BOARD_OVERLAY="$(BR2_EXTERNAL_MISTER_PATH)/board/mister/de25nano/initramfs-overlay"
+BR2_PACKAGE_MISTER_INITRAMFS_INSTALLER=y
 BR2_PACKAGE_ITSALIVE=y

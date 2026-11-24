@@ -10,7 +10,8 @@
 #                    SHA256SUMS), then scripts/mk-sdcard.sh adds the installer
 #                    card image. Every step is a script you can run locally.
 #   build-azcopy     the optional azcopy download, built as a separate config
-#   publish          attest provenance, create a DRAFT GitHub Release
+#   publish          attest provenance, create a DRAFT GitHub Release (marked
+#                    pre-release by default); never re-uploads onto a published one
 #   dependency-graph submit the SBOM to GitHub's dependency graph
 #
 # Rationale, measurements and incident history: docs/ci.md. The STOCK_* pins
@@ -24,14 +25,18 @@ on:
   push:
     tags:
       - 'v*'
-  # Manual dispatch builds ONLY the opt-in full sdcard variant; dispatch it
-  # against a TAG ref (the publish job is guarded to tag refs regardless).
+  # Dispatch on a TAG ref (cut-release.yml does this): a release, or the full card
+  # added to an existing one. docs/ci.md#cut-release, #manual-full-sdcard-dispatch
   workflow_dispatch:
     inputs:
       build_full_sdcard:
-        description: 'Also build + publish sdcard-full.img.xz (bundles _Console cores). Off by default; the minimal sdcard.img.xz is always built on a tag push.'
+        description: 'Build sdcard-full.img.xz (bundles _Console cores) instead of the minimal sdcard.img.xz. On an already-published release, only this asset is added.'
         type: boolean
         default: false
+      prerelease:
+        description: 'Create the draft with the pre-release flag set (a tag push always does).'
+        type: boolean
+        default: true
 
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}
@@ -73,6 +78,27 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Fail in seconds, not after the build; publish re-checks. docs/ci.md#published-release-guard
+      - name: Refuse to rebuild onto a published release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          FULL_SDCARD: ${{ inputs.build_full_sdcard }}
+        run: |
+          set -eu
+          is_draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null) || { echo "no release for $TAG yet"; exit 0; }
+          if [ "$is_draft" = false ] && [ "$FULL_SDCARD" != true ]; then
+            echo "::error::release $TAG is already PUBLISHED; its assets are never replaced. Cut a new tag, or dispatch with build_full_sdcard to add only sdcard-full.img.xz." >&2
+            exit 1
+          fi
+          if [ "$is_draft" = false ] && gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx 'sdcard-full.img.xz'; then
+            echo "::error::published release $TAG already carries sdcard-full.img.xz; nothing to add" >&2
+            exit 1
+          fi
+          echo "release $TAG exists (draft=$is_draft)"
 
       # /MiSTer.version is YYMMDD of the tagged commit (UTC); post-build.sh
       # bakes $MISTER_VERSION into the image and mk-release.sh reads it back.
@@ -371,12 +397,15 @@ jobs:
             dist/zImage_dtb
             dist/zImage_dtb-rt
 
-      - name: Create draft GitHub Release
+      - name: Create (or add to) the GitHub Release
+        id: create
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           RELEASE_DATE: ${{ needs.build.outputs.release_date }}
           TAG: ${{ github.ref_name }}
+          FULL_SDCARD: ${{ inputs.build_full_sdcard }}
+          PRERELEASE: ${{ github.event_name == 'push' || inputs.prerelease }}
         run: |
           set -eu
           assets=(
@@ -394,25 +423,39 @@ jobs:
           **azcopy (optional, ARMv7):** \`azcopy-<version>-armv7.xz\` is Microsoft's Azure Storage CLI, for backing the card's \`saves\`/\`savestates\`/\`screenshots\`/\`config\` up to Azure Storage from the board itself. It is a STANDALONE DOWNLOAD and is deliberately **not** in \`linux.img\`: at 39 MiB installed it would be the second-largest thing in the image after Samba, for a tool most owners will never run — and almost all of that size is Google Cloud Storage support that a MiSTer never executes (an empty Go binary is 1.2 MB; +Azure SDK 5.5 MB; +GCS 27.6 MB). Statically linked on purpose, so it keeps working if you roll back to an older image or to stock. To use it: \`xz -d\` it onto \`/media/fat\`, \`chmod +x\`, and set \`AZCOPY_JOB_PLAN_LOCATION\`/\`AZCOPY_LOG_LOCATION\` under \`/media/fat\` plus \`AZCOPY_BUFFER_GB=0.125\` — that last one matters, because AzCopy otherwise sizes its buffer cache at 1 GiB on a board with 511 MiB of RAM. Microsoft does not build or test AzCopy for 32-bit ARM; this build carries two local patches to make it compile and to stop every \`azcopy login\` dying on SIGILL. See \`docs/azcopy.md\` for the full write-up and the on-hardware test record.
 
           **PREEMPT_RT beta (Linux 7.3):** \`zImage_dtb-rt\` is a separately compiled real-time kernel (docs/rt-beta-kernel.md, ADR 0021 as amended 2026-07-18) — never referenced by db.json, so the Downloader will not offer it. The ONE \`linux.img\` above already contains BOTH kernels' module trees, so no separate rootfs exists and — once the device is running THIS release's \`linux.img\` (a linux.img from before this release carries only 6.18 modules, and the RT kernel would boot with none of its drivers) — no extra flash is needed: opt in by copying \`zImage_dtb-rt\` to \`/media/fat/linux/\` and adding \`bootimage=/linux/zImage_dtb-rt\` to u-boot.txt (remove the line to roll back). \`linux-rt.config\` is its kernel config; its applied patches, licence texts and manifest row are inside \`legal-info.tar.gz\` (package \`linux-rt\`), covered by the corresponding-source note above. It is a MANUAL download only: the sdcard installer image deliberately does NOT carry it (ADR 0021 item 4, reversed 2026-07-27 — an unvalidated real-time kernel does not belong on every user's card). Status: build-verified only. Earlier pins booted and ran MiSTer on one DE10-Nano — 7.2-rc4 on 2026-07-20 and 7.2-rc7 on 2026-08-14 — but boot is a per-version claim, so treat the kernel in THIS release as unvalidated on hardware unless a maintainer says otherwise. (This paragraph is hand-maintained prose and its version can go stale ahead of the pin; \`linux-rt.config\` in this same release is authoritative for what was actually built.) The pin tracks the 7.3.y line as of 2026-10-19 (7.2.y from 2026-08-17) — it does not follow mainline \`-rc\`, so this caveat is re-opened by a point release rather than weekly. No latency measurement has been taken on any version."
-          # Upsert, not create-only: a tagged push already created the draft,
-          # so an opt-in full-sdcard dispatch (same tag) must ADD assets
-          # rather than fail on already-exists. See
-          # docs/ci.md#release-assets-array.
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" --clobber "${assets[@]}"
+          # Draft: upsert. Published: only ever ADD sdcard-full.img.xz, never clobber.
+          # docs/ci.md#release-assets-array, docs/ci.md#published-release-guard
+          if is_draft=$(gh release view "$TAG" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$is_draft" = true ]; then
+              gh release upload "$TAG" --clobber "${assets[@]}"
+              echo "mode=updated the existing draft" >> "$GITHUB_OUTPUT"
+            elif [ "$FULL_SDCARD" = true ]; then
+              if gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx 'sdcard-full.img.xz'; then
+                echo "::error::published release $TAG already carries sdcard-full.img.xz; refusing to replace it" >&2
+                exit 1
+              fi
+              gh release upload "$TAG" dist/sdcard-full.img.xz
+              echo "mode=added sdcard-full.img.xz to the published release" >> "$GITHUB_OUTPUT"
+            else
+              echo "::error::release $TAG is already PUBLISHED; refusing to re-upload its assets (cut a new tag instead)" >&2
+              exit 1
+            fi
           else
-            gh release create "$TAG" --draft --title "$TAG" --notes "$notes" "${assets[@]}"
+            pre=(); [ "$PRERELEASE" = true ] && pre=(--prerelease)
+            gh release create "$TAG" --draft "${pre[@]}" --title "$TAG" --notes "$notes" "${assets[@]}"
+            echo "mode=created a draft (pre-release: $PRERELEASE)" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Publish summary (job summary)
         env:
           RELEASE_DATE: ${{ needs.build.outputs.release_date }}
           TAG: ${{ github.ref_name }}
+          MODE: ${{ steps.create.outputs.mode }}
         run: |
           {
-            echo "## 📦 Draft release created"
+            echo "## 📦 Release ${TAG}: ${MODE}"
             echo ""
-            echo "Draft GitHub Release **${TAG}** (internal version \`${RELEASE_DATE}\`); provenance attested for \`linux.img\`, \`zImage_dtb\` and \`zImage_dtb-rt\`."
+            echo "GitHub Release **${TAG}** (internal version \`${RELEASE_DATE}\`); provenance attested for \`linux.img\`, \`zImage_dtb\` and \`zImage_dtb-rt\`."
             echo ""
             echo "> ⚠️ **This is a draft.** Publishing it — as a release *or* a pre-release — fires \`publish-db.yml\`, which publishes db.json to opted-in devices. For a smoke test, leave it a draft and delete it when done."
           } >> "$GITHUB_STEP_SUMMARY"

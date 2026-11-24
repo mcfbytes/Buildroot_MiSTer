@@ -236,6 +236,14 @@
 			mister,map-writecombine;
 		};
 
+		/* Ascal's scratch (mister-scaler above), below the aperture: a scaler-out reader maps it here. */
+		scaler@9e000000 {
+			compatible = "generic-uio";
+			linux,uio-name = "mister_scaler";
+			reg = <0x0 0x9e000000 0x0 0x02000000>;
+			mister,map-writecombine;
+		};
+
 		ddr-low@9df00000 {
 			compatible = "generic-uio";
 			linux,uio-name = "mister_ddr_low";

@@ -230,6 +230,7 @@ What is still unknown for *our* model specifically:
 | [`de25-uboot.md`](de25-uboot.md) | the bootloader build, the FIT contract, the flash audit, first-boot serial expectations |
 | [`de25-sdcard.md`](de25-sdcard.md) | card layout, building and writing it, first-boot checklist |
 | [`de25-dts-rationale.md`](de25-dts-rationale.md) | every device-tree node and why |
+| [`de25-memory-layout-proposal.md`](de25-memory-layout-proposal.md) | a proposal for the HPS-DDR layout: the DE10's map at `+0x8000_0000`, the candidates weighed, and a contract to share with other DE25 ports |
 | [`de25-kernel-config.md`](de25-kernel-config.md) | the kernel configuration and its diet |
 | [`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) | how the fabric is reprogrammed on Agilex 5, latency, the open questions |
 | [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) | what Terasic's and Altera's kernels do that mainline does not, what we carry instead, and the first-bench test order |

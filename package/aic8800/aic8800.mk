@@ -46,4 +46,5 @@ define AIC8800_INSTALL_TARGET_CMDS
 endef
 
 $(eval $(kernel-module))
+$(eval $(kernel-module-rt))
 $(eval $(generic-package))

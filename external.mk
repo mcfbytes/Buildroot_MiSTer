@@ -14,7 +14,17 @@
 #
 ################################################################################
 
+include $(BR2_EXTERNAL_MISTER_PATH)/package/pkg-kernel-module-rt.mk
 include $(sort $(wildcard $(BR2_EXTERNAL_MISTER_PATH)/package/*/*.mk))
+
+# Every enabled kernel-module package must also build for linux-rt
+# (docs/buildroot-config.md §5.47).
+ifeq ($(BR2_PACKAGE_LINUX_RT),y)
+MISTER_RT_KMOD_MISSING = $(foreach p,$(PACKAGES),$(if $(value $(call UPPERCASE,$(p))_KERNEL_MODULES_BUILD),$(if $(value $(call UPPERCASE,$(p))_RT_KERNEL_MODULES_BUILD),,$(p))))
+ifneq ($(strip $(MISTER_RT_KMOD_MISSING)),)
+$(error kernel-module package(s) not built for linux-rt: $(MISTER_RT_KMOD_MISSING); add $$(eval $$(kernel-module-rt)) after $$(eval $$(kernel-module)), docs/buildroot-config.md §5.47)
+endif
+endif
 
 # The stage-1 initramfs is embedded by linux/linux-ext-mister-initramfs.mk
 # (a Buildroot "linux extension", included by linux/linux.mk before the

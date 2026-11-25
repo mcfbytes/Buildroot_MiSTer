@@ -2278,6 +2278,54 @@ than in the `mister-drivers` profile: the module validates the Cyclone V
 machine compatible and the DE10's `MiSTer_fb` aperture, so it is DE10-only by
 construction. See [`docs/zaparoo-scanout.md`](zaparoo-scanout.md).
 
+### 5.47 Out-of-tree modules on both kernels (`kernel-module-rt`)
+
+The DE10 image boots either kernel: `zImage_dtb` (6.18) or `zImage_dtb-rt`
+(PREEMPT_RT, `package/linux-rt`). Buildroot's `kernel-module` infrastructure
+(`package/pkg-kernel-module.mk`) builds against `LINUX_DIR` only. So until
+2026-11-25 the RT module tree had no xone, aic8800, 8852cu or zaparoo-scanout.
+The old kernel-only RT tree never selected these packages, and nothing added
+them when ADR 0030 Phase C made `linux-rt` a package of the main build.
+
+`package/pkg-kernel-module-rt.mk` defines `kernel-module-rt`, which each
+out-of-tree module package evaluates after `kernel-module`:
+
+```make
+$(eval $(kernel-module))
+$(eval $(kernel-module-rt))
+$(eval $(generic-package))
+```
+
+With `BR2_PACKAGE_LINUX_RT=y` it does four things:
+
+- adds `linux-rt` to the package's dependencies;
+- copies the patched source to `$(@D)/.mister-rt` (post-patch hook), because
+  kbuild's `M=` builds write their objects into the source tree and the two
+  kernels must not share one;
+- builds that copy against `LINUX_RT_DIR` with `LINUX_RT_MAKE_FLAGS`;
+- installs it with `modules_install`, into `lib/modules/<rt-kver>/updates/`.
+  `linux-rt`'s own target-finalize depmod then indexes it.
+
+Without linux-rt (the DE25-Nano) it is a no-op. It reuses `<PKG>_MODULE_SUBDIRS`
+and `<PKG>_MODULE_MAKE_OPTS`. A package whose options name `LINUX_DIR` overrides
+them in `<PKG>_RT_MODULE_MAKE_OPTS`, which comes later on the command line, and
+the last assignment wins. `rtl8852cu-morrownr` does this for `KSRC=`.
+
+Building a module for RT does not make it load there. `zaparoo-scanout` builds
+and installs under the RT tree like the others, but its `validate_platform()`
+returns `-ENODEV` on any kernel that is not 6.18.y, on purpose
+([`docs/zaparoo-scanout.md`](zaparoo-scanout.md)). On the rig, 2026-11-25, the
+other twelve modules all `insmod`ed and unloaded cleanly on 7.3.6-rt.
+
+**Fails closed twice.** `external.mk` stops the build if an enabled package has
+`<PKG>_KERNEL_MODULES_BUILD` (it used `kernel-module`) but no
+`<PKG>_RT_KERNEL_MODULES_BUILD`. That is how a new out-of-tree driver would
+otherwise ship on one kernel only. `scripts/ci-tests.sh` then asserts each
+package's `.ko.xz` under both `$KVER` and `$RT_KVER`.
+
+**The stamp trap doubles.** A bump of either kernel needs `make <pkg>-dirclean`
+for every package listed here, as a 6.18 bump already did.
+
 ---
 
 ## 6. `de25nano.fragment`

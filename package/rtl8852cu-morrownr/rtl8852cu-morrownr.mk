@@ -211,6 +211,8 @@ RTL8852CU_MORROWNR_LICENSE_FILES = LICENSE
 # assignment. That script also rewrites the $(LINUX_DIR) below into the exported
 # tree's own $KDIR -- see its EXPORTED_LINUX_DIR note.
 RTL8852CU_MORROWNR_MODULE_MAKE_OPTS = CONFIG_RTL8852CU=m KSRC=$(LINUX_DIR)
+# The RT pass's KSRC (kernel-module-rt puts these last, so they win).
+RTL8852CU_MORROWNR_RT_MODULE_MAKE_OPTS = KSRC=$(LINUX_RT_DIR)
 
 # BIND-CONFLICT CHECK (ADR 0016's stated reason for DISABLING, not merely
 # not-enabling, a redundant fork). Result: NO conflict with any in-kernel driver
@@ -253,4 +255,5 @@ RTL8852CU_MORROWNR_MODULE_MAKE_OPTS = CONFIG_RTL8852CU=m KSRC=$(LINUX_DIR)
 # scripts/Makefile.modinst:48 defaults INSTALL_MOD_DIR to `updates` for M=
 # builds -- which is where scripts/ci-tests.sh asserts it.
 $(eval $(kernel-module))
+$(eval $(kernel-module-rt))
 $(eval $(generic-package))

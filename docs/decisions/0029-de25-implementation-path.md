@@ -100,6 +100,11 @@ everything else — and a card that works in both boards is an explicit non-goal
 
 ### D4 — Posture 1: nothing we ship writes the factory QSPI
 
+**Amended 2026-11-25 by [ADR 0035](0035-de25-own-qspi-image-first-boot-flash.md).** T1 showed
+that no core loads against the factory flash, so we will ship our own QSPI image, written once by
+the first-boot installer. Posture 1 stays the shipping state, and the guards below stay, until that
+image exists.
+
 **Decision.** We pin to the factory QSPI image (SDM firmware + phase-1 bitstream + embedded U-Boot
 SPL) and never write it; we build `u-boot.itb` only, and our whole interface to the board's boot
 firmware is one FIT file, by name, on the FAT partition.

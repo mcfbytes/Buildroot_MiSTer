@@ -104,6 +104,11 @@ No sub-16 MB layout has been demonstrated or documented, and Intel's flash-layou
 (§4) survives only as a one-time bench operation with a PC and JTAG attached, never as an
 update-channel artifact.
 
+**Amended 2026-11-25 ([ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md)).** T1 on
+#318 found that no core loads against the factory flash, so posture 2 is the plan. The rule
+becomes: exactly one thing writes QSPI, the first-boot installer, once, with a read-back verify
+before the reboot. Recovery is the PC path below. The rule above holds until that image exists.
+
 **Recovery exists, is documented by the vendor, and needs a PC [V].** MSEL→`111` (JTAG) +
 Quartus Programmer over the on-board USB-Blaster III, programming `golden_top_hps.jic` from the
 Resource Package — *GSG* documents exactly this. What it needs: a PC with Quartus, the **correct

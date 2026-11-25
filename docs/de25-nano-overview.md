@@ -185,6 +185,12 @@ What is known from another DE25-Nano port that runs this path on real hardware:
   Our posture keeps Terasic's factory (fully configured) image in flash, which is the stable
   shape **[V there]**.
 
+**Answered 2026-11-25 (T1 on #318): it cannot.** A full-image RBF is rejected at runtime, and an
+HPS-first `core.rbf` is rejected because its HPS IO hash differs from the factory phase-1's. The
+hash also changes with the Quartus version. The plan is now our own QSPI image, written once by the
+first boot ([ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md)). The bullet below
+is kept as the question was posed.
+
 What is still unknown for *our* model specifically:
 
 - **Whether a core compiled by us can be loaded against Terasic's factory phase-1 bitstream.**

@@ -567,6 +567,11 @@ unusable in U-Boot after this write until `mmc rescan`.
 - Pass: `FPGA reconfiguration OK!`, the remap registers read `0x80000000` afterwards, and the
   SMMU's `CR0` is still 0.
 
+**T1 result (2026-11-25, #318):** not runnable on the factory flash. A full-image RBF and an
+HPS-first `core.rbf` both fail with config status `0xf0040000`. The second fails because its HPS IO
+hash differs from the factory phase-1's. T1 and T3 move to our own QSPI image
+([ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) gate B2).
+
 **Reading the results.**
 
 | Outcome | Meaning | Next |

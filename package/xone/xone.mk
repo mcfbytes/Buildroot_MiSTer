@@ -74,4 +74,5 @@ XONE_LICENSE_FILES = LICENSE
 # wrapper, bypassing it is harmless.
 
 $(eval $(kernel-module))
+$(eval $(kernel-module-rt))
 $(eval $(generic-package))

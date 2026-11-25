@@ -13,4 +13,5 @@ ZAPAROO_SCANOUT_LICENSE_FILES = kernel/scanout-slots/zaparoo_scanout_uapi.h
 ZAPAROO_SCANOUT_MODULE_SUBDIRS = kernel/scanout-slots
 
 $(eval $(kernel-module))
+$(eval $(kernel-module-rt))
 $(eval $(generic-package))

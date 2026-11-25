@@ -1002,6 +1002,19 @@ else
 	fail "RT kernel WiFi: rtw89 8852au/8852cu/8922au .ko.xz present ($RT_KVER)" \
 		"missing:$rt89_missing -- dropped from board/mister/de10nano/linux-rt.fragment, or linux-rt is stale"
 fi
+# The out-of-tree modules asserted above for $KVER, under the RT tree too (kernel-module-rt, buildroot-config.md §5.47).
+rt_oot_missing=""
+for m in $xone_mods zaparoo_scanout 8852cu aic_load_fw/aic_load_fw aic8800_fdrv/aic8800_fdrv; do
+	tar_has "usr/lib/modules/$RT_KVER/updates/$m.ko.xz" || rt_oot_missing="$rt_oot_missing $m"
+done
+if [ -z "$RT_KVER" ]; then
+	fail "RT kernel out-of-tree modules: xone, zaparoo-scanout, 8852cu, aic8800 present" "could not read BR2_PACKAGE_LINUX_RT_VERSION"
+elif [ -z "$rt_oot_missing" ]; then
+	pass "RT kernel out-of-tree modules: xone, zaparoo-scanout, 8852cu, aic8800 present ($RT_KVER)"
+else
+	fail "RT kernel out-of-tree modules: xone, zaparoo-scanout, 8852cu, aic8800 present ($RT_KVER)" \
+		"missing:$rt_oot_missing -- a package lost \$(eval \$(kernel-module-rt)), or an RT bump left it stale (make <pkg>-dirclean)"
+fi
 DE25_KVER=$(kver_dir "$(sed -n 's/^BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="\([^"]*\)".*$/\1/p' \
 	"$ROOT/configs/mister_de25nano_defconfig" | tail -1)")
 DE25_MODDIR="$ROOT/output-de25/target/lib/modules/$DE25_KVER/kernel/drivers/net/wireless/realtek/rtw89"

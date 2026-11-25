@@ -3,8 +3,10 @@
 **Status:** Proposed (2026-09-02) — the nine decisions below were taken by @mcfbytes between
 2026-08-19 and 2026-08-22 during D0/D1; this ADR formalises them for acceptance and makes no new one.
 **Amended by:** [ADR 0034](0034-de25-fpga-service-path.md) (2026-11-17) — D8 reversed, D9's test
-replaced, D10 kept with its evidence corrected. Notes are at each decision; the original text stands
-as the record.
+replaced, D10 kept with its evidence corrected; and by
+[ADR 0035](0035-de25-own-qspi-image-first-boot-flash.md) (2026-11-25) — D4's posture 1 holds only
+until our own QSPI image exists, which the first boot will write once. Notes are at each decision;
+the original text stands as the record.
 **Extends:** [ADR 0027](0027-de25-nano-multi-board-readiness.md). **Supersedes nothing.** Each
 decision refines an ADR 0027 disposition point (DP-x) or Decision — mapped in the index table; where
 no DP covers one, this ADR says so rather than back-fitting a DP.
@@ -46,7 +48,7 @@ Accept the nine decisions below as the bounding constraints for DE25 wave 1.
 | D1 | Core loading = `fpga_manager` + DT overlay | §1 row 1 | refines **DP-9** |
 | D2 | Scope is "make the hardware available"; Main_MiSTer loads | §1 row 2 | **DP-1**, 0027 **Decision 6** |
 | D3 | Two partitions (p1 FAT, p2 the rest); no card shared with a DE10 | §1 rows 3–4 | **DP-3**, **DP-1** |
-| D4 | Posture 1: nothing we ship writes the factory QSPI | §6 pre; boot-chain §4, §10 | **is** DP-1's posture call |
+| D4 | Posture 1: nothing we ship writes the factory QSPI (**amended by ADR 0035**) | §6 pre; boot-chain §4, §10 | **is** DP-1's posture call |
 | D5 | Mainline-first: a carry needs "no mainline route existed" | §1 row 5 | **DP-1** |
 | D6 | Kernel pinned to **mainline 7.2**, not 6.18 | §1 rows 6–7, §5 | *no DP* — nearest DP-5/DP-9 |
 | D7 | Carry the `sdhci-cadence` 40-bit DMA-mask patch, upstreamably | §1 row 8, §1.1 | *no DP* — instance of D5 |
@@ -100,10 +102,10 @@ everything else — and a card that works in both boards is an explicit non-goal
 
 ### D4 — Posture 1: nothing we ship writes the factory QSPI
 
-**Amended 2026-11-25 by [ADR 0035](0035-de25-own-qspi-image-first-boot-flash.md).** T1 showed
-that no core loads against the factory flash, so we will ship our own QSPI image, written once by
-the first-boot installer. Posture 1 stays the shipping state, and the guards below stay, until that
-image exists.
+> **Amended by [ADR 0035](0035-de25-own-qspi-image-first-boot-flash.md) (2026-11-25).** T1 showed
+> that no core loads against the factory flash, so we will ship our own QSPI image, written once by
+> the first-boot installer. Posture 1 stays the shipping state, and the guards below stay, until that
+> image exists.
 
 **Decision.** We pin to the factory QSPI image (SDM firmware + phase-1 bitstream + embedded U-Boot
 SPL) and never write it; we build `u-boot.itb` only, and our whole interface to the board's boot

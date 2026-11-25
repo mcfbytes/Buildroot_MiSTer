@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # QEMU test of the DE25 ext4 card's first-boot grow (S00growroot, docs/de25-sdcard.md §1).
 # Boot 1 grows p2 and its ext4 to a 2G card; boot 2 must change nothing.
+# shellcheck disable=SC2015 # ok/bad pairs: ok and bad never fail
 set -euo pipefail
 
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)

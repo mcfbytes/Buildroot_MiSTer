@@ -1852,12 +1852,14 @@ series (beta and de25nano by symlink). Not yet tested on the hardware, not sent 
 ### `0070` — MiSTer_fb: mmap the whole region + `FBIO_MISTER_FLUSH`, added 2026-11-13
 
 Original, by the repo owner; applies on top of `0001`, whose text stays untouched (stock parity). Carried in de10nano
-and, by symlink + `series`, the beta (7.x RT) series; not in de25nano (no `MiSTer_fb` there). Four changes in
+and, by symlink + `series`, the beta (7.x RT) series and de25nano (under its `0103`). Five changes in
 `MiSTer_fb.c`: `fix.smem_len` = resource − 4096 so `mmap` (write-combined, `fb_io_mmap`) reaches every frame a client
 keeps in the region, with `screen_size` = one visible frame so `read`/`write` are unchanged; a no-argument
 `FBIO_MISTER_FLUSH` = `_IO('F', 0xA0)` doing `wmb()` (`dsb st` + PL310 sync — the scaler reads DDR past the L2);
 the `mode` write wipes only the header page + the visible frame; and `FBIO_WAITFORVSYNC` drops `info->lock` for its
-wait. The fbdev core runs every driver ioctl under that lock (`fb_chrdev.c`), so without the drop a client looping
+wait; and a `mode` that does not fit the region is clipped (stride, then `xres`, then `yres`, with a `dev_warn`),
+since stock bounds nothing and fbcon draws `xres` x `yres` at `line_length` without checking the mapping (added
+2026-11-25; 3840x2160 8888 is 33 MB). The fbdev core runs every driver ioctl under that lock (`fb_chrdev.c`), so without the drop a client looping
 on the vsync wait (a SCHED_FIFO vsync thread) made every other ioctl on the fb, the flush included, wait up to a
 frame (50 ms with no vsync). The wait touches only `frame_count`/`vs_wait`, and the open file pins `info`.
 Consumer: an HD OSD client, which writes its two 1080p RGB565 slots (`0x22001000`, `0x223F6000`)

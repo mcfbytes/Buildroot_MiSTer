@@ -13,7 +13,7 @@ Disposition:  carry -- feature. Lets a userspace client (an HD OSD)
               takes 38 ms strongly ordered and 4.2 ms write-combined on the
               DE10-Nano (owner's rig, 2026-10-09).
 
-Four changes, all inside drivers/video/fbdev/MiSTer_fb.c:
+Five changes, all inside drivers/video/fbdev/MiSTer_fb.c:
 
 1. fix.smem_len = resource_size - 4096 (the whole DT region past the header
    page), so mmap() reaches every frame a client places in the region, not
@@ -53,6 +53,15 @@ Four changes, all inside drivers/video/fbdev/MiSTer_fb.c:
    reference on info for the ioctl's duration, so it cannot go away while
    unlocked. Stock behaviour for a single waiter (Main_MiSTer) is unchanged.
 
+5. The mode is clipped to the region. `mode` is written by userspace and
+   nothing bounds it: stock sets smem_len from it, and fbcon and the sys_*
+   helpers draw xres x yres at line_length with no check against the
+   mapping, so a mode larger than the region (3840x2160 8888 is 33 MB)
+   drew past the memremap. The kernel's view is clipped instead: stride to
+   the region, xres to the stride, yres to the rows that fit, with one
+   dev_warn. Main's own mode table and the scaler are unaffected; only
+   what fbcon and read/write reach changes. A mode that fits is untouched.
+
 The kernel's own mapping stays memremap(MEMREMAP_WT), as stock has it. It
 cannot fight the user's write-combined alias: on 32-bit ARM ioremap_wt is
 ioremap_wc (arch/arm/include/asm/io.h), Normal non-cacheable like the mmap's
@@ -68,8 +77,8 @@ Visible side effect: the probe line now reports the region length, e.g.
 
 Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 ---
- drivers/video/fbdev/MiSTer_fb.c | 67 ++++++++++++++++++++++++++++++++++++++++++++++++++-----
- 1 file changed, 62 insertions(+), 5 deletions(-)
+ drivers/video/fbdev/MiSTer_fb.c | 82 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++-----
+ 1 file changed, 77 insertions(+), 5 deletions(-)
 
 --- a/drivers/video/fbdev/MiSTer_fb.c
 +++ b/drivers/video/fbdev/MiSTer_fb.c
@@ -137,7 +146,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
   */
  static const struct fb_ops ops = {
  	.owner = THIS_MODULE,
-@@ -267,7 +309,17 @@
+@@ -267,7 +309,32 @@
  
  	dev_info(&fbdev->pdev->dev, "width = %u, height = %u, format=%u\n", info->var.xres, info->var.yres, format);
  
@@ -150,13 +159,28 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
 +	 * visible frame through screen_size, as smem_len bounded them before.
 +	 */
 +	info->fix.smem_len = resource_size(fbdev->fb_res) - HEADER_SIZE;
-+	info->screen_size = min_t(unsigned long,
-+				  (unsigned long)info->fix.line_length * info->var.yres,
-+				  info->fix.smem_len);
++
++	/*
++	 * Nothing else bounds `mode`: fbcon draws xres x yres at line_length
++	 * with no check against the mapping, so clip the mode to the region.
++	 */
++	if (info->fix.line_length > info->fix.smem_len)
++		info->fix.line_length = info->fix.smem_len;
++	if (info->fix.line_length < (u64)info->var.xres * (info->var.bits_per_pixel / 8))
++		info->var.xres = info->fix.line_length / (info->var.bits_per_pixel / 8);
++	if ((u64)info->fix.line_length * info->var.yres > info->fix.smem_len)
++	{
++		info->var.yres = info->fix.smem_len / info->fix.line_length;
++		dev_warn(&fbdev->pdev->dev, "mode does not fit in 0x%x bytes, height clipped to %u\n",
++			 info->fix.smem_len, info->var.yres);
++	}
++	info->var.xres_virtual = info->var.xres;
++	info->var.yres_virtual = info->var.yres;
++	info->screen_size = (unsigned long)info->fix.line_length * info->var.yres;
  
  	info->pseudo_palette = fbdev->fb_base;
  
-@@ -296,8 +348,8 @@
+@@ -296,8 +363,8 @@
  	}
  
  	retval = setup_fb_info(fbdev);
@@ -167,7 +191,7 @@ Signed-off-by: Michael C. Ferguson <michael.christopher.ferguson@gmail.com>
  
  	retval = fb_alloc_cmap(&fbdev->info.cmap, PALETTE_SIZE, 0);
  	if (retval < 0) return retval;
-@@ -377,11 +429,16 @@
+@@ -377,11 +444,16 @@
  		console_lock();
  		lock_fb_info(&p_fbdev->info);
  

@@ -30,12 +30,13 @@ he takes a Main_MiSTer change that accepts mainline's name instead. Offer that s
 
 ## Held, not sent
 
-- `0042` (stock PlayStation lightbar names) and `0033` (DualSense `:player_id`). The same class
-  as #96/#97, so the Main_MiSTer route comes first. On the fork's own 6.18 kernel, stock Main's
-  lightbar writes fail for both pads. The DualSense has no `:player_id`, so Main takes its DS4
-  branch, and `<hid-dev>:red` does not exist because the fork names the LEDs `inputN:red`, or
-  `inputN:rgb:indicator` for the DualSense. A Main change that also writes mainline's nodes
-  would fix stock users and let both patches retire once a Main release ships it.
+- `0042` (stock PlayStation lightbar names): the same class as #96/#97, so it went the
+  Main_MiSTer route as Main_MiSTer #1436 (2026-11-25). The fork's 6.18 names the lightbar after
+  the input device: `inputN:rgb:indicator` (DualSense, multicolor) and `inputN:red/green/blue`
+  (DualShock 4). Stock Main writes `<hid-dev>:red/green/blue`, so on the fork's own kernel the
+  lightbar never shows the player number. Retire `0042` once a Main release ships #1436.
+  `0033` (`<hid-dev>:player_id`) is NOT in this class: the fork's 6.18 carries the same node in
+  `ds_leds_create()`, so `0033` matches it and stays.
 - `0060` (dwc2 periodic QH cadence): held for more testing on 6.18. It has run mostly with
   DDMA on 7.x.
 - `0070` (MiSTer_fb mmap/flush/vsync-unlock/mode clip): to go as one fb series. It changes no

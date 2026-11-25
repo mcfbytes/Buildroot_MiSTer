@@ -5,7 +5,7 @@
 # usage: scripts/mk-release-de25.sh [<output-dir>] [<dist-dir>]   (defaults: output-de25, dist-de25)
 #
 #   1. check /MiSTer.version in rootfs.ext4 (6 digits, no newline, = $MISTER_VERSION if set)
-#   2. sdcard-de25.img -> sdcard-de25.img.xz, integrity-tested
+#   2. sdcard-de25.img and sdcard-de25-ext4.img -> .img.xz, integrity-tested
 #   3. loose FAT-partition files: u-boot.itb, Image, the board DTB, bl31.bin
 #   4. buildroot.config, linux.config, legal-info.tar.gz (patches-only, as DE10)
 #   5. SHA256SUMS over everything above
@@ -27,7 +27,7 @@ dtb=socfpga_agilex5_de25nano.dtb
 boot_files=(u-boot.itb Image "$dtb" bl31.bin)
 
 for t in xz debugfs sha256sum tar; do command -v "$t" >/dev/null 2>&1 || die "'$t' not found in PATH"; done
-for f in images/sdcard-de25.img images/rootfs.ext4 "${boot_files[@]/#/images/}" .config; do
+for f in images/sdcard-de25.img images/sdcard-de25-ext4.img images/rootfs.ext4 "${boot_files[@]/#/images/}" .config; do
 	[ -f "$out/$f" ] || die "$out/$f is missing -- run 'make de25' first"
 done
 [ -d "$out/legal-info" ] || die "$out/legal-info is missing -- run 'make O=output-de25 legal-info' first"
@@ -50,12 +50,14 @@ fi
 echo "    /MiSTer.version=$yymmdd"
 
 # --- 2. the card image -------------------------------------------------------------
-say "compressing sdcard-de25.img"
-rm -f "$dist/sdcard-de25.img.xz"
-xz -T0 -9 -c "$out/images/sdcard-de25.img" > "$work/sdcard-de25.img.xz"
-xz -t "$work/sdcard-de25.img.xz"
-mv "$work/sdcard-de25.img.xz" "$dist/sdcard-de25.img.xz"
-ci_lib_check_release_asset_size "$dist/sdcard-de25.img.xz" sdcard-de25.img.xz "."
+for card in sdcard-de25.img sdcard-de25-ext4.img; do
+	say "compressing $card"
+	rm -f "$dist/$card.xz"
+	xz -T0 -9 -c "$out/images/$card" > "$work/$card.xz"
+	xz -t "$work/$card.xz"
+	mv "$work/$card.xz" "$dist/$card.xz"
+	ci_lib_check_release_asset_size "$dist/$card.xz" "$card.xz" "."
+done
 
 # --- 3. loose boot files -------------------------------------------------------------
 say "staging the FAT-partition boot files"
@@ -72,5 +74,5 @@ ci_lib_check_release_asset_size "$dist/legal-info.tar.gz" legal-info.tar.gz "."
 
 # --- 5. SHA256SUMS ----------------------------------------------------------------------
 say "SHA256SUMS"
-( cd "$dist" && sha256sum sdcard-de25.img.xz "${boot_files[@]}" buildroot.config linux.config legal-info.tar.gz > SHA256SUMS && cat SHA256SUMS )
+( cd "$dist" && sha256sum sdcard-de25.img.xz sdcard-de25-ext4.img.xz "${boot_files[@]}" buildroot.config linux.config legal-info.tar.gz > SHA256SUMS && cat SHA256SUMS )
 say "done: $dist ready"

@@ -143,6 +143,19 @@ FLAG_SECTORS=1024
 EXPECT_PART_COUNT=3           # boot, data, flag (docs/de25-sdcard.md §1)
 FORBIDDEN_PART_TYPE=a2        # the Cyclone V BootROM's type byte; alien here
 
+# Two cards share this checker (docs/de25-sdcard.md §1): `exfat`, the two-stage card,
+# and `ext4`, a plain rw ext4 root. Picked from the file name; $DE25_CARD_LAYOUT overrides.
+case "${DE25_CARD_LAYOUT:-}" in
+	exfat|ext4) layout=$DE25_CARD_LAYOUT ;;
+	'') case ${1:-} in *-ext4.img) layout=ext4 ;; *) layout=exfat ;; esac ;;
+	*) echo "${0##*/}: DE25_CARD_LAYOUT must be exfat or ext4" >&2; exit 2 ;;
+esac
+if [ "$layout" = ext4 ]; then
+	DATA_PART_TYPE=83         # Linux; the rootfs itself, grown on first boot
+	EXPECT_PART_COUNT=2       # boot, root -- no installer flag
+	: "${EXPECT_MAX_IMAGE_BYTES:=1610612736}"
+fi
+
 : "${EXPECT_FAT_LABEL:=DE25BOOT}"
 : "${EXPECT_ROOTFS_LABEL:=rootfs}"
 : "${EXPECT_DTB_NAME:=socfpga_agilex5_de25nano.dtb}"
@@ -242,7 +255,7 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 img_bytes=$(wc -c <"$img" | tr -d ' ')
-printf '%s: %s (%s bytes)\n' "$prog" "$img" "$img_bytes"
+printf '%s: %s (%s bytes, %s layout)\n' "$prog" "$img" "$img_bytes" "$layout"
 
 # =============================================================================
 # 0. Size budget
@@ -285,9 +298,9 @@ part_count=$(printf '%s\n' "$part_lines" | grep -c . || true)
 note "sfdisk -d reports $part_count partition(s)"
 
 if [ "$part_count" -eq "$EXPECT_PART_COUNT" ]; then
-	ok "exactly $EXPECT_PART_COUNT partitions (boot, data, installer flag)"
+	ok "exactly $EXPECT_PART_COUNT partitions ($layout layout)"
 else
-	bad "$part_count partition(s), expected exactly $EXPECT_PART_COUNT (boot, data, installer flag -- docs/de25-sdcard.md §1)"
+	bad "$part_count partition(s), expected exactly $EXPECT_PART_COUNT for the $layout layout (docs/de25-sdcard.md §1)"
 fi
 
 field() {  # field LINE NAME -> value
@@ -348,9 +361,9 @@ else
 	data_type=$(field "$data_line" type | tr 'A-F' 'a-f')
 	note "partition $DATA_PART_NUM: start=$data_start size=$data_size(sectors) type=$data_type"
 	if [ "$data_type" = "$DATA_PART_TYPE" ]; then
-		ok "partition $DATA_PART_NUM type=0x$DATA_PART_TYPE (the shipped setup volume; the installer makes it exFAT)"
+		ok "partition $DATA_PART_NUM type=0x$DATA_PART_TYPE ($layout layout)"
 	else
-		bad "partition $DATA_PART_NUM type='$data_type', expected '$DATA_PART_TYPE' (0x0c FAT32 LBA)"
+		bad "partition $DATA_PART_NUM type='$data_type', expected '$DATA_PART_TYPE' for the $layout layout"
 	fi
 	if [ -n "$boot_start" ] && [ "$data_start" -ge $(( boot_start + boot_size )) ] &&
 	   [ $(( data_start % 2048 )) -eq 0 ]; then
@@ -360,7 +373,9 @@ else
 	fi
 fi
 
-if [ -z "$flag_line" ]; then
+if [ "$layout" = ext4 ]; then
+	: # no installer: the partition-count check above already refuses a third entry
+elif [ -z "$flag_line" ]; then
 	bad "MBR partition $FLAG_PART_NUM (installer flag) not found -- stage 1 would boot past the installer"
 else
 	flag_start=$(field "$flag_line" start)
@@ -432,7 +447,9 @@ else
 			| sed -e 's#^::##' -e 's#^/##' -e '/^$/d' \
 			| LC_ALL=C sort -u > "$actual"
 		note "p1 holds $(wc -l < "$actual" | tr -d ' ') entries"
-		for want in "$EXPECT_FIT_NAME" "$EXPECT_KERNEL_NAME" "$EXPECT_DTB_NAME" "$EXTLINUX_PATH" "$PAYLOAD_IMG"; do
+		wanted="$EXPECT_FIT_NAME $EXPECT_KERNEL_NAME $EXPECT_DTB_NAME $EXTLINUX_PATH"
+		[ "$layout" = exfat ] && wanted="$wanted $PAYLOAD_IMG"
+		for want in $wanted; do
 			if grep -qxF "$want" "$actual"; then
 				ok "p1 holds $want"
 			else
@@ -462,9 +479,14 @@ else
 		# When p1 legitimately grows a file -- a core.rbf, say -- add it here
 		# and to genimage-sdcard.cfg's `files` list in the same commit. That
 		# is the point: growing the card is a decision, not an accident.
-		extras=$(grep -vxF -e "$EXPECT_FIT_NAME" -e "$EXPECT_KERNEL_NAME" \
-			-e "$EXPECT_DTB_NAME" -e "$EXTLINUX_PATH" -e 'extlinux/' \
-			-e "$PAYLOAD_IMG" -e 'mister-payload/' -e 'mister-payload/linux/' "$actual" || true)
+		if [ "$layout" = exfat ]; then
+			extras=$(grep -vxF -e "$EXPECT_FIT_NAME" -e "$EXPECT_KERNEL_NAME" \
+				-e "$EXPECT_DTB_NAME" -e "$EXTLINUX_PATH" -e 'extlinux/' \
+				-e "$PAYLOAD_IMG" -e 'mister-payload/' -e 'mister-payload/linux/' "$actual" || true)
+		else
+			extras=$(grep -vxF -e "$EXPECT_FIT_NAME" -e "$EXPECT_KERNEL_NAME" \
+				-e "$EXPECT_DTB_NAME" -e "$EXTLINUX_PATH" -e 'extlinux/' "$actual" || true)
+		fi
 		if [ -z "$extras" ]; then
 			ok "p1 holds nothing beyond the expected files (no boot.scr, no *.scr, no uboot.env)"
 		else
@@ -632,17 +654,28 @@ else
 		note "append = $append"
 		case " $append " in
 			*" root=$EXPECT_ROOT_DEV "*)
-				ok "kernel args name root=$EXPECT_ROOT_DEV (the exFAT data partition -- docs/de25-sdcard.md)" ;;
+				ok "kernel args name root=$EXPECT_ROOT_DEV (p2 -- docs/de25-sdcard.md §1)" ;;
 			*)  bad "kernel args do not name root=$EXPECT_ROOT_DEV" ;;
 		esac
-		case " $append " in
-			*" loop=linux/linux.img "*) ok "kernel args name loop=linux/linux.img (stage 1 loop-mounts the rootfs off p2, as on the DE10)" ;;
-			*)  bad "kernel args lack loop=linux/linux.img -- stage 1 would mount p2 itself as the root filesystem" ;;
-		esac
-		case " $append " in
-			*" ro "*) ok "kernel args mount the root read-only (ro), as on the DE10" ;;
-			*)  bad "kernel args lack ro -- the loop-mounted rootfs would come up read-write" ;;
-		esac
+		if [ "$layout" = exfat ]; then
+			case " $append " in
+				*" loop=linux/linux.img "*) ok "kernel args name loop=linux/linux.img (stage 1 loop-mounts the rootfs off p2, as on the DE10)" ;;
+				*)  bad "kernel args lack loop=linux/linux.img -- stage 1 would mount p2 itself as the root filesystem" ;;
+			esac
+			case " $append " in
+				*" ro "*) ok "kernel args mount the root read-only (ro), as on the DE10" ;;
+				*)  bad "kernel args lack ro -- the loop-mounted rootfs would come up read-write" ;;
+			esac
+		else
+			case " $append " in
+				*" loop="*) bad "kernel args name loop= -- the ext4 card's p2 IS the root filesystem" ;;
+				*) ok "kernel args name no loop= (stage 1 mounts p2 directly)" ;;
+			esac
+			case " $append " in
+				*" rw "*) ok "kernel args mount the root read-write (rw): the ext4 card's root is the user's to edit" ;;
+				*)  bad "kernel args lack rw -- the ext4 root would come up read-only and could not grow" ;;
+			esac
+		fi
 		case " $append " in
 			*" console=$EXPECT_CONSOLE "*)
 				ok "kernel args name console=$EXPECT_CONSOLE (HPS uart1, the board's header UART)" ;;
@@ -691,8 +724,35 @@ fi
 # =============================================================================
 # 5. p2: a clean ext4 labelled `rootfs`
 # =============================================================================
+check_rootfs_ext4() {  # check_rootfs_ext4 FILE WHAT -- label, ext4 features, fsck-clean
+	if hdr=$("$dumpe2fs_bin" -h "$1" 2>/dev/null); then
+		ok "$2 is an ext2/3/4 filesystem (dumpe2fs -h succeeded)"
+		_label=$(printf '%s\n' "$hdr" | sed -n 's/^Filesystem volume name:[[:space:]]*//p')
+		if [ "$_label" = "$EXPECT_ROOTFS_LABEL" ]; then
+			ok "$2 volume label = '$EXPECT_ROOTFS_LABEL'"
+		else
+			bad "$2 volume label = '$_label', expected '$EXPECT_ROOTFS_LABEL' (BR2_TARGET_ROOTFS_EXT2_LABEL)"
+		fi
+		_features=$(printf '%s\n' "$hdr" | sed -n 's/^Filesystem features:[[:space:]]*//p')
+		case " $_features " in
+			*" extent "*) ok "$2 has the 'extent' feature -- a real ext4" ;;
+			*)  bad "$2 lacks the 'extent' feature -- BR2_TARGET_ROOTFS_EXT2_4 selects ext4, and this is not one" ;;
+		esac
+		if "$e2fsck_bin" -fn "$1" > "$work/e2fsck.out" 2>&1; then
+			ok "$2 is fsck-clean (e2fsck -fn)"
+		else
+			bad "e2fsck -fn found problems in $2 (exit $?)"
+			sed 's/^/    /' "$work/e2fsck.out" >&2
+		fi
+	else
+		bad "$2 is not an ext2/3/4 filesystem (dumpe2fs -h failed)"
+	fi
+}
+
 # --- the payload: this build's rootfs, gzipped ---------------------------------
-if [ -z "$boot_start" ]; then
+if [ "$layout" = ext4 ]; then
+	: # no payload: p2 itself is checked below
+elif [ -z "$boot_start" ]; then
 	bad "cannot inspect the payload -- partition $BOOT_PART_NUM was not found above"
 else
 	gz="$work/linux.img.gz"
@@ -710,28 +770,7 @@ else
 		else
 			bad "no reference rootfs.ext4 at $ref_rootfs -- cannot prove the payload is this build's rootfs"
 		fi
-		if hdr=$("$dumpe2fs_bin" -h "$p2" 2>/dev/null); then
-			ok "the payload's linux.img is an ext2/3/4 filesystem (dumpe2fs -h succeeded)"
-			p2_label=$(printf '%s\n' "$hdr" | sed -n 's/^Filesystem volume name:[[:space:]]*//p')
-			if [ "$p2_label" = "$EXPECT_ROOTFS_LABEL" ]; then
-				ok "linux.img volume label = '$EXPECT_ROOTFS_LABEL'"
-			else
-				bad "linux.img volume label = '$p2_label', expected '$EXPECT_ROOTFS_LABEL' (BR2_TARGET_ROOTFS_EXT2_LABEL)"
-			fi
-			features=$(printf '%s\n' "$hdr" | sed -n 's/^Filesystem features:[[:space:]]*//p')
-			case " $features " in
-				*" extent "*) ok "linux.img has the 'extent' feature -- a real ext4" ;;
-				*)  bad "linux.img lacks the 'extent' feature -- BR2_TARGET_ROOTFS_EXT2_4 selects ext4, and this is not one" ;;
-			esac
-			if "$e2fsck_bin" -fn "$p2" > "$work/e2fsck.out" 2>&1; then
-				ok "linux.img is fsck-clean (e2fsck -fn)"
-			else
-				bad "e2fsck -fn found problems in linux.img (exit $?)"
-				sed 's/^/    /' "$work/e2fsck.out" >&2
-			fi
-		else
-			bad "the payload's linux.img is not an ext2/3/4 filesystem (dumpe2fs -h failed)"
-		fi
+		check_rootfs_ext4 "$p2" "the payload's linux.img"
 		rm -f "$gz" "$p2"
 	else
 		bad "could not read and gunzip $PAYLOAD_IMG from p1"
@@ -739,9 +778,20 @@ else
 	fi
 fi
 
-# --- p2: the setup volume --------------------------------------------------------
+# --- p2: the ext4 card's root, or the exFAT card's setup volume ------------------
 if [ -z "$data_start" ]; then
 	bad "cannot inspect p2 -- partition $DATA_PART_NUM was not found above"
+elif [ "$layout" = ext4 ]; then
+	p2="$work/p2.ext4"
+	dd if="$img" of="$p2" bs=512 skip="$data_start" count="$data_size" status=none
+	ref_rootfs="$ref_dir/rootfs.ext4"
+	if [ -f "$ref_rootfs" ] && cmp -s "$p2" "$ref_rootfs"; then
+		ok "p2 is byte-identical to $ref_rootfs"
+	else
+		bad "p2 is not byte-identical to $ref_rootfs -- the card carries a root this build did not produce"
+	fi
+	check_rootfs_ext4 "$p2" "p2"
+	rm -f "$p2"
 else
 	data_offset=$(( data_start * 512 ))
 	if MTOOLS_SKIP_CHECK=1 "$mlabel_bin" -i "${img}@@${data_offset}" -s :: > "$work/mlabel2.out" 2>&1; then

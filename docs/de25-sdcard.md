@@ -46,6 +46,38 @@ and after the first boot (§3):
 | 1 | `/dev/mmcblk0p1` | `0x1c`, bootable | 512 MiB | unchanged | unchanged |
 | 2 | `/dev/mmcblk0p2` | `0x07` | the rest of the card | exFAT, label **`MiSTer_Data`** | `linux/linux.img` (= `rootfs.ext4`), plus the user's pre-seed files; `/media/fat` |
 
+### The ext4 card
+
+Every build also writes `output-de25/images/sdcard-de25-ext4.img`, and each release publishes
+both cards. Neither is the default. The ext4 card is for people who want a plain Linux root they
+can edit and grow, and who do not need to copy files from a PC: Windows cannot read ext4.
+
+| # | Device | Type | Size | Filesystem | Contents |
+|---|---|---|---|---|---|
+| 1 | `/dev/mmcblk0p1` | `0x1c`, bootable | 512 MiB | FAT32, label **`DE25BOOT`** | `u-boot.itb`, `Image`, the DTB, `extlinux/extlinux.conf`; no payload |
+| 2 | `/dev/mmcblk0p2` | `0x83` (Linux) | 512 MiB as shipped, then the rest of the card | ext4, label **`rootfs`** | `rootfs.ext4` itself, mounted `rw` |
+
+There is no installer and no flag entry. The kernel arguments name `root=/dev/mmcblk0p2 rw` and
+no `loop=`, so stage 1 mounts p2 directly (`board/mister/common/initramfs-overlay/init`, the
+"no loop=" branch). `/media/fat` is an ordinary directory on that root.
+
+**It grows itself on first boot.** `/etc/init.d/S00growroot` (DE25 rootfs overlay) runs before
+anything else. It acts only when the root is a non-`loop=` ext4 partition that is the last one
+on the disk and ends more than 1 MiB short of it. It then:
+
+1. rewrites MBR entry 2 to end at the card's end (`sfdisk -N 2`, one sector), and tells the
+   running kernel with `resizepart`;
+2. grows the mounted ext4 online with `resize2fs`.
+
+A power cut cannot leave the card unbootable. A cut before the sector write changes nothing. A
+cut between the two steps leaves a bigger partition with the old filesystem, and the next boot
+runs step 2 again, because it compares the filesystem with the partition, not with a stamp.
+`resize2fs` online is journalled. On the exFAT card the script exits at once (`loop=`).
+
+`scripts/test-sdcard-ext4-de25.sh` boots the card in QEMU on a 2 GiB disk. It checks that the
+first boot grows entry 2 and the filesystem to the end and that p2 is clean after the power cut,
+and that the second boot changes nothing.
+
 **There is no `0xA2` partition.** The `0xA2` type byte is the *Cyclone V BootROM's* raw-partition
 contract ([`boot-chain.md`](boot-chain.md) §2.1) and has no meaning on Agilex 5: here the SDM
 boots the FSBL out of QSPI and the FSBL reads a **filesystem** — "No 0xA2 analogue [V]",

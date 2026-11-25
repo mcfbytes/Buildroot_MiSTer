@@ -1,0 +1,59 @@
+#!/bin/sh
+# Grow the ext4 card's root partition and filesystem to fill the card (docs/de25-sdcard.md §1).
+# No-op on the exFAT card (loop=), on a non-ext4 root, and once the root fills the card.
+
+case "$1" in start) ;; *) exit 0 ;; esac
+
+log() { echo "growroot: $*"; logger -t growroot "$*" 2>/dev/null || true; }
+
+cmdline=$(cat /proc/cmdline)
+case " $cmdline " in *" loop="*) exit 0 ;; esac
+root=
+for t in $cmdline; do
+	case $t in root=/dev/*) root=${t#root=} ;; esac
+done
+[ -n "$root" ] || exit 0
+part=${root#/dev/}
+sys=/sys/class/block/$part
+[ -f "$sys/partition" ] || exit 0
+awk -v d="$root" '$1 == d && $2 == "/" && $3 == "ext4" { f = 1 } END { exit !f }' /proc/mounts || exit 0
+
+disk=$(basename "$(readlink -f "$sys/..")")
+num=$(cat "$sys/partition")
+start=$(cat "$sys/start")
+size=$(cat "$sys/size")
+total=$(cat "/sys/class/block/$disk/size")
+
+# Only the last partition may grow: refuse if anything starts after it.
+for p in /sys/class/block/"$disk"/"$disk"*; do
+	[ -f "$p/start" ] && [ "$(cat "$p/start")" -gt "$start" ] && { log "$root is not the last partition; leaving it"; exit 0; }
+done
+
+# 1. The partition: one MBR sector write, then BLKPG tells the running kernel.
+if [ $(( total - start - size )) -gt 2048 ]; then
+	log "growing partition $num of /dev/$disk to the end of the card"
+	if echo ", +" | sfdisk --no-reread --no-tell-kernel -q -N "$num" "/dev/$disk"; then
+		new=$(sfdisk -d "/dev/$disk" | sed -n "s|^${root}[[:space:]]*:.*size=[[:space:]]*\([0-9]*\).*|\1|p")
+		if [ -z "$new" ] || ! resizepart "/dev/$disk" "$num" "$new"; then
+			log "the kernel did not take the new size; the next boot finishes the grow"
+			exit 0
+		fi
+	else
+		log "sfdisk failed; the root stays at its shipped size"
+		exit 0
+	fi
+fi
+
+# 2. The filesystem, online. Also finishes a grow that a power cut split between the two steps.
+blocks=$(dumpe2fs -h "$root" 2>/dev/null | sed -n 's/^Block count:[[:space:]]*//p')
+bsize=$(dumpe2fs -h "$root" 2>/dev/null | sed -n 's/^Block size:[[:space:]]*//p')
+psize=$(cat "$sys/size")
+if [ -n "$blocks" ] && [ -n "$bsize" ] && [ $(( psize * 512 - blocks * bsize )) -gt 1048576 ]; then
+	log "growing the ext4 filesystem on $root (online)"
+	if resize2fs "$root" >/dev/null 2>&1; then
+		log "done: $(df -h / | awk 'NR == 2 { print $2 }') root"
+	else
+		log "resize2fs failed; the next boot tries again"
+	fi
+fi
+exit 0

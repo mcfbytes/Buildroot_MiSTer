@@ -109,7 +109,9 @@ jobs:
         run: make de25
 
       - name: Static card check (check-sdcard-de25.sh)
-        run: scripts/check-sdcard-de25.sh output-de25/images/sdcard-de25.img output-de25/images
+        run: |
+          scripts/check-sdcard-de25.sh output-de25/images/sdcard-de25.img output-de25/images
+          scripts/check-sdcard-de25.sh output-de25/images/sdcard-de25-ext4.img output-de25/images
 
       # Before the stage-1 step below, which edits output-de25/.config.
       - name: Generate legal-info (SBOM)
@@ -181,7 +183,7 @@ jobs:
         run: |
           set -eu
           ls -la dist/
-          for f in sdcard-de25.img.xz u-boot.itb Image socfpga_agilex5_de25nano.dtb bl31.bin buildroot.config linux.config legal-info.tar.gz SHA256SUMS; do
+          for f in sdcard-de25.img.xz sdcard-de25-ext4.img.xz u-boot.itb Image socfpga_agilex5_de25nano.dtb bl31.bin buildroot.config linux.config legal-info.tar.gz SHA256SUMS; do
             [ -f "dist/$f" ] || { echo "::error::dist/$f is missing from the de25 build's bundle" >&2; exit 1; }
           done
           ( cd dist && sha256sum -c SHA256SUMS )
@@ -192,6 +194,7 @@ jobs:
         with:
           subject-path: |
             dist/sdcard-de25.img.xz
+            dist/sdcard-de25-ext4.img.xz
             dist/u-boot.itb
             dist/Image
             dist/socfpga_agilex5_de25nano.dtb
@@ -236,7 +239,9 @@ jobs:
             echo "| U-Boot | \`${uboot}\` |"
             echo "| TF-A | \`${tfa}\` |"
             echo ""
-            echo "**Assets:** \`sdcard-de25.img.xz\` is the whole card (\`xz -d\`, then write it raw; the first boot installs onto it and reboots). \`u-boot.itb\`, \`Image\`, \`socfpga_agilex5_de25nano.dtb\` and \`bl31.bin\` are the loose boot files, for updating the boot partition (p1, hidden from Windows) of an existing card; \`bl31.bin\` is already inside \`u-boot.itb\` and is attached for inspection. Writing, layout and first-boot checks: [docs/de25-sdcard.md](${docs})."
+            echo "**Cards (pick one; \`xz -d\`, then write it raw):** \`sdcard-de25.img.xz\` is the DE10-style card: the first boot installs an exFAT \`MiSTer_Data\` partition (/media/fat, readable from a PC) and reboots. \`sdcard-de25-ext4.img.xz\` is a plain read-write ext4 root that grows to fill the card on first boot; it is not readable from Windows."
+            echo ""
+            echo "**Boot files:** \`u-boot.itb\`, \`Image\`, \`socfpga_agilex5_de25nano.dtb\` and \`bl31.bin\` are the loose boot files, for updating the boot partition (p1, hidden from Windows) of an existing card; \`bl31.bin\` is already inside \`u-boot.itb\` and is attached for inspection. Writing, layout and first-boot checks: [docs/de25-sdcard.md](${docs})."
             echo ""
             echo "Hashes are in \`SHA256SUMS\`; verify provenance with \`gh attestation verify <asset> --owner ${OWNER}\`."
             echo ""
@@ -252,7 +257,7 @@ jobs:
         run: |
           set -eu
           assets=(
-            dist/sdcard-de25.img.xz dist/u-boot.itb dist/Image dist/socfpga_agilex5_de25nano.dtb dist/bl31.bin
+            dist/sdcard-de25.img.xz dist/sdcard-de25-ext4.img.xz dist/u-boot.itb dist/Image dist/socfpga_agilex5_de25nano.dtb dist/bl31.bin
             dist/buildroot.config dist/linux.config dist/legal-info.tar.gz dist/SHA256SUMS
           )
           gh release create "$TAG" --draft --prerelease --latest=false --target "$GITHUB_SHA" \

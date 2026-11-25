@@ -397,7 +397,7 @@ fabric and its Main_MiSTer build can be tried on this card. At a root shell:
 | `cat /sys/class/graphics/fb0/name` | `MiSTer_fb` |
 | `ls /proc/device-tree/reserved-memory/` | the six `mister-*` nodes, from `mister-ddr-low@9df00000` to `mister-core@b0000000` |
 | `head -1 /proc/meminfo` | `MemTotal` under 479 MiB (`mem=479M`, less the kernel's own reservations) |
-| `ls /dev/mister/` | `ddr-aperture ddr-low doorbell fb h2f-bridge irq lw-bridge ocram scaler`; if absent, check `ls /etc/udev/rules.d/` lists `65-mister-uio.rules` and `65-mister-uio-de25.rules` (this image's rootfs, not another) and that `udevd` runs |
+| `ls /dev/mister/` | `ddr-aperture ddr-low fb h2f-bridge irq lw-bridge ocram scaler`; if absent, check `ls /etc/udev/rules.d/` lists `65-mister-uio.rules` and `65-mister-uio-de25.rules` (this image's rootfs, not another) and that `udevd` runs |
 
 The port's own boot service writes the scaler scratch base into the fabric's fbcfg mailbox once
 its MENU fabric is up; this image has no such service, so with that fabric configured (and only

@@ -125,7 +125,7 @@
 # 0072 (the MiSTer HPS<->FPGA device-tree description; docs/
 # dts-mister-fpga-interface.md). 0072 superseded the beta-local 0043 (UIO
 # doorbells) and 0044 (LW window + DDR aperture), renaming their UIO nodes
-# to one scheme (mister_<name>; doorbells are udev aliases); both files were removed and their numbers stay retired. 0072 appends a
+# to one scheme (mister_<name>); both files were removed and their numbers stay retired. 0072 appends a
 # second root block at the end of the DTS, so it applies whether or not
 # 0046 or a MiSTer_fb resize are present.
 #

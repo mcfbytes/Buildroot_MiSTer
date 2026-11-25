@@ -1396,16 +1396,11 @@ else
 	fail "65-mister-uio.rules names every 0072 UIO node" \
 		"rule set and DT linux,uio-name set differ (or the rule is missing)"
 fi
-# Doorbell ordinal k is f2h line k+7 (docs/dts-mister-fpga-interface.md, doorbell aliases).
-uio_db_bad=0
-for k in 1 2 3 4 5 6 7 8; do
-	printf '%s\n' "$uio_rules" | grep -qF "ATTR{name}==\"mister_f2h_irq$((k + 7))\", SYMLINK+=\"mister/irq/f2h-irq$((k + 7)) mister/doorbell/$k\"" \
-		|| uio_db_bad=1
-done
-if [ "$uio_db_bad" -eq 0 ]; then
-	pass "65-mister-uio.rules aliases mister/doorbell/1..8 to f2h-irq8..15"
+# No /dev/mister/doorbell aliases: f2h lines have one path, irq/f2h-irq<N> (docs/dts-mister-fpga-interface.md §2.3).
+if printf '%s\n' "$uio_rules" | grep -q 'mister/doorbell'; then
+	fail "65-mister-uio.rules has no mister/doorbell aliases" "a doorbell alias came back; f2h lines live only under mister/irq/"
 else
-	fail "65-mister-uio.rules aliases mister/doorbell/1..8 to f2h-irq8..15" "an alias is missing or points at the wrong line"
+	pass "65-mister-uio.rules has no mister/doorbell aliases"
 fi
 # The mister user (8429, also in video for /dev/fb0) owns every /dev/mister UIO node.
 if printf '%s\n' "$uio_rules" | grep -qxF 'SUBSYSTEM=="uio", ATTR{name}=="mister_*", GROUP="mister", MODE="0660"' &&
@@ -2605,7 +2600,7 @@ section "Main_MiSTer shared libraries"
 # library with no consumer has NO other way to fail visibly. If it silently
 # stopped being installed, every other check in this suite would still pass.
 #
-# libslint_cpp.so (the seventh) has one consumer outside this tree: SiSTer's optional HD OSD, which a stock
+# libslint_cpp.so (the seventh) has one consumer outside this tree: an optional HD OSD client, which a stock
 # Main never loads. Same reasoning as rcheevos: nothing here would notice it missing. docs/slint.md.
 #
 # minizip and minizip-ng are ALTERNATIVES, not a pair: Main links the classic

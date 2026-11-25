@@ -27,9 +27,8 @@ One name per device: the UIO name is mister_<name> and udev adds
 /dev/mister/<name> (lw-bridge, h2f-bridge, fpga-mgr, ddr-aperture,
 ddr-low, ocram, irq/f2h-irq<N>; N is the hardware f2h line). Supersedes the
 beta-only 0043 (doorbells) and 0044 (LW window, DDR aperture) and renames
-their nodes to this scheme: mister_doorbell1..8 are mister_f2h_irq8..15
-(udev keeps /dev/mister/doorbell/1..8 as aliases), mister_lw_window is
-mister_lw_bridge. Additive: stock Main_MiSTer uses
+their nodes to this scheme: mister_doorbell1..8 are mister_f2h_irq8..15,
+mister_lw_window is mister_lw_bridge. Additive: stock Main_MiSTer uses
 /dev/mem and sees no change; under mem=511M the carve-outs lie outside
 memblock.memory, so no mapping attribute moves.
 

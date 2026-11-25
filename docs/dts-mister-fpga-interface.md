@@ -16,8 +16,8 @@ Patches (shared by the 6.18 and RT lines; the beta `series` symlinks them):
 
 **Naming: one name per device.** The UIO name is `mister_<name>`; udev adds `/dev/mister/<name>`
 with `_` as `-`. IRQ nodes are `mister_f2h_irq<N>`, N the hardware f2h line, at
-`/dev/mister/irq/f2h-irq<N>`. Semantic names are udev aliases only, never second UIO names:
-`/dev/mister/doorbell/<k>` and `/dev/mister/fb` (§5). 0072 replaced the beta-only
+`/dev/mister/irq/f2h-irq<N>`, the only path for a line: no role aliases. The one udev alias is
+`/dev/mister/fb` (§5). 0072 replaced the beta-only
 `0043-dts-uio-doorbells` and `0044-dts-uio-fpga-regions` and renamed their nodes to this scheme
 (`mister_doorbell<k>` is now `mister_f2h_irq<k+7>`, `mister_lw_window` is `mister_lw_bridge`).
 The target is the MiSTer kernel fork (`scripts/export-kernel-tree.sh`);
@@ -141,7 +141,7 @@ cells 40..103. The cell is the SPI index, not the INTID (INTID = cell + 32). The
 | 0 | 40 | none (MiSTer_fb) | edge (fb driver) | `HDMI_TX_VS`, owned by `MiSTer_fb` (`0004`); the only f2h line a kernel driver claims in either DTB |
 | 1 | 41 | `f2h-irq1` / `mister_f2h_irq1` | EDGE_RISING | `video_sync` (`sys_top.v:1532-1542`): high for one line at the sync line, a pulse with no ack register; measured 60.17 Hz on silicon |
 | 2..7 | 42..47 | `f2h-irq2..7` / `mister_f2h_irq2..7` | LEVEL_HIGH | tied 0 in every published core; platform reserve (audio watermark, CEC) per the allocation policy |
-| 8..15 | 48..55 | `f2h-irq8..15` / `mister_f2h_irq8..15` (doorbell pool, `/dev/mister/doorbell/1..8`) | LEVEL_HIGH | the doorbell pool; `TurboGrafx16_MiSTer/sys/mister_cd_ring.v:158` `doorbell ... level, LEVEL_HIGH -> f2h_irq[8]` |
+| 8..15 | 48..55 | `f2h-irq8..15` / `mister_f2h_irq8..15` (doorbell pool) | LEVEL_HIGH | the doorbell pool; `TurboGrafx16_MiSTer/sys/mister_cd_ring.v:158` `doorbell ... level, LEVEL_HIGH -> f2h_irq[8]` |
 | 16..63 | 56..103 | `f2h-irq16..63` / `mister_f2h_irq16..63` | LEVEL_HIGH | tied 0 in every published core |
 
 **Trigger types follow the fabric.** A doorbell is backed by a cause register the FPGA holds high
@@ -181,14 +181,14 @@ any future in-kernel consumer; such a consumer deletes that one node.
 if both held it, the UIO handler masks the line on every fire until userspace re-arms it, which
 would starve the framebuffer's vsync.
 
-**Doorbell aliases.** Pool ordinal k (1..8) is f2h line k+7, SPI cell k+47 (the pool is SPI 48..55,
-doorbells 1..8 in order); `TurboGrafx16_MiSTer/sys/sys_top.v:590-591` (f2h_irq[8] = `mister_doorbell1`). udev links
-`/dev/mister/doorbell/<k>` to `irq/f2h-irq<k+7>`; `ci-tests.sh` checks all eight.
+**The doorbell pool has no alias.** Pool ordinal k (1..8) is f2h line k+7, SPI cell k+47
+(`TurboGrafx16_MiSTer/sys/sys_top.v:590-591`: f2h_irq[8] is doorbell 1). Which lines a core uses
+is a contract between that core and its client, so a client opens `irq/f2h-irq<k+7>` itself. The
+`/dev/mister/doorbell/<k>` symlinks went 2026-11-25, with no consumer; `ci-tests.sh` keeps them out.
 
 ### 2.4 The on-chip RAM (`mister_ocram`)
 
-The HPS's 64 KiB OCRAM is the data plane of the fpga2hps mailboxes (Main_SiSTer
-`rewrite-plan/phase4/ocram-mailbox-design.md`): the fabric reaches it as an AXI master, the host
+The HPS's 64 KiB OCRAM is the data plane of the fpga2hps mailboxes: the fabric reaches it as an AXI master, the host
 maps it. The node and the reserved child are one pair:
 
 - **The kernel's own node is `mmio-sram` over all 64 KiB** (`socfpga.dtsi` `ocram: sram@ffff0000`).
@@ -277,8 +277,8 @@ maps it. The node and the reserved child are one pair:
    listener; a consumer already armed across a core load does see it.
 
 `/dev/mister/` view (eudev, `65-mister-uio.rules`): `lw-bridge`, `h2f-bridge`, `fpga-mgr`,
-`ddr-aperture`, `ddr-low`, `ocram`, `irq/f2h-irq1` .. `irq/f2h-irq63`, and two alias sets:
-`doorbell/1` .. `doorbell/8` (= `irq/f2h-irq8` .. `irq/f2h-irq15`) and `fb` (the `MiSTer_fb`
+`ddr-aperture`, `ddr-low`, `ocram`, `irq/f2h-irq1` .. `irq/f2h-irq63`, and one alias,
+`fb` (the `MiSTer_fb`
 framebuffer, matched by its `fix.id`; `/dev/fb0` itself is unchanged). The UIO nodes are
 `root:mister 0660`; `mister` (uid/gid 8429, `users.table`) is also in `video`, which owns `/dev/fb0`
 by eudev's default rule. That is groundwork for a non-root Main: stock Main still runs as root, and
@@ -298,8 +298,8 @@ differs from the previous one only by `/mister/ocram@ffff0000` and `sram@ffff000
 `mister-ocram@0` child (`flags-sram@f000`, `ranges`, the phandle and `ocram-ecc`'s `iram`
 unchanged), with 69 unique UIO names. QEMU has no Cyclone V machine, so probing is rig-only:
 
-- all 69 UIO devices probe on both kernels, with the names above, and `/dev/mister/*` (doorbell
-  and fb aliases included) appears;
+- all 69 UIO devices probe on both kernels, with the names above, and `/dev/mister/*` (the fb
+  alias included) appears;
 - `/proc/cmdline` ends in `uio_pdrv_genirq.of_id=generic-uio` with U-Boot's tokens intact;
 - the boot log lists the six reserved tiles, no overlap error, and `/proc/iomem` is unchanged below
   `0x1ff00000`. The 16 KB log buffer has usually dropped those lines by the time anyone looks; on
@@ -410,7 +410,7 @@ What uses the OCRAM, from source:
 - **Aligned accesses only.** It is Device memory on arm64, so an unaligned access faults; plain
   `memcpy` is not safe on the mapping.
 
-**Interrupts.** 63 nodes `f2h-irq1..63`, same names, types and doorbell aliases as §2.3, at
+**Interrupts.** 63 nodes `f2h-irq1..63`, same names and types as §2.3, at
 **GIC SPI cell `17 + N`** (17–80). Evidence **[U, desk]**: Altera's Agilex devicetree HOWTO maps
 f2h bit 0 to GIC interrupt 49 = SPI 17; an Altera KB note says the Agilex 5 GHRD's push-button
 PIO belongs on IRQ 17; and both mainline Agilex 5 and Agilex 7 dtsi leave SPI 4–80 unused. The

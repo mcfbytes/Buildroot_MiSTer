@@ -68,7 +68,9 @@ NO_FORK_ORIGIN = {
        )},
     **{f"{p}.patch": "Original HPS<->FPGA interface work (UIO nodes), not a fork commit. Reason "
                      "and provenance live in docs/patch-provenance.md (0045 + 0072 section) and "
-                     "docs/dts-mister-fpga-interface.md. Added 2026-11-24."
+                     "docs/dts-mister-fpga-interface.md. Added 2026-11-24. Sent to the fork as "
+                     "PR #122 (open): once it merges, its fork commits' records map these and "
+                     "this entry goes, as 0067's did. See upstream-prs.md."
        for p in (
            "0045-uio-writecombine",
            "0072-dts-de10nano-MiSTer-fpga-interface",
@@ -251,7 +253,8 @@ with open(HERE / "reconciliation.md", "w") as f:
 
 Each row is one commit from the MiSTer kernel fork (`MiSTer-devel/Linux-Kernel_MiSTer`),
 reconciled against our vanilla-{vanilla_label}-based build. The full evidence for a row
-lives in `records/<full-sha>.json`.
+lives in `records/<full-sha>.json`. The other direction, which of OUR patches and config we
+sent to the fork and what became of each, is `upstream-prs.md`.
 
 - **SHA** — the fork commit (short). **Branch** — where the commit lives: `v5.15` is the
   branch stock MiSTer shipped until 2026-09-07 (the original campaign's baseline); `v6.18`

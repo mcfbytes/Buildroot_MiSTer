@@ -1,12 +1,13 @@
 # Reconciliation — one row per fork commit
 
-Generated 2026-11-24 17:20 UTC by `reduce.py` from 152 records (110 MiSTer-v5.15 + 26 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/152.
+Generated 2026-11-25 21:52 UTC by `reduce.py` from 152 records (110 MiSTer-v5.15 + 26 MiSTer-v6.18 + 1 refs/pull/92/head + 15 old-branch residue). Tier-2 verified: 126/152.
 
 ## How to read this table
 
 Each row is one commit from the MiSTer kernel fork (`MiSTer-devel/Linux-Kernel_MiSTer`),
 reconciled against our vanilla-6.18.49 (release commit; v6.18.50 tag unreachable when this increment ran)-based build. The full evidence for a row
-lives in `records/<full-sha>.json`.
+lives in `records/<full-sha>.json`. The other direction, which of OUR patches and config we
+sent to the fork and what became of each, is `upstream-prs.md`.
 
 - **SHA** — the fork commit (short). **Branch** — where the commit lives: `v5.15` is the
   branch stock MiSTer shipped until 2026-09-07 (the original campaign's baseline); `v6.18`

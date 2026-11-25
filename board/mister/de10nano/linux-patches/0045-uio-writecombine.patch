@@ -22,8 +22,9 @@ Provenance
 ----------
 Origin:       None; authored for this tree (stock MiSTer builds no UIO).
 Author:       Michael C. Ferguson, 2026-08-14.
-Upstream:     Not submitted. The memtype half is generic; the property
-              parse is MiSTer-local. Disposition "carry"
+Upstream:     Sent to the MiSTer fork with 0072 as LK_MiSTer PR #122
+              (open, 2026-11-25). Not mainline: the property parse is
+              MiSTer-local. Disposition "carry"
               (docs/patch-provenance.md 3.1).
 History:      Beta-only (linux-patches-beta/) until 2026-11-13; now shared
               by the 6.18 and RT lines, with its in-code comments cut to

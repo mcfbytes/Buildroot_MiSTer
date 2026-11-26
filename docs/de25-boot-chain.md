@@ -462,6 +462,19 @@ confirms a choice above or names a trap; none is verified by us **[V there, U he
   Agilex 5 FPGA-config address handling ([`de25-uboot.md`](de25-uboot.md) §8). Neither touches
   QSPI.
 
+**Notes added 2026-11-26** (#318 bench; [ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) §5):
+
+- **The factory image is FPGA-first.** `quartus_pfg -i` reads `HPS_AFTER_INIT_DONE`, and
+  `-o hps=1` refuses the design. This settles the F1/F2 question above in F2's favour. §2 step 2
+  and §7 row 13 call it HPS-first; read them as FPGA-first.
+- **F2 did not reproduce on our bench's HPS-first image:** 10 warm reboots, each followed by an
+  LW-bridge read, gave no SError. HPS-first is now our image shape (ADR 0035 D2).
+- **F1 did not reproduce either:** one `fpga load` at the U-Boot prompt succeeded against an
+  HPS-first phase-1 with a matching IO hash. The product rule (load cores from Linux) stands;
+  a boot-time core loaded by U-Boot is D3's open choice.
+- **F6 was not tested.** Our bench's HPS-first image booted normally and did not hold the
+  fabric in reset.
+
 ## 8. Resolved questions (D0.1 close-out)
 
 **Provenance note.** Six research legs were run, one per question. **Q4 and Q6 returned

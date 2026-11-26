@@ -183,7 +183,8 @@ What is known from another DE25-Nano port that runs this path on real hardware:
 - **A fabric-unconfigured ("HPS-first") flash image is fragile**: it produced a fatal bus error
   on warm reboots there. A flash image that configures a full design at every reset was stable.
   Our posture keeps Terasic's factory (fully configured) image in flash, which is the stable
-  shape **[V there]**.
+  shape **[V there]**. *2026-11-26:* it did not reproduce on #318's HPS-first image (10 warm reboots, no
+  SError), and HPS-first is now our image shape ([ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) D2).
 
 **Answered 2026-11-25 (T1 on #318): it cannot.** A full-image RBF is rejected at runtime, and an
 HPS-first `core.rbf` is rejected because its HPS IO hash differs from the factory phase-1's. The

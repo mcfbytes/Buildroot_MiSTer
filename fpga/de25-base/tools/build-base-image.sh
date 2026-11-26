@@ -49,9 +49,9 @@ for n in CLOCK0_50 CLOCK2_50 system_reset_n HDMI_TX_CLK HDMI_TX_DE HDMI_TX_HS HD
 	grep -q "\\b$n\\b" "$top" || die "$rev.v has no '$n' -- the package is not the GHRD this recipe was written for"
 done
 grep -Eq 'assign[[:space:]]+HDMI_TX_' "$top" && die "$rev.v already drives HDMI_TX_* -- refusing to double-drive"
-# FPGA-first: the fabric (and so the splash) is configured before the HPS boots (ADR 0035 D2).
-grep -q 'HPS_INITIALIZATION "HPS FIRST"' "$qsf" && die "$rev.qsf is HPS-first; this image must be FPGA-first"
-grep -q 'HPS_INITIALIZATION' "$qsf" || echo 'set_global_assignment -name HPS_INITIALIZATION "AFTER INIT_DONE"' >> "$qsf"
+# HPS-first: only an HPS-first phase-1 accepts cores at runtime (ADR 0035 D2; #318 T1/T3).
+sed -i '/HPS_INITIALIZATION/d' "$qsf"
+echo 'set_global_assignment -name HPS_INITIALIZATION "HPS FIRST"' >> "$qsf"
 
 say "merging the HDMI splash into $rev.v"
 python3 -I - "$top" <<'PYEOF'
@@ -90,13 +90,22 @@ sof="$proj/output_files/$rev.sof"
 say "embedding the SPL ($spl)"
 quartus_pfg -c "$sof" "$out/de25_base_hps.sof" -o hps_path="$spl" > "$out/pfg-sof.log" 2>&1 ||
 	die "SPL merge failed -- see $out/pfg-sof.log"
-say "writing the QSPI image"
-quartus_pfg -c "$out/de25_base_hps.sof" "$out/de25_base.jic" \
+say "writing the QSPI image (phase-1) and the splash core"
+quartus_pfg -c "$out/de25_base_hps.sof" "$out/de25_base.jic" -o hps=1 \
 	-o device=MT25QU128 -o flash_loader=A5EB013BB23B -o mode=ASX4 > "$out/pfg-jic.log" 2>&1 ||
 	die "jic generation failed -- see $out/pfg-jic.log"
-quartus_pfg -i "$out/de25_base.jic" > "$out/de25_base.jic.info" 2>&1 || true
+quartus_pfg -c "$out/de25_base_hps.sof" "$out/de25_base.rbf" -o hps=1 > "$out/pfg-rbf.log" 2>&1 ||
+	die "rbf generation failed -- see $out/pfg-rbf.log"
+[ -f "$out/de25_base.core.rbf" ] || die "pfg wrote no de25_base.core.rbf -- see $out/pfg-rbf.log"
+for f in de25_base.jic de25_base.core.rbf; do
+	quartus_pfg -i "$out/$f" > "$out/$f.info" 2>&1 || true
+done
 
-( cd "$out" && sha256sum de25_base.jic de25_base_hps.sof > SHA256SUMS )
-say "done: $out/de25_base.jic"
-grep -i 'hash' "$out/de25_base.jic.info" || say "(no HPS IO hash printed; see de25_base.jic.info)"
+# The pair is only usable if both halves carry the same HPS IO hash (T1, #318).
+h1=$(grep -i 'HPS IO hash' "$out/de25_base.jic.info" | head -n1)
+h2=$(grep -i 'HPS IO hash' "$out/de25_base.core.rbf.info" | head -n1)
+[ -n "$h1" ] && [ "$h1" = "$h2" ] || die "HPS IO hash differs or is missing (jic: '$h1', core: '$h2')"
+
+( cd "$out" && sha256sum de25_base.jic de25_base.core.rbf de25_base_hps.sof > SHA256SUMS )
+say "done: $out/de25_base.jic + de25_base.core.rbf ($h1)"
 cat "$out/SHA256SUMS"

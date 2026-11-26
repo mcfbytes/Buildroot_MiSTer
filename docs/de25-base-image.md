@@ -25,14 +25,26 @@ The register table follows Main_MiSTer's `video.cpp` init for RGB 4:4:4 input an
 with two changes: `0x17 = 0x02`, because our syncs are already positive, and `0xD6 = 0xC0`
 (HPD always high), so the init needs no hot-plug wait.
 
-The image is **FPGA-first** (`HPS_INITIALIZATION "AFTER INIT_DONE"`, as the factory GHRD is). The
-SDM configures the whole fabric before the HPS starts, so the splash is on the screen from
-reset, before the SPL prints a line. The build refuses an HPS-first project.
+The image is **HPS-first** (`HPS_INITIALIZATION "HPS FIRST"`); the factory GHRD is FPGA-first.
+Only an HPS-first phase-1 accepts a core at runtime. An FPGA-first design yields only full
+images, which the SDM refuses after boot (`0xf0040000`), so it could never load a MiSTer core.
+Under the factory image the HPS IO hash is the factory's, so no core of ours matches it either.
+#318 proved the HPS-first pair on the bench (ADR 0035 B2): it loaded 32 cores, including after
+10 warm reboots, with no SError.
+
+The build therefore writes a **pair** with one HPS IO hash, and refuses to finish if the two
+hashes differ:
+
+- **`de25_base.jic`**, the QSPI image: the SDM firmware, the phase-1 (I/O and HPS
+  configuration, about 830 KiB on the bench build) and the SPL. It holds no fabric logic.
+- **`de25_base.core.rbf`**, the GHRD plus the splash. Something has to load it at boot, before
+  Linux: U-Boot (`fpga load`) or the SPL. That choice is part of D3. The logo then shows from
+  about U-Boot time, not from reset, and Linux later replaces it with the Menu core.
 
 ## 2. What it is for
 
 1. **The flash window** of ADR 0035 D4. After the first boot writes this image and reboots, every
-   later boot shows the logo at power-on.
+   later boot shows the logo as soon as the boot core is loaded.
 2. **A known-good fabric to fall back to.** It is the factory design plus a block that only
    drives otherwise-unused pins, so it changes nothing the HPS depends on.
 3. **The base the MiSTer framework grows from.** Next steps, not built:
@@ -40,7 +52,8 @@ reset, before the SPL prints a line. The build refuses an HPS-first project.
    - an `fbcfg` mailbox behind the LW bridge, compatible with what ItsAlive's DE25 path expects
      (the MAGIC check and the scaler base write), so `itsalive` can draw installer progress
      unchanged;
-   - the Menu core, once B2 says how cores load over an FPGA-first base.
+   - the Menu core, loaded at runtime over the same phase-1 (#318 T3 did it through
+     `fpga_mgr_load()`; our loader is `de25-fpga-reconfig.md` §3.2's open choice).
 
 ## 3. Licensing: why the repo holds no Terasic HDL
 
@@ -78,9 +91,11 @@ Run it from the repo root: `tools/quartus-run.sh` mounts the current directory a
 2. checks that the GHRD top has every name the merge relies on and drives no `HDMI_TX_*` pin;
 3. inserts the PLL and `de25_hdmi_splash` before `endmodule` and adds our files to the `.qsf`;
 4. runs `quartus_sh --flow compile`, then `quartus_pfg -c … -o hps_path=<SPL hex>` (the GHRD's
-   own SPL by default; `SPL_HEX` for ours, ADR 0035 D3), then the `.jic` with Terasic's own
-   options (`device=MT25QU128`, `flash_loader=A5EB013BB23B`, `mode=ASX4`);
-5. prints `quartus_pfg -i` (the HPS IO hash) and the SHA-256s.
+   own SPL by default; `SPL_HEX` for ours, ADR 0035 D3), then the `.jic` with `-o hps=1` and
+   Terasic's own options (`device=MT25QU128`, `flash_loader=A5EB013BB23B`, `mode=ASX4`), and the
+   `.core.rbf` with `-o hps=1`;
+5. compares the HPS IO hash that `quartus_pfg -i` reports for both halves, then prints it and the
+   SHA-256s.
 
 **The container.** The DE10's Quartus container (`theypsilon/quartus-lite-c5:17.0.2`) cannot
 build this: Agilex 5 needs Quartus Prime **Pro**. `tools/quartus-run.sh` runs Altera's own image,
@@ -103,12 +118,14 @@ never committed.
 
 **Why 25.3.1 and not the factory's 25.1.1:** we do not need to match the factory's HPS IO hash,
 because we replace the factory image. What matters is that the image and every core share one
-Quartus version (T1, #318). B2 adds a reproducibility check: two clean compiles of the same
-project must print the same hash.
+Quartus version (T1, #318), and Altera's container images start at 25.3. The bench's 25.1.1
+Build 125 compiles were deterministic: three clean builds printed the same hashes. So 25.1.1 is
+not ruled out; it is just not packaged. Two clean compiles must print the same hash on our pin
+too.
 
 ## 5. Bench checks it needs (ADR 0035 B2)
 
-- The logo appears at power-on, before the SPL's first line, and stays through Linux.
+- The logo appears once the boot core is loaded, and stays until Linux loads the Menu core.
 - The ADV7513 ACKs, which shows the I2C pins and pull-ups. A NACK leaves `init_nack` set, which
   is visible in SignalTap.
 - Pixel clock phase: `HDMI_TX_CLK` is the inverted pixel clock. If the picture sparkles, adjust

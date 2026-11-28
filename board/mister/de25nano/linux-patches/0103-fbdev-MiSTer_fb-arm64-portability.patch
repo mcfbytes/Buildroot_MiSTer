@@ -89,7 +89,7 @@ index 5ff4c5265..ab11a71d8 100644
   * The two aliases cannot fight: on 32-bit ARM ioremap_wt IS ioremap_wc
   * (arch/arm/include/asm/io.h), Normal non-cacheable like
   * pgprot_writecombine.  Only shareability differs (MT_DEVICE_WC lacks
-@@ -339,8 +343,13 @@ static int fb_probe(struct platform_device *pdev)
+@@ -354,8 +358,13 @@ static int fb_probe(struct platform_device *pdev)
  	fbdev->fb_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
  	if (!fbdev->fb_res) return -ENODEV;
  
@@ -105,7 +105,7 @@ index 5ff4c5265..ab11a71d8 100644
  	if (!fbdev->fb_base)
  	{
  		dev_err(&pdev->dev, "memremap fb failed\n");
-@@ -359,9 +368,9 @@ static int fb_probe(struct platform_device *pdev)
+@@ -374,9 +383,9 @@ static int fb_probe(struct platform_device *pdev)
  	retval = register_framebuffer(&fbdev->info);
  	if (retval < 0) goto err_dealloc_cmap;
  
@@ -117,7 +117,7 @@ index 5ff4c5265..ab11a71d8 100644
  		 fbdev->info.fix.smem_len, fbdev->info.screen_base);
  
  	fbdev->irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
-@@ -369,9 +378,15 @@ static int fb_probe(struct platform_device *pdev)
+@@ -384,9 +393,15 @@ static int fb_probe(struct platform_device *pdev)
  
  	init_waitqueue_head(&vs_wait);
  
@@ -134,7 +134,7 @@ index 5ff4c5265..ab11a71d8 100644
  	}
  
  	p_fbdev = fbdev;
-@@ -390,8 +405,9 @@ static void fb_remove(struct platform_device *dev)
+@@ -405,8 +420,9 @@ static void fb_remove(struct platform_device *dev)
  	{
  		unregister_framebuffer(&fbdev->info);
  		fb_dealloc_cmap(&fbdev->info.cmap);

@@ -529,7 +529,7 @@ Confirmed by exhaustive grep: Main_MiSTer touches **no** `/sys` path other than 
 | `FB_SIZE` | `1920 * 1080` = 2,073,600 **pixels** (×4 B = 8,294,400 B) | `Main:video.cpp:36` |
 | Main_MiSTer's mapping | `shmem_map(FB_ADDR, FB_SIZE * 4 * 3)` = **24,883,200 B** at `0x22000000` | `Main:video.cpp:2417` |
 | DTS node | `MiSTer_fb { compatible = "MiSTer_fb"; reg = <0x22000000 0x800000>; interrupts = <0 40 1>; }` | `docs/stock-inventory/20250402/stock.dts:993-997` |
-| `/dev/fb0` pixels start at | `fb_res->start + 4096` = **`0x22001000`** | `MiSTer_fb.c:351-352` |
+| `/dev/fb0` pixels start at | `fb_res->start + 4096` = **`0x22001000`** | `MiSTer_fb.c:366-367` |
 | Buffer *n* base (Main_MiSTer's view) | `FB_ADDR + (FB_SIZE*4*n) + (n ? 0 : 4096)` | `Main:video.cpp:3574` |
 
 Read that table carefully, because **the plan's mental model is wrong in one important way**:
@@ -649,18 +649,20 @@ This — not the ioctl — is where the MiSTer-specific framebuffer ABI actually
 
 | Path | Mode | Format | Kernel side | Userland side |
 |---|---|---|---|---|
-| `/sys/module/MiSTer_fb/parameters/**mode**` | **0664 RW** | five unsigned ints, `"%u %u %u %u %u"` = **`format rb width height stride`** | `module_param_cb(mode, &param_ops, NULL, 0664)`, `MiSTer_fb.c:466`; `mode_set()` `:425-449`; `mode_get()` `:451-459` | `Main:video.cpp:3548-3552` (`fprintf(fp, "%d %d %d %d %d\n", 8888, 1, w, h, w*4)`) and `Main:video.cpp:4390-4391` (`system("echo %d %d %d %d %d >/sys/module/MiSTer_fb/parameters/mode")`) |
+| `/sys/module/MiSTer_fb/parameters/**mode**` | **0664 RW** | five unsigned ints, `"%u %u %u %u %u"` = **`format rb width height stride`** | `module_param_cb(mode, &param_ops, NULL, 0664)`, `MiSTer_fb.c:481`; `mode_set()` `:440-464`; `mode_get()` `:466-474` | `Main:video.cpp:3548-3552` (`fprintf(fp, "%d %d %d %d %d\n", 8888, 1, w, h, w*4)`) and `Main:video.cpp:4390-4391` (`system("echo %d %d %d %d %d >/sys/module/MiSTer_fb/parameters/mode")`) |
 | `…/width`, `…/height`, `…/stride`, `…/format`, `…/rb`, `…/frame_count`, `…/res_count` | 0444 RO | `uint` | `module_param(…, uint, 0444)`, `MiSTer_fb.c:48-54` | not read by Main_MiSTer; community scripts do |
 
 Writing `mode`:
 1. `console_lock()` + `lock_fb_info()`;
 2. `sscanf(val, "%u %u %u %u %u", &format, &rb, &width, &height, &stride)`;
-3. `setup_fb_info()` recomputes `bits_per_pixel`, the RGB bitfields and `screen_size` (one visible frame);
+3. `setup_fb_info()` recomputes `bits_per_pixel`, the RGB bitfields and `screen_size` (one visible frame). With
+   `0070` it also clips the kernel's view of a mode that does not fit the region (stride to the region, `xres` to the
+   stride, `yres` to the rows that fit, one `dev_warn`); stock bounds nothing, so fbcon would draw past the mapping;
 4. **the header page and the new visible frame are wiped** (`4096 + screen_size` bytes from `fb_base`). Stock wipes the
    whole 8 MiB resource; `0070` narrows it so a second frame a client keeps further up the region survives. What the
    screen shows after the write is the same (all black);
-5. `fb_set()` → `fb_pan_display` + `fb_set_cmap` + `fb_add_videomode` + **`fbcon_update_vcs()`** (`:421`);
-6. `res_count++` (`:445`).
+5. `fb_set()` → `fb_pan_display` + `fb_set_cmap` + `fb_add_videomode` + **`fbcon_update_vcs()`** (`:436`);
+6. `res_count++` (`:460`).
 
 `format` values the driver understands (`MiSTer_fb.c:233-302`): **`8`** (palettised, 8 bpp,
 `FB_VISUAL_PSEUDOCOLOR`), **`565`** and **`1555`** (16 bpp), and **anything else ⇒ `8888`**

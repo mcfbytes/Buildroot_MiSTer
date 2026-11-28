@@ -1,6 +1,6 @@
 # DE25-Nano base QSPI image — the GHRD with an HDMI splash
 
-**Status:** first step built and simulated; **never compiled in Quartus (no licence yet), never on a board.**
+**Status:** first step built and simulated. Quartus compiles for this device with the licence; **the base image itself has never been compiled or run on a board.**
 This is the image [ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) D1 calls
 "our own QSPI image", in its first and smallest form: Terasic's factory design with a picture.
 Sources: `fpga/de25-base/`.
@@ -104,17 +104,23 @@ build this: Agilex 5 needs Quartus Prime **Pro**. `tools/quartus-run.sh` runs Al
 with patch 1.02, the patch Altera requires on every 25.3.1 install, and only Agilex 5 devices.
 The wrapper makes three changes, all needed **[V 2026-11-25, on this tree's build host]**:
 
-- **`LD_PRELOAD` of the image's own `libudev.so.1`.** Without it, `quartus_syn` aborts with
-  `realloc(): invalid pointer` inside `udev_enumerate_scan_devices`. The caller is the FlexLM
-  host-ID probe (`cpt_flexlm_get_local_hostid`), so this hits every compile, not just one design.
+- **A stub `libudev.so.1` mounted over the image's** (`tools/udev-stub.c`, built on first use
+  into `.quartus-run/`). Without it, `quartus_syn` aborts with `realloc(): invalid pointer` in
+  `udev_enumerate_scan_devices`. The caller is FlexLM's host-ID probe (`sys_cpt`, which
+  `dlopen`s libudev), so every compile hits it. Preloading the real library only moves the crash:
+  it passes while there is no licence and aborts again once a licence makes FlexLM probe more
+  host-ID types. The stub's `udev_new()` returns NULL, the probe skips its device scan, and the
+  MAC-based licence still matches. A full compile of a test design for `A5EB013BB23BE4SR1`
+  passes this way **[V 2026-11-27]**.
 - **A fixed `--mac-address`** (`QUARTUS_MAC`, default `02:de:25:00:00:01`). The licence is
   bound to a NIC ID, and a container gets a new MAC each run.
 - **The caller's uid,** so the outputs are not owned by root.
 
 **The licence.** Without one, synthesis stops with `Error (19286): No license for family
 Agilex 5`. Altera issues a no-cost licence for Agilex 5 E-series, which the board's `A5EB013`
-is, from its Self-Service Licensing Center. Request it for the NIC ID `02de25000001` (the
-default MAC, without colons), or for your own `QUARTUS_MAC`. Pass it as `QUARTUS_LICENSE`; it is
+is, from its Self-Service Licensing Center. Request **SW-AGILEX-5E**, type FIXED, for the
+NIC ID `02de25000001` (the default MAC, without colons), or for your own `QUARTUS_MAC`. It
+carries the feature `quartus_agilex5e` and lasts a year. Pass it as `QUARTUS_LICENSE`; it is
 never committed.
 
 **Why 25.3.1 and not the factory's 25.1.1:** we do not need to match the factory's HPS IO hash,

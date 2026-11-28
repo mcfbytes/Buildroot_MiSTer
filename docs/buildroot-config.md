@@ -381,6 +381,15 @@ both the DE10's 6.18.y line and the 7.2.y line the RT variant and the DE25
 track, and `scripts/hash-sync-kernel.sh` is its single automated writer. The
 DE25's patch dir reaches it by symlink (§6.3).
 
+**The DE25 reads only its own patch dir** (`board/mister/de25nano/patches`). It
+cannot list the DE10's, which holds DE10 `linux`, `linux-rt` and `uboot`
+patches. So each shared userspace package patch dir is symlinked in:
+`exfatprogs`, `gpm`, `mister-initramfs-exfatprogs`, `transmission` and
+`wpa_supplicant`. Without the links those packages built stock on the DE25,
+which #318's bench found as `gpm: FAIL (jailed daemon)`. **A new
+`de10nano/patches/<pkg>/` for a package the DE25 also builds needs the same
+link.**
+
 It also carries the DE10's `bluez5_utils` patch set, which is the reason the
 DE25 does NOT point at this directory (§6.3).
 

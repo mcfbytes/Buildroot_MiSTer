@@ -1,5 +1,9 @@
 # Wave 5 — upstream candidates for MiSTer-devel/Linux-Kernel_MiSTer
 
+> Every PR this repo has sent to the fork since, and its outcome, is in
+> `docs/kernel-recon/upstream-prs.md`. Candidate 5 (`0042`) went the Main_MiSTer route
+> instead (Main_MiSTer #1436).
+
 > **Outcome (2026-09-12; merge status confirmed in the 2026-09-14 fork-sync increment,
 > `docs/kernel-recon/fork-sync-2026-09-14.md`).** Sent as Linux-Kernel_MiSTer PRs #95
 > (candidate 2), #96 (3), #97 (4) and #98 (7), plus config PRs #93/#94. **#93, #94, #95 and #98

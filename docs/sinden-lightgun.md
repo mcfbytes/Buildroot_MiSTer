@@ -60,6 +60,15 @@ def_bool it unlocks). Everything else is modules (`videodev`, `videobuf2-*`,
 `uvc`, `uvcvideo`), loaded by udev's modalias handling when a camera appears.
 Any UVC webcam works as a side effect.
 
+**Two guns** may not stream at once. The DE10 has one USB host controller, and
+each camera reserves the isochronous bandwidth its descriptor asks for. The
+custom MiSTer kernels Sinden users run, and fork PR #117, add a `uvc_video.c`
+hunk that caps `dwMaxPayloadTransferSize` at 0x400 for compressed (MJPEG)
+formats so two cameras fit. We do not carry that hunk. It is a blanket override
+of what the device negotiates, and with no gun it cannot be tested here. If a
+second gun fails with `No space left on device` (`-ENOSPC`) on stream start,
+this hunk is the fix to take.
+
 ## 3. Userspace: which Sinden build, and why
 
 | Candidate | Verdict |

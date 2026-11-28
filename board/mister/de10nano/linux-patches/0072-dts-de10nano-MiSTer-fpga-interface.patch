@@ -44,9 +44,10 @@ Provenance
 Origin:       None; authored for this tree. Folds in 0043 (2026-08-08) and
               0044 (2026-08-14), same author.
 Author:       Michael C. Ferguson, 2026-11-13; mister_ocram 2026-11-22.
-Upstream:     For the MiSTer kernel fork (export via
-              scripts/export-kernel-tree.sh). generic-uio is bound through
-              uio_pdrv_genirq.of_id; not a mainline binding.
+Upstream:     Sent to the MiSTer fork with 0045 as LK_MiSTer PR #122
+              (open, 2026-11-25), ported to its socfpga_cyclone5_de10_nano.dts.
+              generic-uio is bound through uio_pdrv_genirq.of_id; not a
+              mainline binding.
 Depends on:   0004 (the DTS base). 0045 makes mister,map-writecombine
               effective; without it the aperture maps strongly ordered.
               Needs CONFIG_UIO=y, CONFIG_UIO_PDRV_GENIRQ=y and

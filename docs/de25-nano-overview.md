@@ -192,6 +192,12 @@ hash also changes with the Quartus version. The plan is now our own QSPI image, 
 first boot ([ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md)). The bullet below
 is kept as the question was posed.
 
+**Answered 2026-11-26/27 (#318) for our own image:** with an HPS-first phase-1 and a `core.rbf` of
+matching hash, cores load from U-Boot and from Linux: 32 loads, including after 10 warm reboots,
+none fatal. An HPS-first image configures no fabric at power-on, so U-Boot must load the boot
+core. A warm reboot keeps the fabric. The factory image uses about 3.3 MiB of the flash, so a
+factory fallback slot fits. Results: [`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §12.
+
 What is still unknown for *our* model specifically:
 
 - **Whether a core compiled by us can be loaded against Terasic's factory phase-1 bitstream.**

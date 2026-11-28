@@ -18,6 +18,9 @@ is contrasted against — [`boot-chain.md`](boot-chain.md).
 > ruled out of anything shipped — as **policy chosen fail-closed**, not as a proven impossibility;
 > (c) mainline U-Boot's environment can silently land **in QSPI** (§8.5) — §7 row 5.
 >
+> *2026-11-27:* (b) is superseded. The factory image occupies about 3.3 MiB of the 16 MiB
+> (§8.4), so a factory fallback slot fits by size, and ADR 0035 now plans our own QSPI image.
+>
 > **And one fact the refutation pass added, which changes §5 and §6 materially:** Terasic **does**
 > publish the factory QSPI image. `golden_top_hps.jic` ships inside the downloadable Resource
 > Package, and the Getting Started Guide documents the restore procedure. The first pass's
@@ -599,6 +602,12 @@ programmed size. **Inherits: a follow-on desk task or D2.1. Until it lands, §6'
 ("nothing we ship writes QSPI") stands as policy and §7 rows 1/8 are the operative guards — but
 it must not be written into the DP-1 ADR as a proven impossibility (§9.2).**
 
+**Answered by measurement 2026-11-27 (#318):** the certified factory flash is blank (`0xFF`)
+above `0x3450a1`, about 3.3 MiB. It holds four 420 KiB Altera-signed firmware sections (CMF 1–4,
+"Support firmware upgrade: TRUE (Max 4)") and a 1.3 MiB configuration payload at `0x200000`,
+leaving about 12.7 MiB. So a factory image plus one application slot fits by size. Still open,
+as ADR 0035 B5: that `quartus_pfg` builds that RSU layout, and that the SPL boots it.
+
 ### 8.5 Q5 — U-Boot environment location and the warm-reboot story — **Env: RESOLVED [V], and it is §7 rows 5/11/12. Warm reboot: PARKED [U].**
 
 **Environment.** Mainline `socfpga_agilex5_defconfig` compiles in **two** env locations:
@@ -641,6 +650,11 @@ repeated. **Blocker:** Agilex 5 boot/reset documentation (813762/813763, 814346,
 403-blocked on every mirror tried. **Inherits: D2.2** — trigger an HPS warm reset and observe
 whether the fabric image survives; on the same run, confirm which env location our build loads
 from and saves to.
+
+**Answered 2026-11-27 (#318):** an HPS warm reset **keeps** the fabric image; a power cycle
+clears it. This was measured on an HPS-first image: a warm reboot left a loaded core running.
+With an HPS-first image, nothing configures the fabric at power-on, so a boot-time core always
+needs an explicit `fpga load` (ADR 0035 D2).
 
 ### 8.6 Q6 — DDR-handoff coupling: how tightly does posture 1 pin us to Terasic? — **RESOLVED at the structural level [V]; magnitude parked.**
 

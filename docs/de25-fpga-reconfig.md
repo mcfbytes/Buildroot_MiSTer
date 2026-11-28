@@ -392,6 +392,11 @@ For the bare developer OS (ADR 0027 Decision 6), **(c) is sufficient and (a)/(b)
 optional** — this is the choice that lets D2 ship without solving overlay loading. Core
 switching needs (a) or (b), and that is an L0/D2 decision, not one this task closes.
 
+*2026-11-26:* option (b)'s shape works on hardware. #318's bench module called
+`fpga_mgr_load()` directly with no overlay and loaded 32 cores (§12). Our own draft of the same
+shape is [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §4.3 and Appendix A, still
+unpackaged.
+
 ## 4. What a DE25 kernel and device tree must contain
 
 ### 4.1 Kconfig
@@ -593,6 +598,9 @@ The evidence base supports "very likely permissive out of the box" and supports 
 stronger. Because a wrong answer here invalidates the entire core-switching premise —
 not the schedule, the premise — this should be settled *before* hardware money is
 committed if a document can be obtained, and in the first hour of D2.5 otherwise.
+
+*Answered 2026-11-26 (#318):* unsigned, locally compiled `core.rbf` files load on this board,
+from U-Boot and from Linux (§12). Fuse status (ADR 0035 B1) is still to be read, as a formality.
 
 ## 6. Latency
 
@@ -977,11 +985,11 @@ remains unread and **[U]**.
 |---|---|---|---|
 | 1 | Does the factory DE25-Nano QSPI ship with VAB/QKY keys provisioned — i.e. will unsigned community `.rbf` load? | Load a locally built unsigned `core.rbf` and observe SDM accept/reject; or obtain and fully read Intel doc 762191 / the Agilex 5 Configuration UG (both 403 on 2026-08-21). The *UM* is now read and is silent, which is weak permissive evidence only | **D2.5** (first hour); a doc fetch is worth attempting before hardware purchase |
 | 2 | Do `intel,agilex-svc` / `intel,agilex-soc-fpga-mgr` bind and function on Agilex 5 silicon? *(2026-11-17: binding is settled from source. Function was blocked by BL31's address handling on stock firmware and is patched there; the hardware run is T3.)* | Substantially de-risked by the *A5-series* fallback declaration (§3.1) but not proven: author §4.2's DT, boot, check `/sys/class/fpga_manager/` and the probe dmesg. Desk follow-up: check whether the series landed in a post-6.18 kernel and what else it dragged in | **D2.5**; the mainline-landing check is desk work for **D0.3** |
-| 3 | Measured reconfiguration latency: storage read vs overlay apply vs SDM write vs overlay remove | §6.3, steps 2–4, 20 iterations. Watch for SDM windows that are near-exact 1 s multiples (§6.1 row 7) | **D2.5** |
-| 4 | Does the region accept repeated overlay apply/remove cycles cleanly — no leaks, no second-switch failure, HPS→fabric access still alive afterwards? | §6.3 step 3, iterations 2..20, with an LWH2F-window read after every switch. **Raised in priority**: no mainline user cycles overlays (§3.2) and *AXE5* reports a second-configuration hang on Agilex 5 (§6.1 row 4a) | **D2.5** |
+| 3 | *(2026-11-26: one figure, §12)* Measured reconfiguration latency: storage read vs overlay apply vs SDM write vs overlay remove | §6.3, steps 2–4, 20 iterations. Watch for SDM windows that are near-exact 1 s multiples (§6.1 row 7) | **D2.5** |
+| 4 | *(answered 2026-11-26 for direct `fpga_mgr_load()`: yes, §12; the overlay path is untested)* Does the region accept repeated overlay apply/remove cycles cleanly — no leaks, no second-switch failure, HPS→fabric access still alive afterwards? | §6.3 step 3, iterations 2..20, with an LWH2F-window read after every switch. **Raised in priority**: no mainline user cycles overlays (§3.2) and *AXE5* reports a second-configuration hang on Agilex 5 (§6.1 row 4a) | **D2.5** |
 | 5 | Does an overlay omitting `config-complete-timeout-us` fail immediately? | §6.3 step 6, several runs (benign race, §4.3) | **D2.5** |
-| 6 | Which overlay-loader option — carry `OF_CONFIGFS`, write a board driver, or U-Boot-preload only *(2026-11-17: a board module calling `fpga_mgr_load()` directly; drafted, not landed.)* | Design decision once §3.2's options are costed; classify the configfs patch against `docs/patch-provenance.md` (origin is the 2014 Antoniou series; the shipping form was not located) | **D2** (design), **D0.3** may classify the patch |
-| 7 | Actual A5EB013 `core.rbf` size, and the SDM's internal config clock/bus width | Build a GHRD-based `core.rbf` in Quartus Prime Pro and `stat` it; read the Agilex 5 datasheet PDF locally rather than the JS docs site | **D2.5** / desk, whenever a PDF mirror is found |
+| 6 | *(2026-11-26: (b)'s shape proven on hardware, §12; the choice is still ours)* Which overlay-loader option — carry `OF_CONFIGFS`, write a board driver, or U-Boot-preload only *(2026-11-17: a board module calling `fpga_mgr_load()` directly; drafted, not landed.)* | Design decision once §3.2's options are costed; classify the configfs patch against `docs/patch-provenance.md` (origin is the 2014 Antoniou series; the shipping form was not located) | **D2** (design), **D0.3** may classify the patch |
+| 7 | *(answered 2026-11-26: 1,581,056 B for the GHRD, §12)* Actual A5EB013 `core.rbf` size, and the SDM's internal config clock/bus width | Build a GHRD-based `core.rbf` in Quartus Prime Pro and `stat` it; read the Agilex 5 datasheet PDF locally rather than the JS docs site | **D2.5** / desk, whenever a PDF mirror is found |
 | 8 | Agilex 5 F2H and F2SDRAM window addresses and widths | Read Intel HPS TRM 814346/813752 directly — needs an authenticated fetch, a mirror, or a human-supplied PDF | **D0.1/D2.2** recon; blocks §7.3 |
 | 9 | Is fabric access to HPS LPDDR4A coherent by default, or must the fabric master assert CCU/ACE-Lite via AXUSER? | Same TRM chapter, then measure on hardware once a GHRD test image exists | **D2.2/D2.5**; plan §7 calls this the highest-value unknown and it stays that way |
 | 10 | Does the 0045 write-combine throughput floor reproduce on Agilex 5/ARMv8? | Map the shared aperture Device-nGnRnE vs Normal-NC and measure streaming read/write each way — the same test that produced the DE10's ~100/~54 MB/s | **D2.5**; feeds the DP that replaces DP-9's Claim B |
@@ -991,4 +999,31 @@ remains unread and **[U]**.
 | 14 | Does the Agilex 5 `svc` node need `iommus = <&smmu 10>` (upstream has it; 6.18.44's DTSI has no `smmu` node)? *(2026-11-17: the binding requires it only for `intel,agilex5-svc`. We inherit it and it is inert with the SMMU disabled. Whether the SMMU is needed by the hardware is T0/T1.)* | Read the *A5-series* DTS patch against whichever DTSI it targets; test both forms on hardware | **D0.3** desk, **D2.5** confirm |
 | 15 | Can the ADV7513's control I2C be muxed onto the HPS bus (*UM* Figure 3-13, not text-extractable)? | Read the figure from the PDF as an image, or the System CD schematic | **D0.1**; does not change DP-10 (§7.4) |
 | 16 | *(added 2026-11-17)* Silicon revision, the revision-A scratch bit, the SDM remap registers and the SMMU's reset state | Test T0 in [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8: register reads at the U-Boot prompt | **first bench session** |
-| 17 | *(added 2026-11-17)* Is there a phase-2 RBF that matches the QSPI phase-1 image, and is the factory image HPS-first at all? | `quartus_pfg -i` on the factory JIC prints an HPS IO hash for an HPS-first image; without a matching RBF, T1 waits for a Quartus build. **Answered 2026-11-25 (#318):** no RBF matches. A full image and an HPS-first `core.rbf` are both refused (`0xf0040000`), and the HPS IO hash also depends on the Quartus version. See [ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) | **desk, before the bench session** |
+| 17 | *(added 2026-11-17; the factory image is FPGA-first, §12)* Is there a phase-2 RBF that matches the QSPI phase-1 image, and is the factory image HPS-first at all? | `quartus_pfg -i` on the factory JIC prints an HPS IO hash for an HPS-first image; without a matching RBF, T1 waits for a Quartus build. **Answered 2026-11-25 (#318):** no RBF matches. A full image and an HPS-first `core.rbf` are both refused (`0xf0040000`), and the HPS IO hash also depends on the Quartus version. See [ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) | **desk, before the bench session** |
+
+## 12. Bench results — #318, 2026-11-26/27
+
+The tester's own builds (Quartus 25.1.1 Build 125, Terasic System CD GHRD), on our kernel and
+our `u-boot.itb`. The full record is [ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) §5; what matters for this document:
+
+| Question | Result |
+|---|---|
+| Can a core load against the **factory** QSPI image? | **No.** The factory image is FPGA-first, a full image is refused at runtime (`0xf0040000`), and an HPS-first `core.rbf` has the wrong HPS IO hash |
+| Can it load against an **HPS-first** phase-1 with a matching hash? | **Yes.** U-Boot `fpga load`: "FPGA reconfiguration OK!". Linux: a bench module calling `fpga_mgr_load()` |
+| Size and time | GHRD `core.rbf` 1,581,056 B. ~2.1 s per load through the service layer, from `insmod` to "operating" (one figure, not §6.3's breakdown) |
+| Repeated loads | 20 in a row in one session: clean, LW-bridge reads stable (`devmem 0x20000000` = `3`), no hang. §6.1 row 4a's second-configuration hang did not reproduce |
+| Warm reboots | 10, a load and an LW-bridge read after each: no SError |
+| Fabric across resets | **An HPS-first image configures nothing at power-on**, even with a core in QSPI. A **warm reboot keeps** the loaded fabric; a power cycle clears it |
+| Known anomaly | After the first `reboot -f`, every load prints `S2F/LWS2F bridge enable: Timeout hdskack` (BL31) until a power cycle: it reconfigures a live fabric. Every such load still reached "operating" |
+
+**What this leaves for core switching:**
+
+1. **The loader.** Package Appendix A of [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md)
+   (a misc device, `/sys/class/misc/de25-fpga-load/load`) as an out-of-tree kmod. Then run
+   §6.3's timing plan through it, including a truncated RBF.
+2. **Bridge quiesce.** The DE10 Main stops HPS→fabric traffic around a switch. The DE25
+   equivalent is untested: what Main must stop, and whether the `hdskack` path needs a settle.
+   The public port needed 3 s before and 5 s after ([`de25-reference-implementation.md`](de25-reference-implementation.md)).
+3. **The pairing guard.** A core whose HPS IO hash differs from the phase-1's is refused by the
+   SDM. The loader should check before asking (D2.9 item 2), so the error is legible.
+

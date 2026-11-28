@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /* de25-fpga-load - load a full FPGA image by firmware name through fpga-mgr. */
+#include <linux/array_size.h>
 #include <linux/fpga/fpga-mgr.h>
 #include <linux/miscdevice.h>
 #include <linux/module.h>
@@ -12,7 +13,11 @@
 /* stratix10-soc waits this long for the SDM to report completion; 0 fails at once. */
 #define DE25_FPGA_COMPLETE_TIMEOUT_US	(30 * USEC_PER_SEC)
 
-static const char * const de25_fpga_mgr_compat = "intel,agilex5-soc-fpga-mgr";
+/* The board DTS carries both; the stock driver binds the generic one. */
+static const char * const de25_fpga_mgr_compat[] = {
+	"intel,agilex5-soc-fpga-mgr",
+	"intel,agilex-soc-fpga-mgr",
+};
 
 static ssize_t load_store(struct device *dev, struct device_attribute *attr,
 			  const char *buf, size_t count)
@@ -22,6 +27,7 @@ static ssize_t load_store(struct device *dev, struct device_attribute *attr,
 	struct device_node *np;
 	char *copy, *name;
 	ktime_t start;
+	unsigned int i;
 	int ret;
 
 	copy = kstrndup(buf, count, GFP_KERNEL);
@@ -33,8 +39,11 @@ static ssize_t load_store(struct device *dev, struct device_attribute *attr,
 		goto out_copy;
 	}
 
-	np = of_find_compatible_node(NULL, NULL, de25_fpga_mgr_compat);
+	np = NULL;
+	for (i = 0; !np && i < ARRAY_SIZE(de25_fpga_mgr_compat); i++)
+		np = of_find_compatible_node(NULL, NULL, de25_fpga_mgr_compat[i]);
 	if (!np) {
+		dev_err(dev, "no FPGA manager node in the device tree\n");
 		ret = -ENODEV;
 		goto out_copy;
 	}

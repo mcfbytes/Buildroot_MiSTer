@@ -24,8 +24,8 @@ echo "$out" | grep -q "starts=43 writes=43 framing_errors=0 nack=0" &&
 rtl="../rtl/de25_fb_regs.v ../rtl/de25_fb_reader.v ../rtl/de25_vtiming.v"
 out=$(run "iverilog -g2012 -o /tmp/tb_fb.vvp tb_fb.v $rtl && vvp -n /tmp/tb_fb.vvp")
 echo "$out"
-[ "$(echo "$out" | grep -c 'mismatches=0 underrun=0')" -eq 4 ] &&
-	echo "ok   framebuffer: four modes (2x, 1x, full 1080p at 50% stalls, 4x odd width), every pixel" ||
+echo "$out" | grep -q "tb_fb: 0 failure(s)" &&
+	echo "ok   framebuffer: five modes every pixel, invalid settings black, underrun and read error flagged, AXI rules" ||
 	{ echo "FAIL framebuffer"; fail=1; }
 out=$(run "iverilog -g2012 -o /tmp/tb_hdmi.vvp tb_hdmi.v ../rtl/de25_hdmi.v $rtl ../rtl/de25_splash.v ../rtl/de25_adv7513_init.v && cd ../rtl && vvp -n /tmp/tb_hdmi.vvp")
 echo "$out"

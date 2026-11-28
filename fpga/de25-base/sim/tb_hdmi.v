@@ -35,11 +35,11 @@ module tb_hdmi;
 
 	wire tclk, tde, ths, tvs; wire [23:0] td; wire scl, sda, idone, inack;
 	pullup (scl); pullup (sda);
-	de25_hdmi #(.CLK_HZ(100_000_000)) dut (.clk(clk), .rst_n(rst_n), .pclk(pclk),
-		.s_address(addr), .s_read(rd), .s_write(wr), .s_writedata(wdata), .s_readdata(rdata),
+	de25_hdmi #(.CLK_HZ(100_000_000)) dut (.clk(clk), .rst_n(rst_n), .pclk(pclk), .pll_locked(1'b1),
+		.s_address(addr), .s_read(rd), .s_write(wr), .s_byteenable(4'hF), .s_writedata(wdata), .s_readdata(rdata),
 		.m_araddr(araddr), .m_arlen(arlen), .m_arsize(arsize), .m_arburst(arburst), .m_arid(arid),
 		.m_arcache(arcache), .m_arprot(arprot), .m_arvalid(arvalid), .m_arready(arready),
-		.m_rdata(rdata_m), .m_rlast(rlast), .m_rvalid(rvalid), .m_rready(rready),
+		.m_rdata(rdata_m), .m_rresp(2'b00), .m_rlast(rlast), .m_rvalid(rvalid), .m_rready(rready),
 		.HDMI_TX_CLK(tclk), .HDMI_TX_DE(tde), .HDMI_TX_HS(ths), .HDMI_TX_VS(tvs), .HDMI_TX_D(td),
 		.HDMI_I2C_SCL(scl), .HDMI_I2C_SDA(sda), .init_done(idone), .init_nack(inack));
 
@@ -75,7 +75,7 @@ module tb_hdmi;
 		end
 	endtask
 	initial begin
-		#20000 rst_n = 1;
+		#20000 @(negedge clk) rst_n = 1;
 		frame_check(1);
 		$display("splash: de=%0d sync_mismatch=%0d splash_mismatch=%0d", nde, bad_sync, bad_splash);
 		wreg(4'd2, 1);                       // reset defaults: 640x480 at 0xA0001000, stride 2560

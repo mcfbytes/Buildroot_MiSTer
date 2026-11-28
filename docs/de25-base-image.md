@@ -103,7 +103,7 @@ Run it from the repo root: `tools/quartus-run.sh` mounts the current directory a
 build this: Agilex 5 needs Quartus Prime **Pro**. `tools/quartus-run.sh` runs Altera's own image,
 `alterafpga/quartus-pro:25.3.1-patch1.02-agilex5` (Docker Hub, 17.5 GB). It is 25.3.1 Build 100
 with patch 1.02, the patch Altera requires on every 25.3.1 install, and only Agilex 5 devices.
-The wrapper makes three changes, all needed **[V 2026-11-25, on this tree's build host]**:
+The wrapper makes four changes, all needed **[V 2026-11-25, on this tree's build host]**:
 
 - **A stub `libudev.so.1` mounted over the image's** (`tools/udev-stub.c`, built on first use
   into `.quartus-run/`). Without it, `quartus_syn` aborts with `realloc(): invalid pointer` in
@@ -116,6 +116,11 @@ The wrapper makes three changes, all needed **[V 2026-11-25, on this tree's buil
 - **A fixed `--mac-address`** (`QUARTUS_MAC`, default `02:de:25:00:00:01`). The licence is
   bound to a NIC ID, and a container gets a new MAC each run.
 - **The caller's uid,** so the outputs are not owned by root.
+- **`HOME=/tmp`,** because that uid has no home directory in the image, and Quartus writes
+  its settings under `$HOME`.
+
+The stub makes udev report no devices, so the wrapper is for compiling only. `quartus_pgm`
+through it would find no USB-Blaster.
 
 **The licence.** Without one, synthesis stops with `Error (19286): No license for family
 Agilex 5`. Altera issues a no-cost licence for Agilex 5 E-series, which the board's `A5EB013`
@@ -156,46 +161,54 @@ shows one of two sources:
 
 | Port | Clock | What it is |
 |---|---|---|
-| `s_*` | `clk` (the LW bridge's) | Avalon-MM slave, 16 × 32-bit words, read latency 1 |
+| `s_*` | `clk` (the LW bridge's) | Avalon-MM slave, 16 × 32-bit words with byte enables, fixed read latency 1, no wait states: declare it so in Platform Designer |
 | `m_ar*`, `m_r*` | `clk` (the F2SDRAM port's) | AXI4 read master: 256 B bursts (`arlen` 7, `arsize` 5, INCR), ID 0, `arcache` `0011`. No write channels: the base design ties them off |
 | `HDMI_*` | `pclk`, 148.5 MHz | the board pins (*UM* Table 3-13, §7) |
 | I2C init | `clk` | `CLK_HZ` sets the 100 kHz divider and the 200 ms power-on wait |
+| `rst_n`, `pll_locked` | any | reset, synchronised inside to each clock; the pixel side also waits for the PLL to lock |
+
+`rtl/de25_hdmi.sdc` cuts the timing paths of the block's clock crossings; the base design adds
+it after its own clock constraints.
 
 ### 6.1 Register map (word offsets from the block's base on the LW bridge)
 
 | Word | Name | Access | Reset | Meaning |
 |---|---|---|---|---|
 | 0 | `MAGIC` | RO | `0xDE25FB5A` | identifies the block |
-| 1 | `VERSION` | RO | `1` | |
+| 1 | `VERSION` | RO | `2` | 2: byte enables, `STATUS` bits 1, 7 and 8 |
 | 2 | `CTRL` | RW | `0` | bit 0: show the framebuffer (else the splash) |
 | 3 | `BASE_LO` | RW | `0xA0001000` | framebuffer address bits 31:8; bits 7:0 read as 0 (256-byte aligned) |
 | 4 | `BASE_HI` | RW | `0` | address bits 39:32 |
 | 5 | `WIDTH` | RW | `640` | pixels, 1–1920 |
 | 6 | `HEIGHT` | RW | `480` | lines, 1–1080 |
 | 7 | `STRIDE` | RW | `2560` | bytes per line; bits 7:0 read as 0. Must be ≥ `WIDTH`×4 |
-| 9 | `STATUS` | RO, W1C bit 0 | | 31:16 frame count; 6:4 scale in use; bit 0 sticky underrun (write 1 to clear) |
+| 9 | `STATUS` | RO, W1C bits 1:0 | | 31:16 frame count; 8 ADV7513 init NACKed; 7 ADV7513 init done; 6:4 scale in use; 1 sticky read error (a response other than OKAY); 0 sticky underrun. Write 1 to clear a sticky bit; a new event in the same cycle wins |
 
 The reset values are `MiSTer_fb`'s own defaults: image at its region's `+0x1000`, 640×480,
 XRGB8888 (byte 0 blue, byte 2 red), stride rounded up to 256 B. So the driver's default mode
 shows correctly once `CTRL` is set. Another mode is two writes that must agree:
 `/sys/module/MiSTer_fb/parameters/mode` (`format rb width height stride`) and these registers.
-v1 shows XRGB8888 only. An invalid setting (a zero size, a size over 1080p, a short stride)
-shows black, not garbage.
+It shows XRGB8888 only. An invalid setting shows black, not garbage: a zero size, a size over
+1080p, a stride under `WIDTH`×4, or a region (`BASE` to `BASE` + `HEIGHT`×`STRIDE` + 256) that
+leaves HPS DDR (`0x8000_0000`–`0xBFFF_FFFF`; the reader's `WIN_LO`/`WIN_HI` parameters). The
+reader cannot write; this bound keeps it from reading anything but DDR.
 
 ### 6.2 How it works
 
 - **Settings change only at a frame boundary.** At each vsync the pixel side asks, and the
   system side snapshots the registers, works out the scale and the offsets, and answers. The
-  pixel side takes the copy once the answer arrives. Nothing crosses clock domains mid-frame.
-- **One line ahead.** At each hsync the pixel side asks for the next output line's source row.
-  The system side fetches that row into one half of a two-line, 256-bit buffer while the other
-  half is on screen. A 1920-pixel row is 240 beats, about 2.4 µs at 100 MHz without stalls,
-  against a 14.8 µs line. A request that arrives while the previous fetch is still running sets
-  the sticky underrun bit.
+  pixel side takes the copy once the answer arrives. `CTRL` takes effect the same way, so the
+  switch between splash and framebuffer happens in vertical blanking, never mid-frame.
+- **Two lines ahead.** At the hsync after line *y*, the pixel side asks for line *y*+2's source
+  row, into the half of the two-line, 256-bit buffer that line *y* has just freed. Each fetch
+  therefore has a full line, 14.8 µs, before it is shown; a 1920-pixel row is 240 beats, about
+  2.4 µs at 100 MHz without stalls. A request that arrives while the previous fetch still runs
+  is dropped, not restarted (the AR channel stays stable and the fetch stays coherent): its
+  line shows stale pixels, and the sticky underrun bit is set. Every late line is flagged.
 - **No 4 KiB crossings.** Rows start on 256-byte boundaries (the base and the stride are
   256-byte aligned) and every burst is 256 B, so no burst crosses a 4 KiB boundary. The last
-  burst of a row may read up to 224 B past its end; those beats are dropped. The framebuffer
-  region must therefore stay readable for 256 B past each row.
+  burst of a row may read up to 252 B past the row's last pixel; those beats are dropped. The
+  framebuffer region must therefore stay readable for 256 B past each row.
 - **Latency.** The framebuffer path is three pixel clocks behind the timing generator; the
   splash is delayed to match, so switching sources never moves the syncs.
 
@@ -208,12 +221,11 @@ frame:
 |---|---|
 | `tb_video` | the timing and the splash (§1) |
 | `tb_adv7513` | the I2C init |
-| `tb_fb` | 640×480 at 2×, 1280×720 at 1×, 1920×1080 at 1× with 50% AXI stalls, 333×200 at 4× (a partial last burst). Every output pixel against the expected image; no underrun |
-| `tb_hdmi` | the top level: with `CTRL` 0, output identical to an independent splash, cycle for cycle; with `CTRL` 1, the border black and the image exact |
+| `tb_fb` | `MAGIC`/`VERSION`; every output pixel of 640×480 at 2×, 1280×720 at 1×, 1920×1080 at 1× with 50% AXI stalls, 333×200 at 4× (a partial last burst), 600×300 at 3× from another base; the pixel count and `STATUS` scale each time; black for a short stride and for a region outside DDR; a forced 35 µs stall sets the underrun bit, and the next frame is exact again; an injected `SLVERR` sets the read-error bit. On every AR: payload stable while waiting, 8 × 32 B INCR, 256-byte aligned |
+| `tb_hdmi` | the top level: with `CTRL` 0, output identical to a second instance of the splash, cycle for cycle (this checks the mux and pipeline; `tb_video` checks the splash itself); with `CTRL` 1, the border black and the image exact |
 
-The AXI model in the testbenches stalls `arready` and `rvalid` at random and answers in
-order. It does not model reordering (the reader uses one ID) or error responses (`rresp` is
-ignored).
+The AXI model stalls `arready` and `rvalid` at random and answers in order; it does not model
+reordering (the reader uses one ID).
 
 ## 7. Retargeting onto Altera's DE25-Nano baseline (planned)
 

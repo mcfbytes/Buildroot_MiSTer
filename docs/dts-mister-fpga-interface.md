@@ -331,7 +331,7 @@ aarch64 Main_MiSTer, not a frozen ABI — they may move.
 1 GiB of HPS LPDDR4 starts at `0x8000_0000`. The goal is compatibility: the bitstreams and the
 Main_MiSTer build of the third-party DE25 port (the one with an observed boot on DE25 silicon)
 must run on this image unchanged, so the framebuffer and the scaler scratch sit where that port's
-fabric and Main put them, and greenfield takes the same layout. Every address below is a fact
+fabric and Main put them, and any other host program should take the same layout. Every address below is a fact
 read from that port's sources (its fabric top, its Main's `video.cpp`/`scaler.cpp`/`user_io.cpp`
 and its board DTS); no source file was copied.
 

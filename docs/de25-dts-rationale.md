@@ -496,7 +496,7 @@ boot-stage usage and the hazards.
 ### The video layout — PORT's addresses, so PORT's bitstreams and Main run here (2026-11-24)
 
 **Goal: compatibility.** PORT's fabric and its Main_MiSTer build must run on this image
-unchanged, and greenfield's DE25 row follows the same map. The addresses are facts read from
+unchanged, and any other MiSTer host program for the DE25 should follow the same map. The addresses are facts read from
 PORT's fabric top, its Main and its board DTS; nothing was copied. The full table is in
 [`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7. In short:
 

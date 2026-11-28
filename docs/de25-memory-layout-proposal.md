@@ -168,11 +168,11 @@ means 479 MiB for Linux, and today's `mem=479M` means 447 MiB.
 
 | | figure | tag |
 |---|---|---|
-| DE10, `mem=511M`: `MemTotal` | 487 MiB (498 652 kB) on one kernel build, 489 MiB on another | [M: the greenfield rig, 2026-10] |
+| DE10, `mem=511M`: `MemTotal` | 487 MiB (498 652 kB) on one kernel build, 489 MiB on another | [M: a DE10 rig, 2026-10] |
 | DE10, the 487 MiB boot: `MemAvailable` with stock Main installed | 420 MiB (430 528 kB) | [M: same] |
 | stock Main, resident | about 8 MB | [U: the owner's figure] |
-| greenfield Main at the menu with the HD OSD, resident and locked | 68.8 MB resident, 69.7 MB locked; of it Slint 12.8 MB, heap 25.9 MB, stacks and other anonymous 21 MB | [M: DE10 rig, 2026-10-15] |
-| greenfield Main after a large arcade romset, back at the menu | 71.9 MB | [M: same] |
+| a Main with an HD OSD (Slint) at the menu, resident and locked | 68.8 MB resident, 69.7 MB locked; of it Slint 12.8 MB, heap 25.9 MB, stacks and other anonymous 21 MB | [M: DE10 rig, 2026-10-15] |
+| the same Main after a large arcade romset, back at the menu | 71.9 MB | [M: same] |
 
 A DE25 estimate, to be replaced by the first boot's `/proc/meminfo`:
 
@@ -181,7 +181,7 @@ A DE25 estimate, to be replaced by the first boot's `/proc/meminfo`:
 | kernel image, `struct page` array, early reservations (arm64; the DE10's arm32 kernel costs 24) | 35–45 | [E] |
 | kernel at run time: slab, page tables, stacks, network buffers | 20–30 | [E] |
 | base userland: init, udev, sshd, Samba, Bluetooth, Wi-Fi | 40–60 | [E] |
-| greenfield Main with the HD OSD, on aarch64 (the measured 70 MB × 1.2–1.3) | 85–90 | [E] |
+| a Main with an HD OSD, on aarch64 (the measured 70 MB × 1.2–1.3) | 85–90 | [E] |
 | **steady state** | **180–225** | |
 | left of 479 MiB (layout A) for page cache and transients | 255–300 | |
 | left of 447 MiB (today) | 220–265 | |
@@ -191,7 +191,7 @@ before it is sent (the rig once showed 207 MB before a fix made it transient), t
 FPGA service fills with a bitstream, and the page cache that keeps CD and CHD streaming smooth.
 
 **Verdict: adequate, not generous.** 479 MiB is the DE10's envelope less the firmware's 32 MiB,
-and the DE10's envelope runs greenfield with the HD OSD today. 447 MiB also works. The 32 MiB
+and the DE10's envelope runs a Main with an HD OSD today. 447 MiB also works. The 32 MiB
 between them is not what decides the layout; R1–R6 decide it. But there is no reason to spend
 32 MiB of Linux on a scaler scratch below the window when the start of the window is where a
 DE10 core expects the scaler to be (§3.1).
@@ -306,7 +306,7 @@ declaration, and stock cores declare little:
 - nothing for the RAM a core uses by itself. PSX's and NeoGeo's use of `0x3000_0000` up is
   visible only as an RTL prefix.
 
-A host can carry a per-core table (greenfield's core manifests name each core's windows), but the
+A host program can carry a per-core table (a core manifest naming each core's windows), but the
 bitstream does not say it, and a window only helps Linux if the RAM can be handed back. That is
 C3. As a boot-time choice it is simple: a second device tree with a smaller window. The port
 restarts through RSU on a core switch, where a per-core `mem=` is conceivable; our plan
@@ -351,7 +351,7 @@ yields a known address, so two areas (the low 192 MiB, the high 256 MiB) could b
 | what does a claim cost? | it migrates every page in the area; time grows with what Linux had put there [U] |
 | what does Linux really gain? | only movable pages (page cache, anonymous memory) may use the area. Kernel allocations cannot, so "free" overstates what the kernel can use |
 | what is the worst case? | releasing an area while a bitstream that addresses it is still running. With no SMMU, the fabric then writes into pages Linux has reused |
-| real-time | greenfield locks its memory; a locked page can still be migrated, and a thread that touches it mid-move waits |
+| real-time | a host program that locks its memory still has pages that can be migrated, and a thread that touches one mid-move waits |
 
 It is feasible and it is the highest-risk option here, for a gain (up to 448 MiB of page cache
 while a small core runs) that the DE10 has never had and has not missed. Not recommended. If the
@@ -405,8 +405,8 @@ Nothing until the port's side is ready. Then, in one commit:
 - the `mister_scaler` UIO node and its DE25-only udev rule go away: the scaler is inside
   `mister_ddr_aperture` at offset 0, as on the DE10, and the DE25 again takes the DE10's rules file
   unchanged;
-- greenfield's DE25 board row takes the aperture its bring-up plan already names,
-  `{0xA000_0000, 512 MiB}` (the row is unsourced today), and every named region is the DE10's
+- a host program's DE25 board description takes the aperture `{0xA000_0000, 512 MiB}`, and
+  every named region is the DE10's
   entry at `+0x8000_0000`, including the one below the aperture. No region needs a per-board
   address.
 
@@ -435,7 +435,7 @@ the port's `scaler.cpp:40-67`] The contract extends that idea until one constant
 | # | rule | who holds what |
 |---|---|---|
 | 1 | **A core's addresses are the DE10's.** In RTL, in CONF_STR, in an MRA, in `FB_BASE` | cores: DE10 numbers only |
-| 2 | **One translation: CPU-physical = core address + K, and K = `0x8000_0000`.** The shell applies it to every address at the DDR port (as an OR). A host applies it in exactly one function | shell: one constant. Main: `fpga_mem()`; greenfield: `FpgaAperture::translate` with the board row's base |
+| 2 | **One translation: CPU-physical = core address + K, and K = `0x8000_0000`.** The shell applies it to every address at the DDR port (as an OR). A host applies it in exactly one function | shell: one constant. Main: `fpga_mem()`; any other host: its one address-translation function, with the board's base |
 | 3 | **The device tree is the layout.** A host reads the aperture's base and size from its UIO node (`/sys/class/uio/…/maps/map0/addr`, `size`), the framebuffer from `/dev/fb0` (`smem_start` − 4096 is `FB_ADDR`, on both boards), the scaler tile from its reserved-memory node | hosts: no address constants; no `FB_ADDR` |
 | 4 | **The HPS tells the fabric the scaler base**, as the port does, with the value read under rule 3. Zero means the scaler is gated | boot service or Main: no constant |
 | 5 | **The shell publishes what it assumes**, read-only, beside the base it is given | see below |

@@ -63,7 +63,7 @@ s = s[:i] + """
 wire de25_pclk;
 AV_PLL u_de25_pll (.refclk(CLOCK0_50), .rst(~system_reset_n), .outclk_0(de25_pclk));
 de25_hdmi_splash u_de25_splash (
-	.clk50(CLOCK2_50), .pclk(de25_pclk), .rst_n(system_reset_n),
+	.clk50(CLOCK2_50), .pclk(de25_pclk), .rst_n(system_reset_n), .pll_locked(1'b1),
 	.HDMI_TX_CLK(HDMI_TX_CLK), .HDMI_TX_DE(HDMI_TX_DE), .HDMI_TX_HS(HDMI_TX_HS),
 	.HDMI_TX_VS(HDMI_TX_VS), .HDMI_TX_D(HDMI_TX_D),
 	.HDMI_I2C_SCL(HDMI_I2C_SCL), .HDMI_I2C_SDA(HDMI_I2C_SDA),
@@ -78,11 +78,43 @@ PYEOF
 		echo "set_global_assignment -name VERILOG_FILE de25_base/$f.v"
 	done
 	echo "set_global_assignment -name SEARCH_PATH de25_base"
+	# Failed timing and pins without a location stop the build (as in Altera's baseline).
+	echo "set_global_assignment -name PROMOTE_WARNING_TO_ERROR 332148"
+	echo "set_global_assignment -name PROMOTE_WARNING_TO_ERROR 12677"
 } >> "$qsf"
 
 say "compiling (quartus_sh --flow compile $rev)"
 ( cd "$proj" && quartus_sh --flow compile "$rev" ) > "$out/compile.log" 2>&1 ||
 	die "compile failed -- see $out/compile.log"
+
+# Every HDMI pin must land where, and as, Terasic's own .qsf puts it.
+say "checking the HDMI pins against $rev.qsf"
+python3 -I - "$qsf" "$proj/output_files/$rev.pin" <<'PYEOF' || die "HDMI pin check failed"
+import re, sys
+qsf, pin = open(sys.argv[1]).read(), open(sys.argv[2]).read()
+loc = {m[1]: m[0].upper() for m in re.findall(
+	r'set_location_assignment\s+PIN_(\w+)\s+-to\s+"?(HDMI_\w+(?:\[\d+\])?)"?', qsf)}
+std = {m[1]: m[0] for m in re.findall(
+	r'IO_STANDARD\s+"([^"]+)"\s+-to\s+"?(HDMI_\w+(?:\[\d+\])?)"?', qsf)}
+got = {}
+for line in pin.splitlines():
+	f = [c.strip() for c in line.split(':')]
+	if len(f) >= 4 and f[0].startswith('HDMI_'):
+		got[f[0]] = (f[1].upper().removeprefix('PIN_'), f[3])
+bad = []
+for name, l in sorted(loc.items()):
+	if name not in got: bad.append(f"{name}: not in the fitter's pin report")
+	elif got[name][0] != l: bad.append(f"{name}: placed at {got[name][0]}, the .qsf says {l}")
+	elif name in std and got[name][1] != std[name]:
+		bad.append(f"{name}: {got[name][1]}, the .qsf says {std[name]}")
+extra = sorted(set(got) - set(loc))
+bad += [f"{n}: placed at {got[n][0]} with no location in the .qsf" for n in extra]
+if len(loc) < 30: bad.append(f"only {len(loc)} HDMI locations in the .qsf; expected 31")
+print("\n".join(bad) if bad else f"{len(loc)} HDMI pins match the .qsf")
+sys.exit(1 if bad else 0)
+PYEOF
+cp "$proj/output_files/$rev.pin" "$out/de25_base.pin"
+grep -A4 -i "worst-case\|Slack" "$proj/output_files/$rev.sta.summary" > "$out/timing.txt" 2>/dev/null || true
 
 spl=${SPL_HEX:-$(find "$proj" -path '*software/u-boot/spl/u-boot-spl-dtb.hex' | head -n1)}
 [ -n "$spl" ] && [ -f "$spl" ] || die "no SPL hex (set SPL_HEX, or the package's GHRD lacks software/u-boot/spl)"
@@ -106,6 +138,6 @@ h1=$(grep -i 'HPS IO hash' "$out/de25_base.jic.info" | head -n1)
 h2=$(grep -i 'HPS IO hash' "$out/de25_base.core.rbf.info" | head -n1)
 [ -n "$h1" ] && [ "$h1" = "$h2" ] || die "HPS IO hash differs or is missing (jic: '$h1', core: '$h2')"
 
-( cd "$out" && sha256sum de25_base.jic de25_base.core.rbf de25_base_hps.sof > SHA256SUMS )
+( cd "$out" && sha256sum de25_base.jic de25_base.core.rbf de25_base_hps.sof de25_base.pin > SHA256SUMS )
 say "done: $out/de25_base.jic + de25_base.core.rbf ($h1)"
 cat "$out/SHA256SUMS"

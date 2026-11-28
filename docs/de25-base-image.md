@@ -175,14 +175,14 @@ it after its own clock constraints.
 | Word | Name | Access | Reset | Meaning |
 |---|---|---|---|---|
 | 0 | `MAGIC` | RO | `0xDE25FB5A` | identifies the block |
-| 1 | `VERSION` | RO | `2` | 2: byte enables, `STATUS` bits 1, 7 and 8 |
+| 1 | `VERSION` | RO | `3` | 2: byte enables, `STATUS` bits 1, 7, 8; 3: bits 2 and 3 |
 | 2 | `CTRL` | RW | `0` | bit 0: show the framebuffer (else the splash) |
 | 3 | `BASE_LO` | RW | `0xA0001000` | framebuffer address bits 31:8; bits 7:0 read as 0 (256-byte aligned) |
 | 4 | `BASE_HI` | RW | `0` | address bits 39:32 |
 | 5 | `WIDTH` | RW | `640` | pixels, 1–1920 |
 | 6 | `HEIGHT` | RW | `480` | lines, 1–1080 |
 | 7 | `STRIDE` | RW | `2560` | bytes per line; bits 7:0 read as 0. Must be ≥ `WIDTH`×4 |
-| 9 | `STATUS` | RO, W1C bits 1:0 | | 31:16 frame count; 8 ADV7513 init NACKed; 7 ADV7513 init done; 6:4 scale in use; 1 sticky read error (a response other than OKAY); 0 sticky underrun. Write 1 to clear a sticky bit; a new event in the same cycle wins |
+| 9 | `STATUS` | RO, W1C bits 1:0 | | 31:16 frame count; 8 ADV7513 init NACKed; 7 ADV7513 init done; 6:4 scale in use; 3 settings accepted (the reader is fetching); 2 idle (off at the last frame boundary and no fetch running); 1 sticky read error (a response other than OKAY); 0 sticky underrun. Write 1 to clear a sticky bit; a new event in the same cycle wins |
 
 The reset values are `MiSTer_fb`'s own defaults: image at its region's `+0x1000`, 640×480,
 XRGB8888 (byte 0 blue, byte 2 red), stride rounded up to 256 B. So the driver's default mode
@@ -191,7 +191,21 @@ shows correctly once `CTRL` is set. Another mode is two writes that must agree:
 It shows XRGB8888 only. An invalid setting shows black, not garbage: a zero size, a size over
 1080p, a stride under `WIDTH`×4, or a region (`BASE` to `BASE` + `HEIGHT`×`STRIDE` + 256) that
 leaves HPS DDR (`0x8000_0000`–`0xBFFF_FFFF`; the reader's `WIN_LO`/`WIN_HI` parameters). The
-reader cannot write; this bound keeps it from reading anything but DDR.
+reader cannot write; this bound keeps it from reading anything but DDR. With `CTRL` set, the
+framebuffer owns the screen whether or not its settings are accepted, so a rejected setting is
+black, never the splash; `STATUS` bit 3 tells the two apart.
+
+**Rules for software.**
+
+- **Change a mode with `CTRL` 0.** The settings are several writes, and a frame boundary between
+  two of them would show one frame of a half-written mode. Write `CTRL` 0, then the settings,
+  then `CTRL` 1.
+- **Stop the reader before a core load or a reboot.** With `CTRL` 1 the reader is a live master
+  on the F2SDRAM port, reading every line. A load reconfigures the fabric and turns that port's
+  bridge off with no drain, and a warm reboot keeps the fabric running while the HPS resets DDR
+  and the bridges. Neither has been tried with a master active, and an abandoned burst may hang
+  the HPS until a power cycle. Write `CTRL` 0 and wait for `STATUS` bit 2 (idle), at most two
+  frames (34 ms), then load or reboot.
 
 ### 6.2 How it works
 
@@ -225,7 +239,11 @@ frame:
 | `tb_hdmi` | the top level: with `CTRL` 0, output identical to a second instance of the splash, cycle for cycle (this checks the mux and pipeline; `tb_video` checks the splash itself); with `CTRL` 1, the border black and the image exact |
 
 The AXI model stalls `arready` and `rvalid` at random and answers in order; it does not model
-reordering (the reader uses one ID).
+reordering (the reader uses one ID). Every read is also checked to lie inside HPS DDR, none may
+be issued while settings are rejected or after `CTRL` 0, and a byte write must change only its
+byte. Not simulated: a reset or PLL unlock mid-fetch, `CTRL` toggled while the top level is
+compared, the clear-versus-event race in `STATUS` (the logic gives the event priority), and the
+I2C table's register values and real 100 kHz timing (`tb_adv7513` runs a scaled clock).
 
 ## 7. Retargeting onto Altera's DE25-Nano baseline (planned)
 
@@ -248,12 +266,37 @@ suits us better than Terasic's GHRD (§3):
   test master. Ours replaces it.
 - **The LW bridge** reaches the fabric peripherals at `0x2000_0000`.
 
-What it lacks: HDMI. The top level has no HDMI ports. Ours come from *UM* Table 3-13 (all
-3.3 V): `HDMI_TX_D0..D23` = `AV19 AT11 BE11 AV14 AT19 AT14 AV16 AV11 BH11 BE14 BE19 BH14 BV6
+What it lacks: HDMI. The top level has no HDMI ports. *UM* Table 3-13 lists them (the manual
+says 3.3 V for all; see the first integration rule below): `HDMI_TX_D0..D23` = `AV19 AT11 BE11 AV14 AT19 AT14 AV16 AV11 BH11 BE14 BE19 BH14 BV6
 BJ23 BV4 BU23 BH16 DA1 BH19 CP2 CM1 DA2 CP1 CU2`, `HDMI_TX_CLK` `DJ24`, `DE` `CJ2`, `HS`
 `BR11`, `VS` `BR14`, `INT` `CF2`, and the I2C pair `BT1`/`BW2` (Table 3-7). The 148.5 MHz pixel
 clock comes from an IOPLL we generate off the design's 100 MHz reference (`pll_refclk_100`,
 `V16`).
+
+**What the integration must get right** (from the second RTL review, 2026-11-28):
+
+- **Pins from Terasic's `.qsf`, by script, not from the manual.** Take each `HDMI_*` location and
+  I/O standard from Terasic's own project and cross-check them with their HDMI demo's. The
+  manual's "3.3 V" is very likely wrong for `HDMI_TX_CLK` (`DJ24`): its neighbours in Altera's
+  `.qsf` are all 1.1 V, and §5 records Terasic's `.qsf` setting it to 1.1 V. `HDMI_TX_INT`
+  (`CF2`) is an input (the ADV7513 drives it open-drain). The build fails on a pin without a
+  location (`PROMOTE_WARNING_TO_ERROR 12677`) and on failed timing (`332148`), and it checks the
+  fitter's `.pin` report against the `.qsf` before writing any image.
+- **Behind Altera's F2SDRAM adapter.** Our AXI master replaces the Nios V test master, not the
+  adapter: the adapter sets the sideband the hard port expects (`ARCACHE`, `ARPROT`, `ARUSER`,
+  QoS). Tie off the write channels (`AWVALID`/`WVALID` 0, `BREADY` 1). The adapter declares one
+  outstanding read; if Platform Designer serialises the bursts, a 1080p row is 30 round trips in
+  14.8 µs. Check `STATUS` bit 0 after ten seconds at 1920×1080, and raise the adapter's read
+  capability if it underruns.
+- **The block's reset includes the HPS reset,** so a warm reboot stops the reader, and the
+  warm-reset handshake (looped straight back in Altera's top) waits for `STATUS` bit 2 where
+  practical.
+- **The pixel clock.** An IOPLL from the 100 MHz reference to 148.5 MHz; check the achieved
+  frequency in the IP report (an integer PLL may only get close). Forward `HDMI_TX_CLK` from a
+  DDIO output or a 180° PLL output rather than the LUT inversion in `de25_hdmi.v`, put the data
+  registers in the I/O cells, and give the ADV7513's setup and hold as output delays.
+- **The LW offset** of the register block, and an `f2h` interrupt line for vsync (Altera's
+  top wires `f2h_irq0` to the push buttons; the DTS reserves it for the framebuffer).
 
 **It needs Quartus 26.3.** The `.ip` files are saved by 26.3, and older versions do not open
 newer IP. The base image's Quartus pin therefore moves from 25.3.1 to 26.3 when this lands.

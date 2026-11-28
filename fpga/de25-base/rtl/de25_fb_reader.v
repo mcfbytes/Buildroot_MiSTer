@@ -18,6 +18,8 @@ module de25_fb_reader #(
 	output reg           rerror,         // pulse: a read response was not OKAY
 	output reg           frame,          // pulse: a frame's settings were taken
 	output reg  [2:0]    scale,
+	output wire          idle,           // off at the last frame boundary, and no fetch running
+	output wire          accepted,       // this frame's settings passed the checks
 	output reg  [AW-1:0] m_araddr,
 	output wire [7:0]    m_arlen,
 	output wire [2:0]    m_arsize,
@@ -54,7 +56,8 @@ module de25_fb_reader #(
 	assign m_rready = 1'b1;
 
 	// ---------------- frame handshake: pixel asks at vsync, system snapshots ----------------
-	reg          f_en;
+	reg          f_ctl;                   // CTRL as snapshotted: which source owns the screen
+	reg          f_en;                    // CTRL and valid settings: the reader fetches
 	reg [AW-1:0] f_base;
 	reg [11:0]   f_w;
 	reg [10:0]   f_h;
@@ -79,12 +82,12 @@ module de25_fb_reader #(
 	always @(posedge clk) begin
 		if (!rst_n) begin
 			s_freq <= 3'd0; s_fack <= 1'b0; frame <= 1'b0; scale <= 3'd1;
-			f_en <= 1'b0; f_base <= 0; f_w <= 0; f_h <= 0; f_stride <= 0; f_x0 <= 0; f_y0 <= 0;
+			f_ctl <= 1'b0; f_en <= 1'b0; f_base <= 0; f_w <= 0; f_h <= 0; f_stride <= 0; f_x0 <= 0; f_y0 <= 0;
 		end else begin
 			s_freq <= {s_freq[1:0], p_freq};
 			frame <= 1'b0;
 			if (s_freq[2] != s_freq[1]) begin
-				f_en <= ok; f_base <= cfg_base; f_w <= cfg_width; f_h <= cfg_height;
+				f_ctl <= cfg_enable; f_en <= ok; f_base <= cfg_base; f_w <= cfg_width; f_h <= cfg_height;
 				f_stride <= cfg_stride; scale <= sc;
 				f_x0 <= (H_ACT - cfg_width * sc) >> 1;
 				f_y0 <= (V_ACT - cfg_height * sc) >> 1;
@@ -108,6 +111,8 @@ module de25_fb_reader #(
 	reg [7:0]  waddr;
 	reg        wbuf;
 	reg [255:0] lbuf [0:511];
+	assign idle = !f_ctl && !busy;
+	assign accepted = f_en;
 
 	always @(posedge clk) begin
 		if (!rst_n) begin
@@ -196,7 +201,7 @@ module de25_fb_reader #(
 			p_fack <= {p_fack[1:0], s_fack};
 			if (vs_in && !vs_d) p_freq <= ~p_freq;                 // ask for this frame's settings
 			if (p_fack[2] != p_fack[1]) begin                       // the system took them
-				p_en <= f_en; p_on <= f_en;
+				p_en <= f_en; p_on <= f_ctl;
 				p_w <= f_w; p_h <= f_h; p_x0 <= f_x0; p_y0 <= f_y0; p_sc <= scale;
 			end
 

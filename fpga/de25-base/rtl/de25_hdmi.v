@@ -42,18 +42,20 @@ module de25_hdmi #(
 	output wire         init_nack
 );
 	// Reset: asserted at once, released in step with each clock (and, for pclk, after lock).
-	reg [1:0] srst = 2'b00;
-	always @(posedge clk or negedge rst_n) srst <= !rst_n ? 2'b00 : {srst[0], 1'b1};
+	reg [1:0] srst = 2'b00, prst = 2'b00;
 	wire prst_a = rst_n && pll_locked;
-	reg [1:0] prst = 2'b00;
-	always @(posedge pclk or negedge prst_a) prst <= !prst_a ? 2'b00 : {prst[0], 1'b1};
+	always @(posedge clk or negedge rst_n)
+		if (!rst_n) srst <= 2'b00; else srst <= {srst[0], 1'b1};
+	always @(posedge pclk or negedge prst_a)
+		if (!prst_a) prst <= 2'b00; else prst <= {prst[0], 1'b1};
 
-	wire en, underrun, rerror, frame; wire [39:0] base; wire [11:0] w; wire [10:0] h;
+	wire en, underrun, rerror, frame, idle, accepted; wire [39:0] base; wire [11:0] w; wire [10:0] h;
 	wire [15:0] stride; wire [2:0] scale;
 	de25_fb_regs u_regs (.clk(clk), .rst_n(srst[1]), .address(s_address), .read(s_read),
 		.write(s_write), .byteenable(s_byteenable), .writedata(s_writedata), .readdata(s_readdata),
 		.enable(en), .base(base), .width(w), .height(h), .stride(stride), .underrun(underrun),
-		.rerror(rerror), .frame(frame), .scale(scale), .init_done(init_done), .init_nack(init_nack));
+		.rerror(rerror), .frame(frame), .scale(scale), .idle(idle), .accepted(accepted),
+		.init_done(init_done), .init_nack(init_nack));
 
 	wire hs0, vs0, de0; wire [11:0] x; wire [10:0] y;
 	de25_vtiming u_t (.clk(pclk), .rst_n(prst[1]), .hs(hs0), .vs(vs0), .de(de0), .x(x), .y(y));
@@ -71,7 +73,7 @@ module de25_hdmi #(
 	wire fb_on, fb_active; wire [23:0] frgb3;
 	de25_fb_reader u_f (.clk(clk), .rst_n(srst[1]), .cfg_enable(en), .cfg_base(base), .cfg_width(w),
 		.cfg_height(h), .cfg_stride(stride), .underrun(underrun), .rerror(rerror), .frame(frame),
-		.scale(scale), .m_rresp(m_rresp), .p_on(fb_on),
+		.scale(scale), .idle(idle), .accepted(accepted), .m_rresp(m_rresp), .p_on(fb_on),
 		.m_araddr(m_araddr), .m_arlen(m_arlen), .m_arsize(m_arsize), .m_arburst(m_arburst),
 		.m_arid(m_arid), .m_arcache(m_arcache), .m_arprot(m_arprot), .m_arvalid(m_arvalid),
 		.m_arready(m_arready), .m_rdata(m_rdata), .m_rlast(m_rlast), .m_rvalid(m_rvalid),

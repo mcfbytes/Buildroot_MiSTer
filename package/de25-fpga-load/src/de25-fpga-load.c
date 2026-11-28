@@ -97,9 +97,15 @@ static struct attribute *de25_fpga_load_attrs[] = {
 };
 ATTRIBUTE_GROUPS(de25_fpga_load);
 
+/* The node only carries the sysfs attribute; opening it does nothing. */
+static const struct file_operations de25_fpga_load_fops = {
+	.owner = THIS_MODULE,
+};
+
 static struct miscdevice de25_fpga_load_misc = {
 	.minor = MISC_DYNAMIC_MINOR,
 	.name = "de25-fpga-load",
+	.fops = &de25_fpga_load_fops,
 	.groups = de25_fpga_load_groups,
 };
 module_misc_device(de25_fpga_load_misc);

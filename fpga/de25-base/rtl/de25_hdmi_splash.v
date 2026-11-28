@@ -5,6 +5,7 @@ module de25_hdmi_splash (
 	input  wire        clk50,
 	input  wire        pclk,
 	input  wire        rst_n,           // the base design's post-configuration reset
+	input  wire        pll_locked,      // pclk's PLL; the pixel side waits for it
 	output wire        HDMI_TX_CLK,
 	output wire        HDMI_TX_DE,
 	output wire        HDMI_TX_HS,
@@ -18,8 +19,13 @@ module de25_hdmi_splash (
 	wire hs0, vs0, de0;
 	wire [11:0] x;
 	wire [10:0] y;
-	reg [1:0] prst = 2'b00;              // rst_n into the pixel domain
-	always @(posedge pclk or negedge rst_n) prst <= !rst_n ? 2'b00 : {prst[0], 1'b1};
+	// Reset: asserted at once, released in step with each clock (pclk also after lock).
+	reg [1:0] srst = 2'b00, prst = 2'b00;
+	wire prst_a = rst_n && pll_locked;
+	always @(posedge clk50 or negedge rst_n)
+		if (!rst_n) srst <= 2'b00; else srst <= {srst[0], 1'b1};
+	always @(posedge pclk or negedge prst_a)
+		if (!prst_a) prst <= 2'b00; else prst <= {prst[0], 1'b1};
 
 	de25_vtiming u_t (.clk(pclk), .rst_n(prst[1]), .hs(hs0), .vs(vs0), .de(de0), .x(x), .y(y));
 	de25_splash  u_s (.clk(pclk), .hs_in(hs0), .vs_in(vs0), .de_in(de0), .x(x), .y(y),
@@ -28,7 +34,7 @@ module de25_hdmi_splash (
 	assign HDMI_TX_CLK = ~pclk;
 
 	wire scl_oe, sda_oe;
-	de25_adv7513_init u_i (.clk(clk50), .rst_n(rst_n), .scl_oe(scl_oe), .sda_oe(sda_oe),
+	de25_adv7513_init u_i (.clk(clk50), .rst_n(srst[1]), .scl_oe(scl_oe), .sda_oe(sda_oe),
 	                       .sda_in(HDMI_I2C_SDA), .done(init_done), .nack(init_nack));
 	assign HDMI_I2C_SCL = scl_oe ? 1'b0 : 1'bz;
 	assign HDMI_I2C_SDA = sda_oe ? 1'b0 : 1'bz;

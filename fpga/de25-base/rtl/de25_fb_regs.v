@@ -19,10 +19,12 @@ module de25_fb_regs (
 	input  wire        rerror,           // pulse, from the reader
 	input  wire        frame,            // pulse, once per frame the reader starts
 	input  wire [2:0]  scale,            // the scale in use
+	input  wire        idle,             // the reader is off and has no fetch running
+	input  wire        accepted,         // the settings in use passed the checks
 	input  wire        init_done,        // the ADV7513 init, same clock
 	input  wire        init_nack
 );
-	localparam [31:0] MAGIC = 32'hDE25_FB5A, VERSION = 32'd2;
+	localparam [31:0] MAGIC = 32'hDE25_FB5A, VERSION = 32'd3;
 	reg        underrun_st, rerror_st;
 	reg [15:0] frames;
 
@@ -66,7 +68,7 @@ module de25_fb_regs (
 				4'd5: readdata <= {20'd0, width};
 				4'd6: readdata <= {21'd0, height};
 				4'd7: readdata <= {16'd0, stride};
-				4'd9: readdata <= {frames, 7'd0, init_nack, init_done, scale, 2'd0, rerror_st, underrun_st};
+				4'd9: readdata <= {frames, 7'd0, init_nack, init_done, scale, accepted, idle, rerror_st, underrun_st};
 				default: readdata <= 32'd0;
 			endcase
 		end

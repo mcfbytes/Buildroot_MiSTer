@@ -19,7 +19,7 @@ off=$off,easicn5x,stratix10,quartus_update,riscfree,questa_km_fse,questa_km_fe,q
 off=$off,export_controlled,dsp_builder
 
 name=quartus-image-$$
-docker run -d --name "$name" -v "$src:/inst:ro" ubuntu:24.04 sh -c "
+docker run -d --name "$name" -v "$src:/inst:ro" ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517 sh -c "
 	set -e
 	export DEBIAN_FRONTEND=noninteractive
 	apt-get update && apt-get -y install --no-install-recommends libglib2.0-0t64 libxext6 \

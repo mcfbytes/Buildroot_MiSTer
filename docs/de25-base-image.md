@@ -74,7 +74,8 @@ Simulation (no Quartus needed):
 fpga/de25-base/sim/run-sim.sh
 ```
 
-It runs Icarus Verilog (host install, or the `sister-sim:iverilog` image). It checks one full
+It runs Icarus Verilog: the host's `iverilog`, or a container image that has it, named by
+`DE25_SIM_IMAGE`. It checks one full
 frame: 2,073,600 active pixels, 1125 lines, a 5-line vsync, exactly the logo's lit-pixel count,
 and black blanking. It also checks the init against an I2C slave model: 43 writes to 0x39, all
 acknowledged, no framing errors. **Both pass.**
@@ -140,3 +141,111 @@ too.
 - `HDMI_TX_CLK`'s I/O standard: the GHRD `.qsf` sets "1.1-V", while *UM* Table 3-13 lists the
   HDMI pins at 3.3 V. Check the compile's pin report against the schematic.
 - Linux and our `u-boot.itb` boot exactly as on the factory image (T2's checks).
+
+## 6. The framebuffer (`de25_fb_reader`, `de25_fb_regs`, `de25_hdmi`)
+
+**Status 2026-11-27:** written and simulated; not yet wired into a base design (that needs the
+26.3 toolchain, §7) and never run on a board.
+
+`de25_hdmi` is the one block a base design instantiates. It drives the ADV7513 at 1080p60 and
+shows one of two sources:
+
+- **the splash** (§1), from reset until software enables the framebuffer;
+- **a linear framebuffer in HPS DDR**, read over the F2SDRAM port (AXI4, 256-bit), scaled by
+  the largest whole factor up to 4× that fits 1920×1080, centred, with a black border.
+
+| Port | Clock | What it is |
+|---|---|---|
+| `s_*` | `clk` (the LW bridge's) | Avalon-MM slave, 16 × 32-bit words, read latency 1 |
+| `m_ar*`, `m_r*` | `clk` (the F2SDRAM port's) | AXI4 read master: 256 B bursts (`arlen` 7, `arsize` 5, INCR), ID 0, `arcache` `0011`. No write channels: the base design ties them off |
+| `HDMI_*` | `pclk`, 148.5 MHz | the board pins (*UM* Table 3-13, §7) |
+| I2C init | `clk` | `CLK_HZ` sets the 100 kHz divider and the 200 ms power-on wait |
+
+### 6.1 Register map (word offsets from the block's base on the LW bridge)
+
+| Word | Name | Access | Reset | Meaning |
+|---|---|---|---|---|
+| 0 | `MAGIC` | RO | `0xDE25FB5A` | identifies the block |
+| 1 | `VERSION` | RO | `1` | |
+| 2 | `CTRL` | RW | `0` | bit 0: show the framebuffer (else the splash) |
+| 3 | `BASE_LO` | RW | `0xA0001000` | framebuffer address bits 31:8; bits 7:0 read as 0 (256-byte aligned) |
+| 4 | `BASE_HI` | RW | `0` | address bits 39:32 |
+| 5 | `WIDTH` | RW | `640` | pixels, 1–1920 |
+| 6 | `HEIGHT` | RW | `480` | lines, 1–1080 |
+| 7 | `STRIDE` | RW | `2560` | bytes per line; bits 7:0 read as 0. Must be ≥ `WIDTH`×4 |
+| 9 | `STATUS` | RO, W1C bit 0 | | 31:16 frame count; 6:4 scale in use; bit 0 sticky underrun (write 1 to clear) |
+
+The reset values are `MiSTer_fb`'s own defaults: image at its region's `+0x1000`, 640×480,
+XRGB8888 (byte 0 blue, byte 2 red), stride rounded up to 256 B. So the driver's default mode
+shows correctly once `CTRL` is set. Another mode is two writes that must agree:
+`/sys/module/MiSTer_fb/parameters/mode` (`format rb width height stride`) and these registers.
+v1 shows XRGB8888 only. An invalid setting (a zero size, a size over 1080p, a short stride)
+shows black, not garbage.
+
+### 6.2 How it works
+
+- **Settings change only at a frame boundary.** At each vsync the pixel side asks, and the
+  system side snapshots the registers, works out the scale and the offsets, and answers. The
+  pixel side takes the copy once the answer arrives. Nothing crosses clock domains mid-frame.
+- **One line ahead.** At each hsync the pixel side asks for the next output line's source row.
+  The system side fetches that row into one half of a two-line, 256-bit buffer while the other
+  half is on screen. A 1920-pixel row is 240 beats, about 2.4 µs at 100 MHz without stalls,
+  against a 14.8 µs line. A request that arrives while the previous fetch is still running sets
+  the sticky underrun bit.
+- **No 4 KiB crossings.** Rows start on 256-byte boundaries (the base and the stride are
+  256-byte aligned) and every burst is 256 B, so no burst crosses a 4 KiB boundary. The last
+  burst of a row may read up to 224 B past its end; those beats are dropped. The framebuffer
+  region must therefore stay readable for 256 B past each row.
+- **Latency.** The framebuffer path is three pixel clocks behind the timing generator; the
+  splash is delayed to match, so switching sources never moves the syncs.
+
+### 6.3 Simulation
+
+`sim/run-sim.sh` runs four testbenches. Both framebuffer ones pass on every pixel of a full
+frame:
+
+| Testbench | Checks |
+|---|---|
+| `tb_video` | the timing and the splash (§1) |
+| `tb_adv7513` | the I2C init |
+| `tb_fb` | 640×480 at 2×, 1280×720 at 1×, 1920×1080 at 1× with 50% AXI stalls, 333×200 at 4× (a partial last burst). Every output pixel against the expected image; no underrun |
+| `tb_hdmi` | the top level: with `CTRL` 0, output identical to an independent splash, cycle for cycle; with `CTRL` 1, the border black and the image exact |
+
+The AXI model in the testbenches stalls `arready` and `rvalid` at random and answers in
+order. It does not model reordering (the reader uses one ID) or error responses (`rresp` is
+ignored).
+
+## 7. Retargeting onto Altera's DE25-Nano baseline (planned)
+
+Altera publishes a reference design for this board: `terasic-de25-nano-devkit/baseline-a55`
+in `altera-fpga/agilex5-ed-hps-baseline`, tag `QPDS26.3_REL_BASELINE_PR`, under an MIT-style
+licence whose main condition is use on Altera devices. Its prebuilt files are on
+`releases.rocketboards.org` (`2026.10/gsrd/agilex5_terasic_de25_nano_gsrd.baseline-a55/`). It
+suits us better than Terasic's GHRD (§3):
+
+- **Already HPS-first.** `HPS_INITIALIZATION "HPS FIRST"`, so its pair is the shape ADR 0035 D2
+  needs. The published `ghrd.hps.jic` and `ghrd.core.rbf` share HPS IO hash `DF9589F2…`
+  (`quartus_pfg -i`, 2026-11-27).
+- **`QSPI_OWNERSHIP HPS`.** After boot the HPS owns the flash controller, so Linux can drive the
+  flash with the mainline `cadence-quadspi` driver, with no SDM handover. Altera's U-Boot
+  environment enables `spi@108d2000` for Linux in exactly this case (`linux_qspi_enable`).
+  That simplifies ADR 0035 B3.
+- **The boot core is loaded by U-Boot**, from a FIT image that carries the kernel, the DTB and
+  the core.
+- **An F2SDRAM adapter is already present** (AXI4, 256-bit, 40-bit address), driven by a Nios V
+  test master. Ours replaces it.
+- **The LW bridge** reaches the fabric peripherals at `0x2000_0000`.
+
+What it lacks: HDMI. The top level has no HDMI ports. Ours come from *UM* Table 3-13 (all
+3.3 V): `HDMI_TX_D0..D23` = `AV19 AT11 BE11 AV14 AT19 AT14 AV16 AV11 BH11 BE14 BE19 BH14 BV6
+BJ23 BV4 BU23 BH16 DA1 BH19 CP2 CM1 DA2 CP1 CU2`, `HDMI_TX_CLK` `DJ24`, `DE` `CJ2`, `HS`
+`BR11`, `VS` `BR14`, `INT` `CF2`, and the I2C pair `BT1`/`BW2` (Table 3-7). The 148.5 MHz pixel
+clock comes from an IOPLL we generate off the design's 100 MHz reference (`pll_refclk_100`,
+`V16`).
+
+**It needs Quartus 26.3.** The `.ip` files are saved by 26.3, and older versions do not open
+newer IP. The base image's Quartus pin therefore moves from 25.3.1 to 26.3 when this lands.
+
+**First check after the toolchain is in:** compile the design unmodified and compare its HPS IO
+hash with the published `DF9589F2…`. A match means our build reproduces Altera's, and cores we
+compile will also load over the public `ghrd.hps.jic`.

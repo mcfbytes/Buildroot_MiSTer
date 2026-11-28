@@ -1018,9 +1018,21 @@ our `u-boot.itb`. The full record is [ADR 0035](decisions/0035-de25-own-qspi-ima
 
 **What this leaves for core switching:**
 
-1. **The loader.** Package Appendix A of [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md)
-   (a misc device, `/sys/class/misc/de25-fpga-load/load`) as an out-of-tree kmod. Then run
-   §6.3's timing plan through it, including a truncated RBF.
+1. **The loader.** *Packaged 2026-11-27* as `package/de25-fpga-load` (Appendix A of
+   [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md), plus a log line per load). It
+   builds against our 7.4-rc4 kernel with no warnings and passes `checkpatch --strict`; it has
+   not been run on a board. Use on the bench:
+
+   ```
+   modprobe de25-fpga-load
+   cp core.rbf /lib/firmware/
+   echo core.rbf > /sys/class/misc/de25-fpga-load/load   # returns the load's error, if any
+   dmesg | tail -n 3                                     # "core.rbf: loaded in N ms"
+   cat /sys/class/fpga_manager/fpga0/state              # "operating"
+   ```
+
+   Then run §6.3's timing plan through it, including a truncated RBF. Main_MiSTer will
+   eventually call the same interface; the sysfs file is also the userspace test route.
 2. **Bridge quiesce.** The DE10 Main stops HPS→fabric traffic around a switch. The DE25
    equivalent is untested: what Main must stop, and whether the `hdskack` path needs a settle.
    The public port needed 3 s before and 5 s after ([`de25-reference-implementation.md`](de25-reference-implementation.md)).

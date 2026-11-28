@@ -73,6 +73,10 @@ menu "Display drivers (out-of-tree)"
 	source "$BR2_EXTERNAL_MISTER_PATH/package/zaparoo-scanout/Config.in"
 endmenu
 
+menu "FPGA loading (out-of-tree)"
+	source "$BR2_EXTERNAL_MISTER_PATH/package/de25-fpga-load/Config.in"
+endmenu
+
 menu "Input-device userspace tooling"
 	# Deliberately NOT folded into the "USB controller drivers" menu above:
 	# everything there is an out-of-tree KERNEL MODULE, and these are plain

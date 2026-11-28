@@ -2712,6 +2712,11 @@ describes the earlier bare image.
 > HDMI/framebuffer bring-up tool, as `/usr/bin/itsalive` for testing the DE25 framebuffer by hand.
 > The DE10 has it only in its stage-1 cpio. The DE25's cpio (since the same day) has no splash,
 > because `BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE` is ARM-only. Nothing runs it at boot.
+>
+> **2026-11-27:** a second DE25-only package, `BR2_PACKAGE_DE25_FPGA_LOAD`. It is our own
+> out-of-tree module (`package/de25-fpga-load/src`), the runtime core loader of D2.11
+> ([`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §12). It is built as
+> `updates/de25-fpga-load.ko.xz` and not autoloaded: testing starts with `modprobe de25-fpga-load`.
 
 BusyBox is Buildroot's own default (`BR2_PACKAGE_BUSYBOX` is `default y` in
 `package/busybox/Config.in`) and so does not appear as a line; it is the

@@ -1,0 +1,16 @@
+config BR2_PACKAGE_DE25_FPGA_LOAD
+	bool "de25-fpga-load"
+	depends on BR2_LINUX_KERNEL
+	depends on BR2_aarch64
+	help
+	  DE25-Nano FPGA load trigger: writing a file name to
+	  /sys/class/misc/de25-fpga-load/load (root only) loads
+	  /lib/firmware/<name> into the fabric as a full image,
+	  through the kernel's FPGA manager and the SDM. The core
+	  must carry the HPS IO hash of the phase-1 in QSPI.
+
+	  docs/de25-fpga-reconfig.md §12; source in this package.
+
+comment "de25-fpga-load needs a Linux kernel to be built"
+	depends on BR2_aarch64
+	depends on !BR2_LINUX_KERNEL

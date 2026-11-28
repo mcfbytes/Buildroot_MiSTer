@@ -436,7 +436,7 @@ Our U-Boot has no Ethernet node, so it cannot be read at the U-Boot prompt.
 |---|---|---|---|
 | 1 | BL31 FPGA-config address contract | TF-A patch `0002` | **Required** for FPGA programming from Linux. Landed; hardware-unproven |
 | 2 | `intel,agilex-svc` on the service node | board DTS | Landed. Replaces kernel patch `0102` |
-| 3 | FPGA load trigger | external module, Appendix A | Drafted, not landed. *2026-11-26:* the same shape (a module calling `fpga_mgr_load()`) loaded 32 cores on #318's bench ([`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §12); packaging ours is next |
+| 3 | FPGA load trigger | external module, Appendix A | *Packaged 2026-11-27 as `package/de25-fpga-load`, not yet run on a board.* *2026-11-26:* the same shape (a module calling `fpga_mgr_load()`) loaded 32 cores on #318's bench ([`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §12); packaging ours is next |
 | 4 | Non-coherent `mmc0` and `gmac0` | board DTS | Landed, first-boot posture |
 | 5 | Default-speed SD in both stages | board DTS, U-Boot DTS | Landed, first-boot posture |
 | 6 | Temporary PHY driver set | DE25 `linux.config` | Landed; prune after the PHY ID is read |
@@ -631,7 +631,7 @@ hash differs from the factory phase-1's. T1 and T3 move to our own QSPI image
 
 ## Appendix A. Draft load-trigger module
 
-Not in the tree as a package; see §4.3. Writing a firmware name to
+*Packaged 2026-11-27 as `package/de25-fpga-load` (this text plus a log line per load); see §4.3.* Writing a firmware name to
 `/sys/class/misc/de25-fpga-load/load` (root only) loads that file as a full bitstream.
 
 ```c

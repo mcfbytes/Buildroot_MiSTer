@@ -38,7 +38,8 @@ hashes differ:
 - **`de25_base.jic`**, the QSPI image: the SDM firmware, the phase-1 (I/O and HPS
   configuration, about 830 KiB on the bench build) and the SPL. It holds no fabric logic.
 - **`de25_base.core.rbf`**, the GHRD plus the splash. Something has to load it at boot, before
-  Linux: U-Boot (`fpga load`) or the SPL. That choice is part of D3. The logo then shows from
+  Linux: U-Boot (`fpga load`) or the SPL. The `.jic` alone leaves the fabric empty at power-on,
+  even with a core in QSPI (#318, 2026-11-27); a warm reboot keeps whatever was loaded. That choice is part of D3. The logo then shows from
   about U-Boot time, not from reset, and Linux later replaces it with the Menu core.
 
 ## 2. What it is for

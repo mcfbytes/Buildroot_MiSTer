@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 /* A libudev that reports "no udev": FlexLM's host-ID probe then skips its device scan, which
- * aborts in containers (docs/de25-base-image.md §4). udev_new() returning NULL ends the probe. */
+ * aborts in containers (docs/de25-quartus.md §4). udev_new() returning NULL ends the probe. */
 #include <stddef.h>
 #define NUL(f) void *f(void) { return NULL; }
 NUL(udev_new) NUL(udev_unref) NUL(udev_enumerate_new) NUL(udev_enumerate_unref)

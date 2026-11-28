@@ -1,8 +1,12 @@
 # ADR 0034 — DE25-Nano FPGA service path: fix the firmware, keep the kernel vanilla
 
-**Status:** Proposed (2026-11-17). The changes are in the tree; **none has run on a DE25-Nano**.
-The decision is confirmed or reversed by tests T1 and T3 in
-[`de25-vendor-kernel-delta.md`](../de25-vendor-kernel-delta.md) §8.
+**Status:** Proposed (2026-11-17). The decision is confirmed or reversed by tests T1 and T3 in
+[`de25-vendor-kernel-delta.md`](../de25-vendor-kernel-delta.md) §8. *2026-11-26:* both passed on
+#318's bench, on this tree's kernel and `u-boot.itb`, over an HPS-first flash image: one
+`fpga load` at the U-Boot prompt, then 20 loads in a row from Linux through the service layer and
+one after each of 10 warm reboots, with the SMMU off ([`de25-fpga-reconfig.md`](../de25-fpga-reconfig.md) §12). That is the result items 1, 2
+and 4 below predicted. Owed before this is marked Accepted: the tester's word that the BL31 in
+that `u-boot.itb` was master's, with TF-A patch `0002`, and the owner's acceptance.
 **Amends:** [ADR 0029](0029-de25-implementation-path.md) **D8** (reversed: the service node is
 described as `intel,agilex-svc` and kernel patch `0102` is dropped) and **D9** (its open TF-A
 read is done, and its test is replaced). **Keeps** ADR 0029 **D10** (SMMU disabled), and records

@@ -1,5 +1,7 @@
 # DE25-Nano implementation path — the mainline-first route to a bootable, reconfigurable board
 
+> **Historical record (banner added 2026-11-28).** A desk analysis from 2026-08, before any hardware. Its decisions became [ADR 0029](decisions/0029-de25-implementation-path.md), since amended by ADRs 0034, 0035 and 0036. For the current state read [`de25-nano-overview.md`](de25-nano-overview.md). The text below is unchanged.
+
 **Status:** desk analysis, **2026-08-22**, **no hardware touched**. This document synthesises four
 investigation legs (open-source DTS survey, the no-carried-patch question, kernel-version choice,
 U-Boot build shape), then re-verifies every load-bearing claim against source, and then applies an
@@ -206,7 +208,7 @@ whole subtree, they must be met deliberately.
 
 > **Provenance note (2026-11-17).** Everything this section and §7 cite from "the PORT" is as it
 > was recorded in August 2026. It was not re-read for the 2026-11-17 study. A *different*
-> source, the public port at `github.com/ahmadexp/MiSTer-DE25-Nano`, was read for that study. It
+> source, the public DE25 port, was read for that study. It
 > runs **Terasic's 6.12.11 vendor kernel**, built with `CONFIG_OF_CONFIGFS=y`, and loads cores
 > through configfs overlays. Its observations are evidence about the hardware under a vendor
 > kernel; none of them is evidence about a mainline driver.

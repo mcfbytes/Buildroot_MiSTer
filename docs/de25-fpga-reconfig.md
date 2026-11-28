@@ -1,7 +1,15 @@
 # DE25-Nano FPGA reconfiguration and the HPS↔FPGA memory contract
 
-**Status:** desk research, 2026-08-21 — **no hardware touched**, nothing built, nothing
-measured. This is the D0.2 deliverable ([`de25-nano-tasks.md`](de25-nano-tasks.md)), and it
+**Status (2026-11-28):** the body is desk research from 2026-08-21. **§12 is what a board has
+since measured** (#318, 2026-11-26/27), and it answers §1's four risks: unsigned cores load
+(authentication is not in the way), 20 loads in a row did not hang, the mainline kernel path
+works with one TF-A patch ([ADR 0034](decisions/0034-de25-fpga-service-path.md)), and the loader
+is a small module, not an overlay (`package/de25-fpga-load`). Still unmeasured: §6's timing
+breakdown, and everything about a load while the fabric is driving DDR
+([`de25-fabric-interface.md`](de25-fabric-interface.md) §4). Read §12 first.
+
+**Status as written:** desk research, 2026-08-21 — **no hardware touched**, nothing built, nothing
+measured. This is the D0.2 deliverable ([`de25-history.md`](de25-history.md)), and it
 has been through D0.2's adversarial refuter pass (§10). The DP-9 verdict (§8) and the
 UX conclusion (§1) survived that pass; both were amended by it, and every number in §6 is
 superseded the day D2.5 measures one. Claims are tagged **[V]** (verified against a named

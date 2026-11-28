@@ -1,6 +1,12 @@
 # DE25-Nano: the vendor kernel versus mainline, and how to stay on a vanilla kernel
 
-**Status: desk study, 2026-11-17. Nothing in this document has run on a DE25-Nano.** No board has
+**Status (2026-11-28):** a desk study of 2026-11-17, **since tested**. Our image boots on a
+tester's board (#318). Of §8's tests: T0 was captured on 2026-11-24; T1 could not run on the
+factory flash, and passed, with T3, over an HPS-first flash image on 2026-11-26 (results in §8
+and in [`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §12). No result is recorded for T2, T4
+or T5.
+
+**Status as written: desk study, 2026-11-17. Nothing in this document has run on a DE25-Nano.** No board has
 booted our image yet. Every hardware statement below is either read from source or reported by
 someone else's vendor-kernel port, and is tagged as such.
 
@@ -41,7 +47,7 @@ Related: [`de25-dts-rationale.md`](de25-dts-rationale.md) §4,
 | `v7.4-rc1/` | mainline, individual files fetched read-only on 2026-11-17 |
 | `TF-A/` | Trusted Firmware-A v2.15.0, our pin (`dl/arm-trusted-firmware/`); line numbers are the unpatched file |
 | `U-Boot/` | U-Boot 2026.07, our pin |
-| `pubport/` | `github.com/ahmadexp/MiSTer-DE25-Nano` @ `4b2aef2` (public, GPLv3) |
+| `pubport/` | the public DE25 port @ `4b2aef2` (public, GPLv3) |
 
 Terasic's tree differs from Altera's 6.12.11 tree in four files only: the board DTS, the DTS
 Makefile, a config file, and a diagnostic change to `drivers/edac/altera_edac.c`. The comparison

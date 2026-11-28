@@ -1,6 +1,12 @@
 # DE25-Nano boot chain — QSPI, SD, and the user experience
 
-**Status:** desk research **complete** for D0.1 — synthesis pass 2026-08-21, adversarial
+**Status (2026-11-28):** the body is the D0.1 desk research of 2026-08-21, with dated notes
+added since. **Hardware has since answered much of it** (#318's bench, 2026-11-24 to 11-27): §0
+below is the current picture, and where §0 and the body disagree, §0 is right. Still sound and
+still needed from the body: §1's "the chip boots from QSPI only", §6's recovery and ordering
+rule, and §7's inventory of what bricks or strands a board. §8 to §10 are the research record.
+
+**Status as written (2026-08-21):** desk research **complete** for D0.1 — synthesis pass 2026-08-21, adversarial
 refutation pass 2026-08-21, **no hardware touched**. The six §8 questions are each either
 resolved to **[V]** or explicitly parked with a named blocker and an inheriting task. §9 records
 which claims survived refutation, which were amended, which remain contested, and which were
@@ -25,6 +31,28 @@ is contrasted against — [`boot-chain.md`](boot-chain.md).
 > publish the factory QSPI image. `golden_top_hps.jic` ships inside the downloadable Resource
 > Package, and the Getting Started Guide documents the restore procedure. The first pass's
 > "no image exists to write" premise was wrong — it had never been checked by opening the archive.
+
+## 0. The chain as measured (2026-11-28)
+
+**[V]** here means #318's bench unless a source is named. The decisions built on these facts are
+[ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) and
+[ADR 0036](decisions/0036-de25-scope-and-base-generations.md).
+
+| Question the body leaves open or gets wrong | Answer |
+|---|---|
+| Does the factory SPL load a mainline `u-boot.itb` from the card? (§8.3) | **Yes [V].** Factory SPL `2025.01-gd0f8813fd6bf` loads ours by name from a hidden type-`0x1c` FAT p1; 10 of 10 cold boots |
+| Is the factory image HPS-first? (§2 step 2, §7 row 13 say so) | **No: FPGA-first [V].** `quartus_pfg -i` reads `HPS_AFTER_INIT_DONE`; QSPI ownership stays with the SDM |
+| Can a core be loaded over the factory flash? (§5, §7 row 15) | **No [V].** A full image is refused, and no separately built core matches its HPS IO hash (`0xf0040000`) |
+| Does a core load over an HPS-first flash image? | **Yes [V]:** once from U-Boot; from Linux, 20 in a row and one after each of 10 warm reboots. Every one of those cores came from the same compile as its phase-1; a separately compiled core is hash test 2 ([`de25-quartus.md`](de25-quartus.md) §5) |
+| Which device name does a board carry? (§3) | `A5EB013BB23BE4SCS`, JTAG ID `0x4362C0DD` **[V, one board]** |
+| Does RSU fit 16 MB? (§8.4) | **By size, yes [V]:** the factory image ends at `0x3450a1`. Not built, and it cannot protect the first rewrite (ADR 0035 D6) |
+| Is "nothing we ship writes QSPI" still the rule? (§1, §5) | **Today, yes:** nothing in the tree writes it. The plan is one write, by the card's first boot (ADR 0035 D4) |
+| What happens at power-on with an HPS-first image? | The fabric is empty until something loads a core; a warm reboot keeps the loaded core **[V]** |
+| Must MSEL move to `111` to flash over JTAG? (§1, §6) | **[U].** The owner's bench settles it ([`de25-nano-tasks.md`](de25-nano-tasks.md), bench order step 2) |
+| Do reboots after a flash rewrite start the new image? | **[U]**: ADR 0035 gate B8 |
+
+The chain link by link, today and planned, is the table in
+[`de25-nano-overview.md`](de25-nano-overview.md) §3.
 
 **Sources.**
 
@@ -125,7 +153,9 @@ published JIC matches, or boots, any given physical board (§6, D2.2).
    sequence: doc 813762 unobtainable]**.
 2. **SDM loads from QSPI** (AS Fast, the board default): its own firmware plus the *phase-1*
    "HPS-first" bitstream — HPS pin/DDR configuration only, with the **FSBL embedded**
-   **[V GHRD, RB-boot]**. On the DE25-Nano that FSBL is **U-Boot SPL**, not ATF BL2 — now
+   **[V GHRD, RB-boot]**. *(Corrected 2026-11-28: that is Altera's reference flow and our
+   planned image. The **factory** image is FPGA-first: the SDM configures the whole chip, fabric
+   included, and then releases the HPS; §0.)* On the DE25-Nano that FSBL is **U-Boot SPL**, not ATF BL2 — now
    verified against the vendor's own artifact rather than the community guide: *RP-A* ships
    `…/GHRD/software/u-boot/spl/u-boot-spl-dtb.hex` (721,613 B) beside the JIC, and the DTB
    carved from it identifies as `model = "SoCFPGA Agilex5 Terasic DE25-Nano"` **[V RP-A,
@@ -196,7 +226,9 @@ wired to the HPS. *UM* §3.8.4's "not only … external storage for the HPS but 
 alternative boot option" is **resolved**: it means the FSBL/HPS reading `u-boot.itb` (step 4),
 not a second SDM path (§8.1).
 
-**OPN discrepancy, unresolved and worth carrying [U]:** *UM* p.8 prints `A5EB013BB23BE4SR1`
+**OPN discrepancy** *(answered for one board 2026-11-26: #318's reads `A5EB013BB23BE4SCS`, and
+Altera's baseline targets the same name; the owner's board is the second data point)*
+**— as written, [U]:** *UM* p.8 prints `A5EB013BB23BE4SR1`
 (twice), the demo `flash.cdf` targets `A5EB013BB23BE4SR1`, and the Terasic BSP build record says
 `A5EB013BB23BE4SCS` **[V, all three read directly]**. Which OPN a given board carries is a
 first-contact observation for D2.2 (Quartus auto-detect over JTAG), and it matters at exactly
@@ -323,7 +355,7 @@ the mismatch is QSPI-side. Release discipline that keeps this impossible:
   or go unnoticed. **The "guards" refutation lens verified, and this pass re-states without
   softening, that ADR 0027 Decision 4's board-identity assertion still has no implementation
   anywhere in the tree** — no shipped script reads `/proc/device-tree/compatible` or otherwise
-  checks board identity; `ADR 0027` lines 80-83, `de25-nano-tasks.md` 120/155 and
+  checks board identity; `ADR 0027` lines 80-83, `de25-nano-tasks.md` 120/155 (line numbers of 2026-08; that text is now in `de25-history.md`) and
   `downloader-contract.md` 1208-1215 are all design prose. Nothing today would stop DE10 flash
   semantics being cargo-culted onto a DE25 tree except the accident that no DE25 tree exists yet.
   **2026-09-23: implemented for the DE10 side.** `install.sh` and the DE10 updater now refuse
@@ -390,7 +422,9 @@ the mismatch is QSPI-side. Release discipline that keeps this impossible:
   currently the project's only one — move it somewhere durable). Still [U] and owned by D2.2:
   that the published JIC actually boots a physical board, and that factory flash equals it.
   Note also that *GSG* names no MSEL change in the restore procedure — whether `001` suffices or
-  `111` is required is **[U → D2.2]**.
+  `111` is required is **[U → D2.2]**. *(2026-11-28: still [U]. #318's two JTAG flashes did not
+  record the switch position. The owner's recovery drill tries both and
+  [`user/de25-recovery.md`](user/de25-recovery.md) is written from the result.)*
 - **D2.2 ordering rule, fail-closed** (this exists because the vendor scripts make erase-first
   the path of least resistance — `flash_erase.bat` is `quartus_pgm … -o "ri;…"` **[V RP-A]**):
   (1) `quartus_pgm` **verify-only** against `golden_top_hps.jic`, to learn whether factory ==
@@ -409,21 +443,21 @@ pass. No row has been deleted. Severity vocabulary: **brick-class** = needs JTAG
 
 | # | Action | Consequence | Guard |
 |---|---|---|---|
-| 1 | Raw/partial QSPI overwrite, interrupted | **Brick-class.** No SDM config → no boot from AS; recover only via JTAG + PC + a JIC in hand | §5 rule: nothing we ship writes QSPI; RSU is not available as mitigation (§6) |
+| 1 | Raw/partial QSPI overwrite, interrupted | **Brick-class.** No SDM config → no boot from AS; recover only via JTAG + PC + a JIC in hand | §5 rule: nothing we ship writes QSPI; RSU is not available as mitigation (§6). *2026-11-28: this is the risk the planned first-boot write takes on. Its guards are ADR 0035 D4: a known-image gate, a write order that keeps the exposed window short, verify before any reset, and a rehearsed JTAG recovery* |
 | 2 | Shipping `u-boot.itb` the resident SPL can't parse | **Strand-class**, not brick-class: QSPI is untouched, so re-imaging the card with the *previous* release or Terasic's BSP card boots the board — but re-imaging with the *same* release fails identically, and without a serial console it is indistinguishable from a bad card | frozen four-term SPL contract (§5, corrected symbols) + a per-release factory-QSPI boot test. **Recorded objection** (guards lens): that test matrix exists nowhere — no DE25 hardware, no CI lane, no test doc. It must be created at D2.2 before the first release |
 | 3 | Porting DE10 `updateboot` semantics (raw `dd`, env wipe at fixed sectors) | **Strand-class, and the first synthesis overstated it.** *(Amended — all three lenses.)* The `dd` leg writes garbage at Agilex-meaningless offsets **on the SD card only**: `/dev/mmcblk*` is the HPS SD/MMC controller; QSPI is a physically separate Cadence controller behind the SDM (`linux:…/socfpga_agilex5.dtsi:476-488`, `spi@108d2000`). No sector arithmetic on `mmcblk0` can reach boot flash. The **env-wipe leg** is the one that can — via row 5 or row 11 | board-identity assertion before any flash step (ADR 0027 §Decision 4 — **unimplemented**, §5), plus rows 5 and 11 |
 | 4 | MSEL switched away from `001` by a user following DE10-era lore | No boot until switched back; no damage | docs: "switches stay at default". **Recorded objection** (guards lens): that sentence appears in **no user-facing document** — `docs/user/` has zero DE25 or MSEL content; today the rule lives only in this developer doc. Writing it into the DE25 user docs is a first-release blocker, not an existing guard |
 | 5 | **`saveenv` (or any env write) with `ENV_IS_IN_UBI` compiled in and no `uboot.env` on FAT** | **Brick-class.** `env_save()` targets the location the env *loaded* from; on FAT-miss that is the **UBI volume in QSPI** → a routine operation writes boot flash | build our U-Boot with `CONFIG_ENV_IS_IN_UBI=n`; ship a valid `uboot.env` on FAT; assert the boot log says `Saving Environment to FAT` (§8.5) |
 | 6 | **Factory SPL built with FIT signature required; we ship an unsigned `u-boot.itb`** | Every release strands at SPL on every board — indistinguishable from a bad card to the user | D2.2 first test before any release. **Recorded objection** (completeness lens, and this pass agrees on the evidence): the DTB carved from Terasic's *published* SPL carries **no `/signature` node and no keys** (*SPL-dtb*, inspected 2026-08-21), so this drops from "posture-1 killer" to a routine first-contact check. Residual is only the published-build-vs-factory-flash gap. **Closed further 2026-09-14:** the `u-boot.itb` on Terasic's *factory SD image* is itself unsigned, crc32-only, same layout as ours (`de25-uboot.md` §12) — the factory loader demonstrably accepts that shape |
 | 7 | **Any QSPI write attempted with no archived known-good JIC** | *(Amended — all three lenses: the premise was false.)* The JTAG path is **not** empty-handed: `golden_top_hps.jic` is published (§5) and *GSG* documents the restore. The real exposures are vendor **link-rot**, **wrong-revision** substitution (row 14), and the fact that the published JIC's bootability is untested | archive both revisions' Resource Packages **with hashes** now, locally and durably; verify before erase (§6 ordering rule); never rely on the vendor URL staying live |
-| 8 | **Posture-2 QSPI flash performed as a field/OTA step** | **Brick-class today.** *(Amended — all three lenses: state the rule, not an impossibility.)* No power-loss-safe layout for 16 MB is **demonstrated or documented** (§8.4 residual; the measured ~2.87 MiB phase-1 payload makes a custom layout plausible but unproven), so a power cut mid-write leaves JTAG-only recovery for an end user | posture 2 is bench-only, PC-attached, documented one-time; never an update-channel artifact. Revisit only if §8.4's residual resolves in RSU's favour |
+| 8 | **Posture-2 QSPI flash performed as a field/OTA step** | **Brick-class today.** *(Amended — all three lenses: state the rule, not an impossibility.)* No power-loss-safe layout for 16 MB is **demonstrated or documented** (§8.4 residual; the measured ~2.87 MiB phase-1 payload makes a custom layout plausible but unproven), so a power cut mid-write leaves JTAG-only recovery for an end user | posture 2 is bench-only, PC-attached, documented one-time; never an update-channel artifact. Revisit only if §8.4's residual resolves in RSU's favour *2026-11-28: the owner chose this path for the one first-boot write (ADR 0036 D4). The row's consequence stands until ADR 0035 gates B3, B4 and B8 and the power-cut campaign pass* |
 | 9 | Assuming our `u-boot.itb` can set/repair DDR or pinmux | It cannot — the handoff is inside the QSPI bitstream **[V RB-boot]**; a "fix it in U-Boot" reflex produces silent misconfiguration or no boot | treat DDR/pinmux as QSPI-owned; any change is a bitstream rebuild + bench flash (§5) |
 | 10 | **Shipping a DTB that exposes the QSPI as a writable MTD, then any root shell / porting script running `flash_erase /dev/mtdX` or an mtd write** | **Brick-class, and it bypasses every guard aimed at `dd` and env semantics** — one userspace command from a healthy booted system erases SDM firmware + phase-1 | Our DTS omits the QSPI node, or enables it **read-only**. Precise state today: the SoC `.dtsi` ships `spi@108d2000` **disabled** (`linux:…/socfpga_agilex5.dtsi:476-488`) and it is the *board* DTS that enables it with writable `fixed-partitions` (`linux:…/socfpga_agilex5_socdk.dts:68-97`) **[V]** — so this is a hazard we would have to opt into, including if we opt in for the §5 readback. Audit Terasic's kernel DTB for the same at D2.2. [U] whether the SDM grants HPS access to the flash on this board — D2.2 |
 | 11 | **Shipping `fw_setenv`/libubootenv with an `fw_env.config` that names an MTD device** (copied from a reference BSP, or a DE10 env-wipe habit ported) | **Brick-class and silent**: Linux-side env writes reach QSPI without U-Boot involved, headless, repeatedly. Row 5's `ENV_IS_IN_UBI=n` does **not** protect this path — `fw_setenv` does not consult U-Boot's compiled-in drivers | if shipped at all, `fw_env.config` names only the FAT-partition `uboot.env` file; CI greps the rootfs for MTD-pointing env configs |
 | 12 | **Booting a U-Boot with `ENV_IS_IN_UBI` against a QSPI whose `root` MTD partition is blank**: the env **load** path runs `ubi part root`, and a UBI attach on an empty MTD auto-formats it | Worse than row 5 — QSPI is written on an environment *load* miss, with no user action at all, destroying the pristine-factory baseline before it can be hashed | same guard as row 5, promoted from prudent to mandatory: `CONFIG_ENV_IS_IN_UBI=n`. **[U] mechanism:** U-Boot's `ubi_part` auto-format-on-attach behaviour was **not** verified this pass — named missing input: read `env/ubi.c` + `cmd/ubi.c` in a U-Boot checkout. Note the SoCDK DTS does define a partition literally labelled `root` (`linux:…/socfpga_agilex5_socdk.dts:91-93`), matching `ENV_UBI_PART="root"` **[V]** |
-| 13 | **A user runs a Terasic *demo*'s `flash_program.bat`** from the same Resource Package our docs will point them at | **Strand-class-with-a-bench-recovery.** These demos ship full-flash **fabric-only** JICs and a one-click programming flow: `…/FPGA/HDMI_ASx4/demo_batch/golden_top.jic` (16,777,447 B) with `flash.cdf` = `ActionCode(Cfg) Device PartName(A5EB013BB23BE4SR1) … File("golden_top.jic") … SEC_Device(MT25QU128)` **[V RP-A, read directly]**. Programming one **erases the HPS-first factory image — SPL and all** — so SD Linux boot is dead until the *GSG* restore is run at a bench. This is a **vendor-sanctioned, user-facing QSPI write path entirely outside our control** | user docs: the only QSPI rule is "never run any demo `flash_program.bat`"; our recovery page carries the *GSG* restore recipe and the per-revision factory JIC hash so support can walk a user back |
+| 13 | **A user runs a Terasic *demo*'s `flash_program.bat`** from the same Resource Package our docs will point them at | **Strand-class-with-a-bench-recovery.** These demos ship full-flash **fabric-only** JICs and a one-click programming flow: `…/FPGA/HDMI_ASx4/demo_batch/golden_top.jic` (16,777,447 B) with `flash.cdf` = `ActionCode(Cfg) Device PartName(A5EB013BB23BE4SR1) … File("golden_top.jic") … SEC_Device(MT25QU128)` **[V RP-A, read directly]**. Programming one **erases the HPS-first factory image — SPL and all** — so SD Linux boot is dead until the *GSG* restore is run at a bench. This is a **vendor-sanctioned, user-facing QSPI write path entirely outside our control** | user docs: the only QSPI rule is "never run any demo `flash_program.bat`"; our recovery page carries the *GSG* restore recipe and the per-revision factory JIC hash so support can walk a user back *2026-11-28: the factory `golden_top_hps.jic` is itself FPGA-first, not HPS-first (§0); the distinction this row draws is between a fabric-only image and one that also carries the SPL* |
 | 14 | **Recovery or bench flash with the wrong board revision's or wrong OPN's JIC** | Programming succeeds (JTAG validates little beyond the die) but the DDR/pinmux handoff inside the bitstream is wrong for the board → no boot or subtly wrong DDR, **and the original factory image is now gone**. The recovery attempt manufactures row 7's state. Terasic ships revA and revB packages separately; *UM* prints OPN `…SR1` while the BSP record says `…SCS` (§3) | archive both revisions with hashes, keyed to device + board revision; read the OPN over JTAG (Quartus auto-detect) and the revision off the PCB before any write; forbid "any Agilex 5 JIC" substitution. Desk follow-up: diff the revA/revB GHRD projects |
-| 15 | **Shipping a phase-2 `core.rbf` from our own Quartus compilation against the factory phase-1 resident in QSPI** | Altera doctrine for split (HPS-first) configuration is that periphery and core images come from the **same** Quartus compilation. If that holds here, every boot-time fabric design we ship is pinned to Terasic's exact factory compile — a **project-shaping constraint on the whole core-switching model**, and a strand-at-U-Boot failure when violated. **[U]** — consistently reported across Altera-derived sources but the authoritative UG (813773) is 403-blocked | D0.2/D2.2: (a) test a self-recompiled GHRD `core.rbf` against the untouched factory QSPI; (b) test whether runtime `COMMAND_RECONFIG` full reconfiguration is compilation-independent — that decides whether core switching routes through U-Boot phase-2 at all or must be Linux-runtime-only. Until answered, treat boot-time phase-2 as pinned to the factory compilation |
+| 15 | **Shipping a phase-2 `core.rbf` from our own Quartus compilation against the factory phase-1 resident in QSPI** | Altera doctrine for split (HPS-first) configuration is that periphery and core images come from the **same** Quartus compilation. If that holds here, every boot-time fabric design we ship is pinned to Terasic's exact factory compile — a **project-shaping constraint on the whole core-switching model**, and a strand-at-U-Boot failure when violated. **[U]** — consistently reported across Altera-derived sources but the authoritative UG (813773) is 403-blocked | D0.2/D2.2: (a) test a self-recompiled GHRD `core.rbf` against the untouched factory QSPI; (b) test whether runtime `COMMAND_RECONFIG` full reconfiguration is compilation-independent — that decides whether core switching routes through U-Boot phase-2 at all or must be Linux-runtime-only. Until answered, treat boot-time phase-2 as pinned to the factory compilation *2026-11-28: confirmed and sharper (§0). The factory phase-1 takes no core at all, so our own phase-1 is needed, and the pairing is by HPS IO hash, which also moves with the Quartus version ([`de25-quartus.md`](de25-quartus.md) §5)* |
 | 16 | **Running `flash_erase.bat` (or `flash_program.bat`, which erases) as the first act of a D2.2 bench session** | The factory content — never dumped, never compared — is destroyed first; if the published JIC then fails to boot this board, no known-good image has ever existed for it | the §6 ordering rule, written into the D2.2 task *before* hardware arrives: verify-only → readback/archive → only then write |
 
 ### 7b. Field notes learned from another DE25-Nano port (2026-09-14)
@@ -444,8 +478,8 @@ confirms a choice above or names a trap; none is verified by us **[V there, U he
 **Notes added 2026-11-17** ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md)):
 
 - **Source.** F1–F6 are from the non-public port these documents call "the PORT", as reported
-  on 2026-09-14. A second source now exists: the public port at
-  `github.com/ahmadexp/MiSTer-DE25-Nano`, which runs Terasic's 6.12.11 vendor kernel. It
+  on 2026-09-14. A second source now exists: the public DE25 port,
+  which runs Terasic's 6.12.11 vendor kernel. It
   agrees with F5 (unsigned cores load; repeated full reconfiguration works) and adds one
   finding: with peripherals translated by the SMMU, the SMMU command queue stops after a full
   fabric load, so it translates only the SDM's stream and runs everything else untranslated and
@@ -604,8 +638,10 @@ it must not be written into the DP-1 ADR as a proven impossibility (§9.2).**
 
 **Answered by measurement 2026-11-27 (#318):** the certified factory flash is blank (`0xFF`)
 above `0x3450a1`, about 3.3 MiB. It holds four 420 KiB Altera-signed firmware sections (CMF 1–4,
-"Support firmware upgrade: TRUE (Max 4)") and a 1.3 MiB configuration payload at `0x200000`,
-leaving about 12.7 MiB. So a factory image plus one application slot fits by size. Still open,
+"Support firmware upgrade: TRUE (Max 4)") at byte offsets `0x0`, `0x80000`, `0x100000` and
+`0x180000`, and a 1.3 MiB configuration payload at `0x200000`, leaving about 12.7 MiB. So a
+factory image plus one application slot fits by size. *(2026-11-28: it is a standard layout,
+not an RSU one, so RSU cannot protect the write that converts it; ADR 0035 D6.)* Still open,
 as ADR 0035 B5: that `quartus_pfg` builds that RSU layout, and that the SPL boots it.
 
 ### 8.5 Q5 — U-Boot environment location and the warm-reboot story — **Env: RESOLVED [V], and it is §7 rows 5/11/12. Warm reboot: PARKED [U].**

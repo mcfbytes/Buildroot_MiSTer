@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds a Quartus Prime Pro container image from Altera's installer files, laid out like
-# Altera's own alterafpga/quartus-pro images. Usage and checksums: docs/de25-base-image.md §4.
+# Altera's own alterafpga/quartus-pro images. Usage and checksums: docs/de25-quartus.md §4.
 #   quartus-image.sh <dir with the .run and .qdz files> [tag]
 set -eu
 src=$(cd -- "${1:?usage: $0 <installer dir> [tag]}" && pwd)

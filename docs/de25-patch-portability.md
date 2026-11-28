@@ -1,7 +1,9 @@
 # DE25-Nano kernel patch portability — all 40 patches, two verdicts each
 
+> **Historical record (banner added 2026-11-28).** The 2026-08 desk audit of the DE10 patch series. What the DE25 carries today is [`board/mister/de25nano/linux-patches/README.md`](../board/mister/de25nano/linux-patches/README.md). The text below is unchanged.
+
 **Status:** **desk audit, 2026-08-21. No hardware. Nothing built, nothing rebased, no file
-moved.** This is task **D0.3** of [`de25-nano-tasks.md`](de25-nano-tasks.md) §D0.3, produced as
+moved.** This is task **D0.3** of [`de25-history.md`](de25-history.md) §D0.3, produced as
 a **draft**: the series-layout proposal in §3 is a proposal, and the *portable* verdicts that
 touch `arch/`, a DTS, or a Kconfig (§8) are queued for an independent spot-verification pass
 that has **not** yet run. Every load-bearing claim is tagged **[V]** (a file was opened and the

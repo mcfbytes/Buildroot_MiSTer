@@ -1,5 +1,7 @@
 # DE25-Nano reference implementation — analysis of a working third-party board
 
+> **Historical record (banner added 2026-11-28).** What a third-party DE25 port's sources showed in 2026-08. Several of its warnings did not reproduce on #318's bench ([`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §12). For the current state read [`de25-nano-overview.md`](de25-nano-overview.md). The text below is unchanged.
+
 **Status: COMPLETE, closed out 2026-08-22.** *(Was: SALVAGED PARTIAL, 2026-08-21.)*
 
 This document was produced by a 9-agent ultracode run that was cut off by an account spend limit
@@ -32,8 +34,7 @@ decision-bearing document; this file remains the **record of what the reference 
 ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md)). The body below is unchanged.
 
 - **Provenance.** This file records "the PORT" as it stood in August 2026. It was not re-read
-  for the 2026-11-17 study. That study read a different source, the public port at
-  `github.com/ahmadexp/MiSTer-DE25-Nano`, which runs Terasic's 6.12.11 vendor kernel with the
+  for the 2026-11-17 study. That study read a different source, the public DE25 port, which runs Terasic's 6.12.11 vendor kernel with the
   configfs overlay loader. Its findings are in the new document and are vendor-kernel evidence.
 - **`STRICT_DEVMEM`.** The finding below says we would inherit that divergence "only if the DE25
   config turns it on". It is on: `STRICT_DEVMEM` is `default y` on arm64, and the DE25 config

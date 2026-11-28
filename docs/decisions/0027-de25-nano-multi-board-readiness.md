@@ -4,6 +4,9 @@
 release change is made by this ADR: acceptance commits the project to a *posture*
 (same repo, staged plan, guarded couplings) and to the initial-deliverable scope in
 Decision 6, not to any build work yet.
+**Amended by:** [ADR 0036](0036-de25-scope-and-base-generations.md) (Proposed 2026-11-28) —
+Decision 6's bare developer OS becomes the first stage, not the deliverable, and work toward a
+card that boots MiSTer no longer waits for an upstream framework.
 **Impact (when acted on):** `configs/`, `board/mister/`, `scripts/` (board
 parameterization), `.github/` (a manual DE25 lane), `docs/` (this plan suite).
 **Related:** [ADR 0021](0021-rt-kernel-first-class-ci.md) (the variant machinery this
@@ -12,7 +15,8 @@ a DE25 prerequisite), [ADR 0025](0025-update-linux-kill-switch-and-private-updat
 (the out-of-band update channel the DE25 design reuses), [ADR 0018](0018-db-json-version-is-release-date-driven.md)
 (version scheme, carried over).
 **Plan and task list:** [`docs/de25-nano-plan.md`](../de25-nano-plan.md),
-[`docs/de25-nano-tasks.md`](../de25-nano-tasks.md).
+[`docs/de25-nano-tasks.md`](../de25-nano-tasks.md) (live tasks; the record to 2026-11-27 is
+[`docs/de25-history.md`](../de25-history.md)).
 
 ---
 

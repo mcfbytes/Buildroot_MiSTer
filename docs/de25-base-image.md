@@ -1,6 +1,17 @@
 # DE25-Nano base QSPI image — the GHRD with an HDMI splash
 
-**Status:** first step built and simulated. Quartus compiles for this device with the licence; **the base image itself has never been compiled or run on a board.**
+**Status (2026-11-28):** the HDMI block is built and simulated; **no base image of ours has been
+compiled or run on a board.** Two bases appear below, and only one is current:
+
+| | Base | State |
+|---|---|---|
+| §1–§5 | Terasic's GHRD plus a splash, on Quartus 25.3.1 (`tools/build-base-image.sh`) | the first recipe. **Not the base any more**; kept because it builds a factory-design image with a picture |
+| §7 | Altera's baseline for this board, on Quartus 26.3, plus `de25_hdmi` (§6) | **the base**: candidate generation 1 ([ADR 0036](decisions/0036-de25-scope-and-base-generations.md) D3). The unmodified baseline reproduces Altera's hash here (hash test 1, 2026-11-28); the integration is not written |
+
+Quartus itself (editions, the two licences, the containers, the version freeze) is
+[`de25-quartus.md`](de25-quartus.md).
+
+**Status as written (2026-11-27):** first step built and simulated. Quartus compiles for this device with the licence; **the base image itself has never been compiled or run on a board.**
 This is the image [ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) D1 calls
 "our own QSPI image", in its first and smallest form: Terasic's factory design with a picture.
 Sources: `fpga/de25-base/`.
@@ -52,7 +63,9 @@ hashes differ:
    - a framebuffer reader on the F2SDRAM port, reading HPS DDR at a reserved address;
    - an `fbcfg` mailbox behind the LW bridge, compatible with what ItsAlive's DE25 path expects
      (the MAGIC check and the scaler base write), so `itsalive` can draw installer progress
-     unchanged;
+     unchanged *(2026-11-28: §6's block was built with its own register set instead, and no
+     such mailbox. Which contract the boot core and the installer's picture use is open:
+     ADR 0036 §5 item 1)*;
    - the Menu core, loaded at runtime over the same phase-1 (#318 T3 did it through
      `fpga_mgr_load()`; our loader is `de25-fpga-reconfig.md` §3.2's open choice).
 
@@ -80,10 +93,10 @@ frame: 2,073,600 active pixels, 1125 lines, a 5-line vsync, exactly the logo's l
 and black blanking. It also checks the init against an I2C slave model: 43 writes to 0x39, all
 acknowledged, no framing errors. **Both pass.**
 
-The image (Quartus Prime Pro, **pinned 25.3.1**):
+The image (Quartus Prime Pro, **pinned 25.3.1**; this is the first recipe, see the status table):
 
 ```
-QUARTUS_LICENSE=<licence .dat> fpga/de25-base/tools/quartus-run.sh \
+QUARTUS_LICENSE=<your licence .dat> QUARTUS_MAC=<its NIC ID> fpga/de25-base/tools/quartus-run.sh \
     /w/fpga/de25-base/tools/build-base-image.sh <Resource Package .zip> <out dir>
 ```
 
@@ -99,35 +112,14 @@ Run it from the repo root: `tools/quartus-run.sh` mounts the current directory a
 5. compares the HPS IO hash that `quartus_pfg -i` reports for both halves, then prints it and the
    SHA-256s.
 
-**The container.** The DE10's Quartus container (`theypsilon/quartus-lite-c5:17.0.2`) cannot
-build this: Agilex 5 needs Quartus Prime **Pro**. `tools/quartus-run.sh` runs Altera's own image,
-`alterafpga/quartus-pro:25.3.1-patch1.02-agilex5` (Docker Hub, 17.5 GB). It is 25.3.1 Build 100
-with patch 1.02, the patch Altera requires on every 25.3.1 install, and only Agilex 5 devices.
-The wrapper makes four changes, all needed **[V 2026-11-25, on this tree's build host]**:
+**The container and the licences** are in [`de25-quartus.md`](de25-quartus.md) §3–§4: Quartus
+Prime **Pro** only, two free licences issued for your own NIC ID, and what `tools/quartus-run.sh`
+changes in the container and why. There is no default NIC ID; set `QUARTUS_MAC` to the one your
+licence names. A full compile of a test design for this device passes through the wrapper
+**[V 2026-11-27]**.
 
-- **A stub `libudev.so.1` mounted over the image's** (`tools/udev-stub.c`, built on first use
-  into `.quartus-run/`). Without it, `quartus_syn` aborts with `realloc(): invalid pointer` in
-  `udev_enumerate_scan_devices`. The caller is FlexLM's host-ID probe (`sys_cpt`, which
-  `dlopen`s libudev), so every compile hits it. Preloading the real library only moves the crash:
-  it passes while there is no licence and aborts again once a licence makes FlexLM probe more
-  host-ID types. The stub's `udev_new()` returns NULL, the probe skips its device scan, and the
-  MAC-based licence still matches. A full compile of a test design for `A5EB013BB23BE4SR1`
-  passes this way **[V 2026-11-27]**.
-- **A fixed `--mac-address`** (`QUARTUS_MAC`, default `02:de:25:00:00:01`). The licence is
-  bound to a NIC ID, and a container gets a new MAC each run.
-- **The caller's uid,** so the outputs are not owned by root.
-- **`HOME=/tmp`,** because that uid has no home directory in the image, and Quartus writes
-  its settings under `$HOME`.
-
-The stub makes udev report no devices, so the wrapper is for compiling only. `quartus_pgm`
-through it would find no USB-Blaster.
-
-**The licence.** Without one, synthesis stops with `Error (19286): No license for family
-Agilex 5`. Altera issues a no-cost licence for Agilex 5 E-series, which the board's `A5EB013`
-is, from its Self-Service Licensing Center. Request **SW-AGILEX-5E**, type FIXED, for the
-NIC ID `02de25000001` (the default MAC, without colons), or for your own `QUARTUS_MAC`. It
-carries the feature `quartus_agilex5e` and lasts a year. Pass it as `QUARTUS_LICENSE`; it is
-never committed.
+*(2026-11-28: the paragraph below explains this recipe's pin. The project's version choice is
+now 26.3.0 Build 114, with the reasons in ADR 0036 D3 and §6.)*
 
 **Why 25.3.1 and not the factory's 25.1.1:** we do not need to match the factory's HPS IO hash,
 because we replace the factory image. What matters is that the image and every core share one
@@ -245,7 +237,7 @@ byte. Not simulated: a reset or PLL unlock mid-fetch, `CTRL` toggled while the t
 compared, the clear-versus-event race in `STATUS` (the logic gives the event priority), and the
 I2C table's register values and real 100 kHz timing (`tb_adv7513` runs a scaled clock).
 
-## 7. Retargeting onto Altera's DE25-Nano baseline (planned)
+## 7. Retargeting onto Altera's DE25-Nano baseline (the base; integration planned)
 
 Altera publishes a reference design for this board: `terasic-de25-nano-devkit/baseline-a55`
 in `altera-fpga/agilex5-ed-hps-baseline`, tag `QPDS26.3_REL_BASELINE_PR`, under an MIT-style
@@ -259,11 +251,15 @@ suits us better than Terasic's GHRD (§3):
 - **`QSPI_OWNERSHIP HPS`.** After boot the HPS owns the flash controller, so Linux can drive the
   flash with the mainline `cadence-quadspi` driver, with no SDM handover. Altera's U-Boot
   environment enables `spi@108d2000` for Linux in exactly this case (`linux_qspi_enable`).
-  That simplifies ADR 0035 B3.
+  That simplifies every flash write *after* our image is in place. It does not help the first
+  one: that write runs on a factory board, where the SDM owns the flash, so ADR 0035 gate B3's
+  handover is still needed.
 - **The boot core is loaded by U-Boot**, from a FIT image that carries the kernel, the DTB and
   the core.
 - **An F2SDRAM adapter is already present** (AXI4, 256-bit, 40-bit address), driven by a Nios V
-  test master. Ours replaces it.
+  test master. Ours replaces it. While the Nios V/m is in the design, a compile needs the
+  Nios V licence as well ([`de25-quartus.md`](de25-quartus.md) §3); dropping the processor
+  would drop that licence.
 - **The LW bridge** reaches the fabric peripherals at `0x2000_0000`.
 
 What it lacks: HDMI. The top level has no HDMI ports. *UM* Table 3-13 lists them (the manual
@@ -299,17 +295,19 @@ clock comes from an IOPLL we generate off the design's 100 MHz reference (`pll_r
   top wires `f2h_irq0` to the push buttons; the DTS reserves it for the framebuffer).
 
 **It needs Quartus 26.3.** The `.ip` files are saved by 26.3, and older versions do not open
-newer IP. The base image's Quartus pin therefore moves from 25.3.1 to 26.3 when this lands.
+newer IP. Altera has published no 26.3 container; `tools/quartus-image.sh` builds
+`de25/quartus-pro:26.3.0.114-agilex5` from Altera's installers
+([`de25-quartus.md`](de25-quartus.md) §4) **[V 2026-11-28: built]**.
 
-Altera has published no 26.3 container (the newest Agilex 5 one is `26.1.1-agilex5`).
-`tools/quartus-image.sh <dir>` builds one from Altera's four installer files, downloaded while
-signed in: `QuartusProSetup-26.3.0.114-linux.run`, `QuartusProSetup-part2-26.3.0.114.qdz`,
-`agilex_common-26.3.0.114.qdz` and `agilex5-26.3.0.114.qdz` (16 GB). It checks their SHA-1s
-against `tools/quartus-26.3.0.114.sha1` (Altera's published values), installs Quartus with
-Agilex 5 only into a container laid out like Altera's images, and tags it
-`de25/quartus-pro:26.3.0.114-agilex5` (55 GB on disk). Running it accepts Altera's EULA.
-**[V 2026-11-28: built; `quartus_sh --version` reports 26.3.0 Build 114.]**
+**Hash test 1: passed [V 2026-11-28].** The baseline at tag `QPDS26.3_REL_BASELINE_PR` (commit
+`8d88fc5`), unmodified, compiled in that container, gives HPS IO hash `DF9589F2…` and IO hash
+`9E82C9A1…`, identical to Altera's published `ghrd.core.rbf`, with timing met. So our build
+reproduces Altera's. The steps and the full hashes are in [`de25-quartus.md`](de25-quartus.md)
+§5.
 
-**First check after the toolchain is in:** compile the design unmodified and compare its HPS IO
-hash with the published `DF9589F2…`. A match means our build reproduces Altera's, and cores we
-compile will also load over the public `ghrd.hps.jic`.
+**Hash test 2: not run.** The baseline plus `de25_hdmi`, and a third design with clearly
+different fabric, must keep that HPS IO hash and load over one phase-1. Only then do cores we
+compile load over the public `ghrd.hps.jic`, and only then is generation 1 declared.
+
+**Open from the second RTL review** (H1, M4, L5, L6, and what needs a compile or a board): the
+table in [`de25-nano-tasks.md`](de25-nano-tasks.md), "Open items from the RTL reviews".

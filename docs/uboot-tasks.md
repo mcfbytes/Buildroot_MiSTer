@@ -397,11 +397,11 @@ the rest.
 
 - [x] **DU7 — Boot-path re-review** — [FABLE] — Size S — Depends: DU1, DU2 (may run as part of U9)
   The wave-2 `fable` boot-path pass was against the custom-pin build. Re-run its checklist
-  (`de25-nano-tasks.md` "What the boot-path fable pass established") against the DU1 artifact:
+  (`de25-history.md` "What the boot-path fable pass established") against the DU1 artifact:
   no QSPI command or driver in U-Boot proper, unsigned-crc32 FIT at the factory SPL's addresses,
   nothing persistent written. Add: does DU2's hook actually fire on the DE25 tree and not the
   DE10's?
-  **Done when:** the pass is logged in `de25-nano-tasks.md` under a wave-4 heading.
+  **Done when:** the pass is logged in `de25-nano-tasks.md` under a wave-4 heading (since 2026-11-28 in `de25-history.md`).
 
 ---
 
@@ -436,7 +436,7 @@ the real fragment and env, gnutls line gone), U3 (DE10 resolved-`.config` hook i
 U5 (offline checks in `ci-tests.sh`, the full stock comparison in `release.yml`, patch lint over
 both boards' U-Boot series — the DE25 patch's placeholder author line fixed by the orchestrator),
 U8, U9 (`docs/verification/uboot-mainline.md` §11), DU3 (three clean trees byte-identical), DU4,
-DU7 (wave-4 section in `de25-nano-tasks.md`). Added outside the plan the same day: the TF-A
+DU7 (wave-4 section, now in `de25-history.md`). Added outside the plan the same day: the TF-A
 console patch (`patches/arm-trusted-firmware/0001-…uart1.patch`, `de25-uboot.md` §8) and the
 FIT-acceptance closure by reference (`de25-uboot.md` §12). Also landed the same day while gating the DE25 with a full `make de25`: the DE25 kernel pin
 moved to 7.2.5 and joined the 7.2 Renovate manager, and `package/linux-rt/linux-rt.mk` stopped

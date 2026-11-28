@@ -753,8 +753,8 @@ it inherits from mainline's dtsi. Until this change both were kept, with [U2] op
   the kernel then does the cache maintenance itself.
 - **Nobody has measured the shape we ship.** Mainline and all three vendor trees assert the
   property with the SMMU **on**. We run with it off.
-- **The only DE25 evidence for an untranslated shape is non-coherent.** The public vendor-kernel
-  port (`github.com/ahmadexp/MiSTer-DE25-Nano`) runs `gmac0` and the SD controller with no
+- **The only DE25 evidence for an untranslated shape is non-coherent.** The public DE25 port,
+  on the vendor kernel, runs `gmac0` and the SD controller with no
   translation and with `dma-coherent` deleted. U-Boot also treats its DMA as non-coherent. The
   earlier port's setup notes recorded SD ADMA corruption under `iommu.passthrough=1` after a
   JTAG load, which is a failure in exactly this area.

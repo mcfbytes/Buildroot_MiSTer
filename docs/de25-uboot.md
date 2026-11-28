@@ -1,10 +1,18 @@
 # DE25-Nano U-Boot — mainline `u-boot.itb`, and the config that makes a QSPI write impossible
 
-**Status:** built and shape-verified on 2026-09-02; **never run on hardware**. Every claim below is
+**Status (2026-11-28):** this `u-boot.itb` **boots a DE25-Nano under the factory SPL** (#318:
+10 of 10 cold boots on 2026-11-24, and from the hidden p1 on 2026-11-26), and `fpga load` works
+at its prompt over an HPS-first flash image. The body below was written on 2026-09-02, before
+any board; its "never run on hardware" and several §12 **[U]** rows are answered, and are dated
+where they stand. The title's "impossible" is this build's property today.
+[ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) plans two changes to it: U-Boot
+loads a boot core (D2), and the first-boot write may need a QSPI handover (gate B3).
+
+**Status as written:** built and shape-verified on 2026-09-02; **never run on hardware**. Every claim below is
 tagged **[V]** (read from source, or observed in this build) or **[U]** (unverified — the missing
 input is named). Nothing here has touched a DE25-Nano.
 
-This is D2.4's buildable half (`docs/de25-nano-tasks.md`, "What to do next" item 1). It delivers
+This is D2.4's buildable half (`docs/de25-history.md`, "What to do next" item 1). It delivers
 `output-de25/images/u-boot.itb` and `output-de25/images/bl31.bin`, and it closes
 [`de25-implementation-path.md`](de25-implementation-path.md) §8 **Q6** — in the negative.
 
@@ -773,7 +781,8 @@ power-on
                    -> finds /extlinux/extlinux.conf   (prefix "/" is tried first)
                    -> loads /Image and /socfpga_agilex5_de25nano.dtb
                    -> booti with the extlinux "append" line as bootargs
-                      -> Linux 7.2.2, root=/dev/mmcblk0p2
+                      -> Linux, root=/dev/mmcblk0p2 loop=linux/linux.img
+                         (the kernel pin is in configs/mister_de25nano_defconfig)
 ```
 
 ### 9.1 The exact environment we ship
@@ -895,9 +904,9 @@ this build; typing them should produce `Unknown command` — which is itself a u
 | U-Boot's SD access uses socdk's silicon-validated Agilex 5 PHY timings, at default speed only | **[V, config-traced]** — §5.1. Whether those timings suit *this* board is **[U]** until hardware |
 | `# CONFIG_SPL is not set` does not work; SPL is compiled and nothing of it is shipped | **[V]** — §4.5, closes §8 Q6 |
 | `boot_targets` contains only `mmc0`, and `bootcmd_qspi`'s embedded `saveenv` is gone | **[V]** — built default env |
-| U-Boot 2026.07 + TF-A v2.15.0 boot this board under the factory SPL | **[U]** — needs hardware. ADR 0029 D4. Narrowed 2026-09-14: the factory pairing is U-Boot `2025.01-gd0f8813fd6bf` + TF-A `v2.12.0` (Terasic's build of Altera's downstream branch), read from the FIT in Terasic's factory SD image; the SPL→BL31→BL33 interfaces between those and ours are the generic FIT/`bl_params` ones, so this is a compatibility question, not a contract question |
+| U-Boot 2026.07 + TF-A v2.15.0 boot this board under the factory SPL | **[V, #318, 2026-11-24]** — 10 of 10 cold boots on one board. *As written:* **[U]** — needs hardware. ADR 0029 D4. Narrowed 2026-09-14: the factory pairing is U-Boot `2025.01-gd0f8813fd6bf` + TF-A `v2.12.0` (Terasic's build of Altera's downstream branch), read from the FIT in Terasic's factory SD image; the SPL→BL31→BL33 interfaces between those and ours are the generic FIT/`bl_params` ones, so this is a compatibility question, not a contract question |
 | The factory SPL accepts our unsigned crc32 FIT | **[V by reference, 2026-09-14]** — the `u-boot.itb` on Terasic's factory SD image (`de25_nano_revA_sdcard_console_v1.1.img`, partition 1) is itself crc32-only with **no signature value**: images `uboot`@`0x80200000` / `atf`@`0x80000000` / `fdt-0`, configuration `board-0`, "Sign algo crc32:dev" — byte-for-byte the shape `dumpimage -l` prints for ours (§6.1). Its U-Boot banner names the build (`2025.01-gd0f8813fd6bf`, the head of Terasic's public `de25-nano-v2025.01` branch), whose defconfig sets `SPL_FIT_SIGNATURE=y` with no keys in the SPL DTB, i.e. hash-only verification. Terasic's card boots on factory flash, so the factory SPL demonstrably accepts this shape. Residual [U]: nobody has booted a *third-party* FIT under an *untouched* factory flash — reports from another DE25-Nano port all involve a reflashed QSPI |
-| The SD controller works with our conservative `&mmc` block | **[U]** — needs hardware |
+| The SD controller works with our conservative `&mmc` block | **[V, #318]** — after the fixes of 2026-11-24 (the carried patch `0002`, §8). *As written:* **[U]** — needs hardware |
 | DRAM is 1 GiB at `0x8000_0000` | **[U, vendor declaration]** — the `DDR:` lines settle it |
 | The TF-A v2.15.0 tag signature is authentic | **[V, DU6 2026-09-14]** — verified against the tagger's self-published key; the hash file header records the fingerprint and the trust anchor |
 | Nothing else in the release writes QSPI (Linux side, `fw_setenv`, updater) | **[policy, partially enforced]** — `de25-boot-chain.md` §5; `external.mk` hook + `ci-tests.sh` check (DU2, 2026-09-14) |

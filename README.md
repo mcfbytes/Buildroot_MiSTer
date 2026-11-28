@@ -527,8 +527,11 @@ directly, which does not exist on arm64. Details:
 
 **DE25-Nano.** A bare developer OS for the Agilex 5 DE25-Nano (aarch64, 7.4 -rc kernel) builds
 from the same tree and shares the userspace profiles and most kernel patches. It has no
-MiSTer binaries yet and its own manual CI lane. Start at
-[`docs/de25-nano-overview.md`](docs/de25-nano-overview.md).
+MiSTer binaries yet and its own manual CI lane. The goal is a card that boots MiSTer as on the
+DE10-Nano; that needs the board's flash rewritten once, which no card does yet. Start at
+[`docs/de25-nano-overview.md`](docs/de25-nano-overview.md). For users, in draft:
+[the first boot](docs/user/de25-first-boot.md) and
+[recovery from a PC](docs/user/de25-recovery.md).
 
 ---
 

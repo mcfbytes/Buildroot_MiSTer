@@ -3,7 +3,7 @@
 **What this is.** Everything a MiSTer-style host program (a Main, a test tool) needs to load
 cores into the DE25-Nano's fabric and talk to them, in one place. It states what is measured,
 what is planned and what is still open, and links to the detailed records instead of repeating
-them. **Status 2026-11-27.**
+them. **Status 2026-11-28.**
 
 **Evidence tags:** **[V]** verified on DE25 hardware (#318's bench unless noted); **[S]**
 verified in simulation or by building; **[P]** planned, not built; **[U]** unknown.
@@ -24,9 +24,10 @@ clears it. Records: [ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-fla
 | Phase-1 in the flash | What loads at runtime |
 |---|---|
 | Terasic's factory image (FPGA-first, every board as shipped) | **nothing**: a full image is refused (`0xf0040000`), and no HPS-first core matches its hash **[V]** |
-| An HPS-first image (ours, or Altera's public `ghrd.hps.jic`) | any `core.rbf` compiled against the **same** base design and Quartus version **[V]** |
+| An HPS-first image (ours, or Altera's public `ghrd.hps.jic`) | a `core.rbf` with the **same HPS IO hash** **[V, for cores split from the same compile as the phase-1]**. That a *separately compiled* core on the same base design and Quartus build keeps the hash is **[U]**: hash test 1 passed at the desk on 2026-11-28, test 2 is not run ([`de25-quartus.md`](de25-quartus.md) §5) |
 
-So every core a host program offers must be built against one pinned base. A core built
+So every core a host program offers must be built against one pinned base, a **base generation**
+([ADR 0036](decisions/0036-de25-scope-and-base-generations.md) D3). A core built
 against another base is refused by the SDM. A host program should check the pairing before
 asking (§4), so the user sees "built for a different base image", not a bare SDM status.
 
@@ -48,6 +49,9 @@ cat /sys/class/fpga_manager/fpga0/state                # "operating" after succe
 - **Time:** about 2.1 s for a 1.58 MB core, start to "operating", through the same kernel path
   **[V: the bench's equivalent module]**.
 - **Root only.** Source: `package/de25-fpga-load/src/de25-fpga-load.c`.
+- **Open:** the name must be a bare file under `/lib/firmware`, and cores will live in folders
+  on the exFAT volume. The interface a host needs (the bitstream as written data, or a path) is
+  to be decided before a host is written against this one (D2.11).
 
 ## 4. Rules around a load
 
@@ -68,12 +72,14 @@ cat /sys/class/fpga_manager/fpga0/state                # "operating" after succe
 | LW bridge (LWH2F) | `0x2000_0000` | 2 MiB described | `/dev/mister/lw-bridge` | the fabric's register space; Altera's baseline puts its peripherals here **[V: the bench's reads]** |
 | H2F bridge | `0x4000_0000` | 1 GiB described | `/dev/mister/h2f-bridge` | the windows above 4 GiB are not described |
 | HPS DDR | `0x8000_0000` | 1 GiB | Linux below `mem=479M` | the reserved tiles above it: [`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7 |
+| Scaler scratch | `0x9E00_0000` | 32 MiB tile | `/dev/mister/scaler` | written by a fabric scaler; the HPS only reads it |
 | Framebuffer | `0xA000_0000` (image at `+0x1000`) | 32 MiB tile | `/dev/fb0` (`MiSTer_fb`) | §6 |
 | Fabric DDR aperture | `0xA000_0000` | 512 MiB | `/dev/mister/ddr-aperture` | core DDRAM; a core's DE10 address plus `0x8000_0000` |
 | OCRAM | `0x0` | 508 KiB | `/dev/mister/ocram` | boot stages only; nothing at runtime |
 
-The full node list, UIO names and mapping rules are in
-[`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §5 and §7. Agilex 5 has no
+This is the host's view. The one full table (every reserved tile, UIO names, mapping rules) is
+[`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §5 and §7; other documents link
+there and do not repeat it. Agilex 5 has no
 Cyclone V-style GPO/GPI registers in the HPS FPGA manager. A DE25 base design must provide
 them as fabric registers behind the LW bridge **[P: not designed]**.
 
@@ -86,6 +92,12 @@ are in [`de25-base-image.md`](de25-base-image.md) §6. Where the register block 
 bridge is fixed when it is wired into the base design **[P]**. The HDMI transmitter is reachable
 only through the fabric, so nothing can show a picture before a core with this block is loaded.
 
+**Two video contracts exist, and one must be chosen** ([ADR 0036](decisions/0036-de25-scope-and-base-generations.md)
+§5). The memory layout above and ItsAlive's DE25 path follow the public DE25 port: a scaler
+gated by an `fbcfg` mailbox on the LW bridge ([`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md)
+§7). `de25_hdmi` has its own register set and no such mailbox. Until that is settled, a host
+should not hard-code either.
+
 ## 7. Flash ownership and updates
 
 | Phase-1 | QSPI after boot | Consequence |
@@ -94,7 +106,8 @@ only through the fabric, so nothing can show a picture before a core with this b
 | Altera's baseline (and ours, if built from it) | HPS-owned (`QSPI_OWNERSHIP HPS`) | Linux can drive the flash with mainline `cadence-quadspi`, as Altera's U-Boot sets up |
 
 A host program should never write the flash. The first-boot installer is the one planned writer
-([ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) D4).
+([ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) D4). It runs on a factory
+board, so that write is made under the first row whatever our own image sets.
 
 ## 8. Open items a host program depends on
 
@@ -105,3 +118,6 @@ A host program should never write the flash. The first-boot installer is the one
 | GPO/GPI registers (the Cyclone V HPS-to-fabric control words) on Agilex 5 | not designed |
 | The video register block's LW offset, and a vsync interrupt line | [`de25-base-image.md`](de25-base-image.md) §6–§7 |
 | The `hdskack` messages after a warm reset | ADR 0035 §5 |
+| The loader's interface for cores outside `/lib/firmware` | D2.11 |
+| One video contract (§6) | ADR 0036 §5, D2.14 |
+| Whether separately compiled cores keep the hash (hash test 2) | [`de25-quartus.md`](de25-quartus.md) §5 |

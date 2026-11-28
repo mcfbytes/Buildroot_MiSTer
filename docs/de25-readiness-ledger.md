@@ -1,5 +1,7 @@
 # DE25-Nano readiness ledger — every `de10nano` / `BR2_arm` / zImage site outside the board dir
 
+> **Historical record (banner added 2026-11-28).** The 2026-08 inventory of DE10 assumptions in scripts and CI, most of it acted on or retired since (ADR 0030). For the current state read [`de25-nano-overview.md`](de25-nano-overview.md). The text below is unchanged.
+
 **Status:** D1.1 complete 2026-08-21 — **docs only, no code changed**. This file is also the
 home of **D1.2** (§5), which has no separate deliverable file of its own. Nothing here has
 been applied: §6's diffs are *proposals for separate review*, not commits. Claims are tagged
@@ -7,7 +9,7 @@ been applied: §6's diffs are *proposals for separate review*, not commits. Clai
 
 **Cross-refs:** [ADR 0027](decisions/0027-de25-nano-multi-board-readiness.md) (the four
 couplings, Decision 3's obligation), [`de25-nano-plan.md`](de25-nano-plan.md) §3 (the same
-four, with what each needs), [`de25-nano-tasks.md`](de25-nano-tasks.md) §D1 (this task and its
+four, with what each needs), [`de25-history.md`](de25-history.md) §D1 (this task and its
 accept criterion), [`de25-boot-chain.md`](de25-boot-chain.md) (D0.1's boot-flow research that
 DP-2 depends on).
 

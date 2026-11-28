@@ -1,9 +1,12 @@
 # DE25-Nano SD card — layout, build, write, first boot
 
 **Status:** D2.4's card half. The two-partition developer card (p1 FAT32, p2 ext4) booted on a
-tester's board 10/10 on 2026-11-24 (issue #318). **The layout below replaced it on 2026-11-24 and
-has not been on hardware yet:** the hidden p1 type, stage 1 and the DE25 installer are verified in
-QEMU and statically only (§9).
+tester's board 10/10 on 2026-11-24 (issue #318). The layout below replaced it on 2026-11-24 and
+**booted on that board on 2026-11-26**, on the untouched factory flash: the factory SPL accepts
+the hidden p1, the installer runs once, and the board reboots from the exFAT volume
+([ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) §5, gate B0 a–c). Owed: how
+an installed card looks on a Windows PC (B0 d). Sentences below that say "not yet on hardware"
+are dated where they stand.
 
 Files this document describes:
 
@@ -17,7 +20,7 @@ Files this document describes:
 Cross-refs: [`de25-boot-chain.md`](de25-boot-chain.md) §2/§3/§7/§8.3,
 [`de25-implementation-path.md`](de25-implementation-path.md) §6/§6.3/§8 Q7,
 [ADR 0029](decisions/0029-de25-implementation-path.md) D3/D4,
-[`de25-nano-tasks.md`](de25-nano-tasks.md) "Testing on a borrowed board".
+[`de25-history.md`](de25-history.md) "Testing on a borrowed board".
 
 ---
 
@@ -89,7 +92,9 @@ appears, because it is a reliable symptom of DE10 layout lore being transplanted
 RSU safety net (§6, §7 rows 1/5/10/11/12 of the boot-chain doc). The checker greps
 `extlinux.conf` for `sf probe`, `ubi` and `mtd`; that grep is thin, and it is deliberately the
 *only* automated enforcement that exists today — the wider rule is still policy enforced by
-prose (boot-chain §5, §9.3).
+prose (boot-chain §5, §9.3). *(2026-11-28: still true of this card. The plan is one QSPI write
+by the first-boot installer, [ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md)
+D4; nothing implements it yet.)*
 
 ### Why p1 is hidden, and why that is safe
 
@@ -111,7 +116,8 @@ The boot chain does not care about the type byte:
   never searches the user-writable p2 for an `extlinux.conf` or a `boot.scr`. The checker
   asserts the flag.
 
-**Not yet on hardware [U].** If the factory SPL turns out to reject `0x1c` (no evidence that it
+**On hardware since 2026-11-26 [V, #318]:** the factory SPL loads `u-boot.itb` from the `0x1c`
+p1. *As written before that:* if the factory SPL turns out to reject `0x1c` (no evidence that it
 would), the board stops at the SPL and the fix is one byte: `partition-type = 0xc` in
 `genimage-sdcard.cfg` and `BOOT_PART_TYPE` in the checker.
 
@@ -228,8 +234,9 @@ untouched p1. That makes the DE10 installer's RAM budget, copy-back recovery and
 
 **Not carried over from the DE10 (yet):**
 - the free-space trim and its fake-capacity check;
-- the HDMI and LED splash (no ItsAlive on this board: `BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE`
-  is ARM-only);
+- the HDMI and LED splash (no ItsAlive in this board's *initramfs*:
+  `BR2_PACKAGE_MISTER_INITRAMFS_ITSALIVE` is ARM-only. The rootfs does carry the `itsalive`
+  package, §7);
 - the per-board MAC in `linux/u-boot.txt`, which the DE25's U-Boot does not read.
 
 Progress goes to the serial console only.
@@ -378,8 +385,8 @@ does **not** appear localises the failure to one link of the chain
 | # | What you should see | If it is missing |
 |---|---|---|
 | 1 | **SPL banner and DDR init** — the factory SPL running out of QSPI, before anything on the card is read | Nothing on the card is implicated. Check power, the UART cable, and MSEL/SW5 at its factory default (`001`, AS Fast). A board whose QSPI was modified is a different board — §8. |
-| 2 | **SPL loading `u-boot.itb`** from `mmc0` | The FAT/entry-1/filename contract failed. Confirm p1 is entry 1, FAT32, and holds `u-boot.itb` (the checker asserts all three) — then suspect the **partition-table type** (§3) or FIT signature policy (boot-chain §7 row 6). This is D0.1 Q3, and it has never been tested on hardware by anyone. |
-| 3 | **The `U-Boot 2026.07 …` banner.** Note what you will *not* see: **no `NOTICE:  BL31:` lines**. TF-A's Agilex 5 platform prints on **UART0**, not the uart1 header this cable is on ([`de25-uboot.md`](de25-uboot.md) §5 on the uart0/uart1 split), so a silent BL31 is expected and is not evidence of anything | The FIT loaded but its contents did not run: an ATF/U-Boot pairing problem, not a card-layout one (implementation-path §8 Q5). |
+| 2 | **SPL loading `u-boot.itb`** from `mmc0` | The FAT/entry-1/filename contract failed. Confirm p1 is entry 1, FAT32, and holds `u-boot.itb` (the checker asserts all three) — then suspect the **partition-table type** (§3) or FIT signature policy (boot-chain §7 row 6). This is D0.1 Q3, and it has never been tested on hardware by anyone. *(2026-11-26: tested; the factory SPL loads it, #318.)* |
+| 3 | **The `U-Boot 2026.07 …` banner.** *(Corrected 2026-11-28: since the carried TF-A patch `0001` routes BL31's console to uart1, `NOTICE:  BL31:` lines **are** expected before it, and their absence is a finding; [`de25-uboot.md`](de25-uboot.md) §11. The rest of this cell is as written before that patch.)* Note what you will *not* see: **no `NOTICE:  BL31:` lines**. TF-A's Agilex 5 platform prints on **UART0**, not the uart1 header this cable is on ([`de25-uboot.md`](de25-uboot.md) §5 on the uart0/uart1 split), so a silent BL31 is expected and is not evidence of anything | The FIT loaded but its contents did not run: an ATF/U-Boot pairing problem, not a card-layout one (implementation-path §8 Q5). |
 | 4 | `Loading Environment from FAT` | **Stop and read boot-chain §7 rows 5/11/12 before proceeding.** `Loading Environment from UBI` means the U-Boot build has `ENV_IS_IN_UBI` compiled in, and the UBI attach path can **write QSPI on an environment LOAD**, with no `saveenv` anywhere. That is the brick-class hazard the whole posture is built around. |
 | 5 | **U-Boot picking up `extlinux/extlinux.conf`** on `mmc 0:1` and reporting the `de25` label | The extlinux bootmeth did not find or parse the file. The checker proves the file is there and parses; what it cannot prove is U-Boot's **search path** and **mmc device number** — see §9. |
 | 6 | Kernel `Booting Linux on physical CPU`, then `earlycon` output | Kernel loaded but the console argument is wrong, or `Image`/DTB mismatch. |
@@ -388,7 +395,8 @@ does **not** appear localises the failure to one link of the chain
 | 8 | `Welcome to MiSTer DE25-Nano (developer OS)` and a login prompt on `ttyS0` | getty/console mismatch. |
 
 **The framebuffer and the scaler (2026-11-24).** The image lays out LPDDR4 as the third-party
-DE25 port does ([`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7), so its MENU
+DE25 port does (the address table is [`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md)
+§7, and is not repeated here), so its MENU
 fabric and its Main_MiSTer build can be tried on this card. At a root shell:
 
 | Check | Expect |
@@ -431,7 +439,9 @@ board's, for example, is exFAT-aware and RSU-shaped — so a boot failure on suc
 
 The full procedure, the restore command, the `golden_top_hps.jic` hash to verify first, and the
 safety bar that gates any image leaving this machine are in
-[`de25-nano-tasks.md`](de25-nano-tasks.md) → **"Testing on a borrowed board before we own one"**.
+[`de25-history.md`](de25-history.md) → **"Testing on a borrowed board before we own one"**
+(written 2026-09; #318's tester followed it). The restore itself, for anyone, is
+[`user/de25-recovery.md`](user/de25-recovery.md).
 Read it before shipping anyone a card. The two rules that matter most:
 
 - **Never run any Terasic demo's `flash_program.bat`**, and never run `flash_erase.bat` as a
@@ -472,11 +482,11 @@ a board says so:
 | Assumption | Owned by | How it gets settled |
 |---|---|---|
 | The factory SPL reads an **MBR** table | U-Boot track / D2.2 | §4. **Settled on hardware** by the tester's 10/10 boots (#318), for the type-`0x0c` card. |
-| The factory SPL accepts a **hidden (`0x1c`)** p1 | §1 | `disk/part_dos.c` says yes; the first boot of this layout settles it. |
+| The factory SPL accepts a **hidden (`0x1c`)** p1 | §1 | **Settled on hardware 2026-11-26 (#318): it does.** |
 | Windows shows only `MiSTer_Data` | §1 | Insert an installed card in a Windows PC. |
-| The installer works on the board's real SD controller and a real card | §3 | QEMU covers the logic (virtio disk, no `preferred_erase_size`); a first boot settles the rest. |
+| The installer works on the board's real SD controller and a real card | §3 | **Settled on hardware 2026-11-26 (#318), one card.** QEMU covers the logic (virtio disk, no `preferred_erase_size`). |
 | ~~U-Boot's extlinux **search path**~~ — **SETTLED [V]** | — | Closed by the built environment, not inferred: `boot_prefixes="/ /boot/"` and `boot_syslinux_conf="extlinux/extlinux.conf"`, so `/extlinux/extlinux.conf` at the root of p1 is the **first** path tried ([`de25-uboot.md`](de25-uboot.md) §9.1, read from `u-boot-initial-env` of the shipped build). The card layout matches. |
 | The card is **`mmc 0`** in U-Boot and **`mmcblk0`** in Linux | U-Boot track / DTS | The factory SPL's boot order names `/soc/mmc0@10808000` (boot-chain §2 step 4), and our DTS enables exactly one SD controller — but neither is a measurement. |
 | `u-boot.itb` is the **only** file the SPL wants | frozen contract, boot-chain §8.3 | Already `[V]` at the Kconfig level; `[U]` against the factory flash. |
 | ~~A `uboot.env` on p1 is needed~~ — **SETTLED: no** | — | [`de25-uboot.md`](de25-uboot.md) §10 traces the code path: with `ENV_IS_IN_UBI` off there is exactly one env driver compiled in, and a missing file makes `env_fat_load()` load the built-in environment and return `-EIO` with **no write anywhere**. Shipping one is a staleness hazard for no safety gain, so the checker's p1 allow-list now **rejects** `uboot.env`. |
-| The image boots at all | nobody, yet | §6. |
+| The image boots at all | — | **Yes, on one tester's board (#318).** |

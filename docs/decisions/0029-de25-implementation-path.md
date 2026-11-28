@@ -5,8 +5,10 @@
 **Amended by:** [ADR 0034](0034-de25-fpga-service-path.md) (2026-11-17) — D8 reversed, D9's test
 replaced, D10 kept with its evidence corrected; and by
 [ADR 0035](0035-de25-own-qspi-image-first-boot-flash.md) (2026-11-25) — D4's posture 1 holds only
-until our own QSPI image exists, which the first boot will write once. Notes are at each decision;
-the original text stands as the record.
+until our own QSPI image exists, which the first boot will write once; and by
+[ADR 0036](0036-de25-scope-and-base-generations.md) (Proposed 2026-11-28) — D1 and D2 no longer
+describe how cores load or what this repo ships. Notes are at each decision; the original text
+stands as the record.
 **Extends:** [ADR 0027](0027-de25-nano-multi-board-readiness.md). **Supersedes nothing.** Each
 decision refines an ADR 0027 disposition point (DP-x) or Decision — mapped in the index table; where
 no DP covers one, this ADR says so rather than back-fitting a DP.
@@ -26,7 +28,7 @@ analysis 2026-08-22, **no hardware touched**), over [`de25-boot-chain.md`](../de
 
 ADR 0027 committed the project to a *posture* — same repo, staged phases, guarded couplings — and
 deliberately took no technical position on how a DE25 boots or reconfigures. It predates all of D0.
-Phases D0/D1 then completed (2026-08-21/22, [`de25-nano-tasks.md`](../de25-nano-tasks.md) "Execution
+Phases D0/D1 then completed (2026-08-21/22, [`de25-history.md`](../de25-history.md) "Execution
 status") and the owner took nine decisions against their findings, which live only as a table in a
 desk-analysis document. They foreclose options the task list still calls open, and two are the
 difference between a board that boots from SD and one that does not.
@@ -60,6 +62,14 @@ Accept the nine decisions below as the bounding constraints for DE25 wave 1.
 
 ### D1 — Core loading goes through `fpga_manager` + a DT overlay
 
+> **Amended 2026-11-28 ([ADR 0036](0036-de25-scope-and-base-generations.md), after #318's bench).**
+> Three parts of this decision no longer hold. Cores load through `fpga_manager`, but by a direct
+> `fpga_mgr_load()` from `package/de25-fpga-load`, with no overlay
+> ([`de25-fpga-reconfig.md`](../de25-fpga-reconfig.md) §12). U-Boot loading is no longer out: an
+> HPS-first image configures no fabric at power-on, so U-Boot must load the boot core
+> ([ADR 0035](0035-de25-own-qspi-image-first-boot-flash.md) D2). And RSU is no longer out on
+> sizing: the factory image uses about 3.3 MiB of the 16 MiB (ADR 0035 D6, gate B5).
+
 **Decision.** Fabric reconfiguration is driven by the kernel FPGA-manager/FPGA-region stack with a DT
 overlay carrying `firmware-name`; U-Boot-side core loading, RSU slots and QSPI-resident cores are out.
 
@@ -74,6 +84,11 @@ overlay carrying `firmware-name`; U-Boot-side core loading, RSU slots and QSPI-r
   mechanism, not whether a boot-time phase-2 `core.rbf` ships at all — boot-chain §7 row 15 **[U]**.
 
 ### D2 — Scope is "make the hardware available"; Main_MiSTer does the loading
+
+> **Amended 2026-11-28 ([ADR 0036](0036-de25-scope-and-base-generations.md)).** The scope is now
+> a card that boots MiSTer. This repo ships a loader (`package/de25-fpga-load`), will have U-Boot
+> load a boot core, and holds base-design HDL in `fpga/de25-base/`. A host program still owns the
+> switch sequence; the pairing check and the quiesce contract it needs are task D2.11.
 
 **Decision.** We ship kernel + DTS plumbing so an fpga-manager and an fpga-region probe and are
 reachable from userspace, plus a minimal trigger; no core loader, switching worker or staging script.

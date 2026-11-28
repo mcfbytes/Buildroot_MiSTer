@@ -12,6 +12,8 @@ into is clear.
 | [`rollback.md`](rollback.md) | You want back to the stock image, for any reason. Calm, short, and safe at any time. |
 | [`serial-recovery.md`](serial-recovery.md) | Your box isn't booting after an update and you need to see what's actually happening, or recover it. |
 | [`faq.md`](faq.md) | Default credentials, SSH host keys, what changed vs. stock, how updates work, how to report a bug. |
+| [`de25-first-boot.md`](de25-first-boot.md) | **DE25-Nano (draft).** What a MiSTer card's first boot will do to the board's flash, what to watch, and what not to unplug. Today's DE25 cards do not do this yet. |
+| [`de25-recovery.md`](de25-recovery.md) | **DE25-Nano (draft).** Your DE25-Nano does not start with any card, or you want its factory flash back: restoring it from a PC over USB. |
 | [`beta-testing.md`](beta-testing.md) | The overall personal-use/beta posture, hardware-validation status, and how issue reporting fits together. |
 
 Technical readers wanting the underlying, source-cited contracts these docs summarize:

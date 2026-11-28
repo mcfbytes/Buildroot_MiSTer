@@ -1,5 +1,12 @@
 # DE25-Nano ("MiSTer 2.0") — readiness plan
 
+> **The readiness plan of 2026-08 (banner added 2026-11-28).** Written before any hardware. Its
+> scope is amended by [ADR 0036](decisions/0036-de25-scope-and-base-generations.md) (Proposed):
+> the goal is now a card that boots MiSTer, and §2's "out of scope, permanently" no longer holds.
+> For the current state read [`de25-nano-overview.md`](de25-nano-overview.md); for live tasks,
+> [`de25-nano-tasks.md`](de25-nano-tasks.md). Dated corrections are marked in the text; the rest
+> is unchanged.
+
 **Governing decision:** [ADR 0027](decisions/0027-de25-nano-multi-board-readiness.md)
 (same repo, staged, framework-gated). **Task list (ultracode-targeted):**
 [`de25-nano-tasks.md`](de25-nano-tasks.md). **Status:** pre-hardware, pre-framework;
@@ -34,9 +41,9 @@ hardware, §1 and §4 are discarded and everything else transfers.
 | Core scratch RAM | Plug-in SDRAM module (user-supplied) | 128 MB SDRAM on-board, 16-bit **[V]** | Kills the add-on module ecosystem and its config permutations |
 | Video out | HDMI via ADV7513 fed from fabric | "HDMI 2.0 transmitter, up to 1080p" **[V spec / U wiring]** | Transmitter part + whether HPS or fabric drives it: D0.1 |
 | Analog / add-ons | GPIO → analog IO board etc. | 2× 40-pin GPIO, Arduino headers removed; **not pin-compatible with existing add-ons** (community consensus) **[V]** | The add-on story restarts from zero |
-| Config/boot | BootROM → SPL in raw 0xA2 partition | SDM; QSPI 128 Mbit, ASx4; ATF BL2 as FSBL → BL31 → U-Boot **[V shape / U detail]** | No 0xA2 anywhere; SD-vs-QSPI split for each artifact: D0.1 |
+| Config/boot | BootROM → SPL in raw 0xA2 partition | SDM; QSPI 128 Mbit, ASx4; U-Boot SPL as FSBL → BL31 → U-Boot **[V, #318; corrected 2026-11-28 — this row said "ATF BL2 as FSBL"]** | No 0xA2 anywhere; SD-vs-QSPI split for each artifact: [`de25-boot-chain.md`](de25-boot-chain.md) |
 | FPGA load from Linux | Memory-mapped fpgamgr (Main_MiSTer writes it directly) | `stratix10-soc` FPGA manager → SDM mailbox, DT overlays, RBF **[V]** | Reconfig latency unknown and core-switching-critical: D0.2 |
-| Price | ~$135 (was) | $248 ($207 academic) **[V]** | |
+| Price | ~$135 (was) | $248 ($207 academic) **[V, a 2026-08-19 snapshot; not maintained]** | |
 
 Community/ecosystem status **[V]**: no working MiSTer port exists; the framework
 maintainers have not adopted the board; forum consensus is "massive undertaking, not
@@ -53,6 +60,9 @@ designs, not Agilex **[V]**.
 - **L0 — the MiSTer framework port.** Main_MiSTer on aarch64, SDM-based core loading,
   a new `sys/` for cores, video/audio plumbing, the memory map. **Out of scope for this
   repo, permanently.** It is the gate for L2. We track it (D0.4); we do not build it.
+  *(Amended 2026-11-28, [ADR 0036](decisions/0036-de25-scope-and-base-generations.md) D1/D2: this
+  repo now holds base-design HDL and a loader, and tracks the template, a Menu core and a basic
+  UI as tasks D2.13–D2.15. Cores and a host program still live in their own repositories.)*
 - **L1 — a bare developer OS.** Toolchain, ATF+U-Boot (built here from source, no
   MiSTer binaries), kernel+DTS, SD image, serial console, network, FPGA reconfig proof
   — keeping the DE10 image's footprint and conventions but shipping **no

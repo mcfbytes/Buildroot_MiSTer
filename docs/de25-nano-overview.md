@@ -1,254 +1,161 @@
-# DE25-Nano — how this is going to work
+# DE25-Nano — where it stands and how it works
 
-**Who this is for:** someone technical who has not followed the DE25 work and wants the shape of
-it in ten minutes: how the board boots, what we build for it, how far along it is, and what could
-still stop it. Every section links to the document that holds the evidence. Status as of
-**2026-09-14**: everything below is built and checked at the desk; **nothing has run on a
-DE25-Nano yet** — the board is on order.
+**Who this is for:** someone technical who has not followed the DE25 work and wants its shape in
+ten minutes. Every section links to the document that holds the evidence.
+**Status as of 2026-11-28.** This page is the one place that carries the current state; the
+other DE25 documents describe one subject each, and several are history (§7).
 
-Tags: **[V]** verified (in a file, a build, a vendor artifact, or on silicon by someone else);
-**[U]** unverified, with what would settle it.
-
----
-
-## 1. The short answer
-
-**Yes: a single SD-card image, written the way the DE10-Nano's is, and the board boots from it.**
-The card holds everything we build — bootloader, firmware, kernel, root filesystem. The board's
-own flash holds Terasic's factory first-stage loader and is **never written** by anything we ship.
-"Burn a card, insert it, power on" is the whole workflow, and the DIP switches stay at their
-factory setting **[V, `de25-boot-chain.md` §1]**.
-
-Two things are different from the DE10, and both are fine:
-
-- **The boot partition is FAT32 and the loader finds files by name.** There is no `0xA2` raw
-  partition and no `uboot.img`; the factory loader reads `u-boot.itb` off partition 1 like any
-  other file **[V]**. The exFAT data partition the DE10 uses is still the target for the *data*
-  side of the card, exactly as on the DE10 (§3).
-- **The kernel is a 64-bit `Image` plus a separate device tree, booted through a text config
-  file**, not the DE10's concatenated `zImage_dtb` **[V, `de25-sdcard.md`]**.
-
-What is *not* yet answered, in one sentence: whether our particular bootloader and firmware pair
-boots under Terasic's factory loader on real silicon, and how well the SD controller and the
-fabric behave once it does. Section 5 ranks those.
+Tags: **[V]** verified (the column or the text says where); **[U]** unverified, with what would
+settle it.
 
 ---
 
-## 2. The boot chain, link by link
+## 1. The goal
 
-The DE10-Nano's chain is short: a boot ROM in the SoC scans the card for a raw partition, runs
-the small loader it finds there, and that loader configures the FPGA and boots Linux. Everything
-lives on the card ([`boot-chain.md`](boot-chain.md)).
+The owner's words: "for a user to be able to flash an SD-card and boot MiSTer as they currently
+do with DE10-Nano without having to mess with JTAG or anything else." Near term: a basic UI, and
+loading cores from userspace. The decision record is
+[ADR 0036](decisions/0036-de25-scope-and-base-generations.md) (Proposed).
 
-The DE25-Nano's Agilex 5 has a different first mover: a hard microcontroller in the chip called the
-**Secure Device Manager (SDM)** boots first, and it can only load from the board's QSPI flash or
-from a JTAG cable — **not from the SD card** **[V, board wiring and the vendor's own manual,
-`de25-boot-chain.md` §8.1]**. So the first two links are board-resident, and the seam between
-"the board's" and "ours" is permanent.
+**Today** the tree builds a bare developer OS for the board: boot firmware, kernel, the DE10's
+userspace, a card that installs itself. It boots on a tester's board. It carries no MiSTer
+binaries, shows no picture on a factory board, and writes nothing to the board's flash. No
+`de25-*` pre-release has been published yet.
 
-| # | Link | Lives in | Who builds it | What it does | Status |
-|---|---|---|---|---|---|
-| 1 | **SDM firmware** | QSPI flash | Terasic (factory) | Boots the SoC, reads the flash | [V] never ours |
-| 2 | **Phase-1 bitstream + first-stage loader (SPL)** | QSPI flash | Terasic (factory) | Configures the FPGA fabric with Terasic's reference design, sets up HPS pins and DDR (the *handoff* data is inside this bitstream), then runs U-Boot SPL | [V] never ours; the SPL is U-Boot 2025.01 built from Terasic's public branch (why we keep it: see below) |
-| 3 | **SPL reads the card** | — | — | Finds `u-boot.itb` by name on partition 1 (FAT) and verifies its crc32 hashes | [V] by reference: Terasic's own shipped FIT is unsigned crc32 with our exact layout, so the factory loader demonstrably accepts that shape (§5.1) |
-| 4 | **`u-boot.itb`** — a container holding **TF-A BL31** (the EL3 secure firmware) + **U-Boot proper** + our board device tree | card, p1 | **us** (mainline U-Boot 2026.07 + TF-A v2.15.0, through Buildroot) | BL31 runs first and stays resident as the SoC's secure monitor; U-Boot proper then takes over | built, structure verified with `dumpimage` [V]; boots under the factory SPL **[U — needs the board]** |
-| 5 | **U-Boot boots Linux** | card, p1 | us | Reads `extlinux/extlinux.conf`, loads `Image` + `socfpga_agilex5_de25nano.dtb`, boots | built [V]; SD timing on this board **[U]** |
-| 6 | **Linux** | card, p2 | us (kernel 7.2 series, arm64, 92 modules, MiSTer's shared userspace profile) | Mounts the root filesystem, brings up console, network, USB | built; boots under QEMU [V]; on the board **[U]** |
-| 7 | **Fabric reconfiguration at runtime** | — | us (kernel + DTS) + later the MiSTer framework | Linux hands a bitstream to BL31 over an SMC call and the SDM rewrites the fabric (§6) | mechanism [V]; not yet exercised by us **[U]** |
+## 2. The model in six facts
 
-Detail: [`de25-boot-chain.md`](de25-boot-chain.md) §2 is this table with the evidence per step;
-[`de25-uboot.md`](de25-uboot.md) is link 4 in depth; [`de25-sdcard.md`](de25-sdcard.md) is the card.
+1. **The chip boots from its QSPI flash, never from the SD card.** A small processor in the
+   chip, the SDM, starts first and can read only the flash or a JTAG cable **[V, board wiring]**.
+2. **The flash holds a phase-1; cores are files.** The phase-1 sets up the processor, its pins
+   and its DDR, and carries the first-stage loader (SPL). Every fabric design is a separate
+   `core.rbf`.
+3. **A core loads only over a matching phase-1.** The SDM compares an HPS IO hash. It depends on
+   the base design **and the Quartus version** **[V, #318]**. So every core is built against one
+   named base, a *base generation* ([`de25-quartus.md`](de25-quartus.md) §5).
+4. **Terasic's factory flash cannot take cores at all.** It is "FPGA-first": a full image is
+   refused at runtime, and no core of ours matches its hash **[V, #318 T1]**. HDMI is dark under
+   it, because the HDMI chip is wired to FPGA pins only.
+5. **So the flash must be rewritten once.** With an "HPS-first" phase-1 in the flash, cores load
+   from U-Boot and from Linux, repeatedly and across warm reboots **[V, #318]**. The plan is that the card's
+   first boot writes it ([ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md));
+   a PC with a USB cable is the recovery, not the install
+   ([`user/de25-recovery.md`](user/de25-recovery.md)).
+6. **An HPS-first board powers on with an empty fabric.** U-Boot must load a boot core for
+   there to be a picture. A warm reboot keeps whatever core was loaded; a power cycle clears it
+   **[V, #318]**.
 
-**Why the first-stage loader stays Terasic's 2025.01 when everything else is current.** It is
-not a choice between old and new U-Boot: the SPL lives *inside the phase-1 bitstream in the
-board's flash*, and the only ways to put a different one there are a JTAG cable and a PC. Our
-build does compile a modern (2026.07) SPL, and nothing of it is shipped, because using it would
-mean reflashing every board once at install time — the "posture 2" bench operation, which
-another port of this board did take. Until there is a reason to (§5.3 may supply one), the
-factory SPL is the part of the chain we deliberately do not own, and the modern U-Boot *proper*
-it hands off to is ours.
+What a host program needs to load and talk to a core is one page:
+[`de25-fabric-interface.md`](de25-fabric-interface.md).
 
-**What "never written" costs and buys.** Because links 1–2 are Terasic's, we inherit their DDR
-and pin configuration and their loader's policy, and we control exactly one interface: a FIT
-named `u-boot.itb` on a FAT partition. That is a thin contract, which is both the good news and
-the whole risk **[V, `de25-boot-chain.md` §4]**. It also means there is no field-update path for
-the flash and none is needed: recovery from a bad *card* is writing a new card; recovery from a
-bad *flash* (which nothing we ship can cause) is a PC with Quartus and the on-board USB-Blaster
-**[V, vendor guide]**. The build enforces the rule mechanically: the DE25 U-Boot build fails if
-any flash-writing driver, command, or environment location is compiled in
-(`external.mk`, `MISTER_UBOOT_DE25_QSPI_AUDIT`) **[V]**.
+## 3. The boot chain
 
----
+| # | Link | Lives in | Today | Target |
+|---|---|---|---|---|
+| 1 | SDM firmware | flash | Terasic's factory image | ours, from the base generation's Quartus build |
+| 2 | Phase-1 and SPL | flash | Terasic's, FPGA-first; SPL is their U-Boot 2025.01 | HPS-first; the SPL built here from mainline |
+| 3 | `u-boot.itb` (TF-A BL31 + U-Boot + DTB) | card, hidden FAT p1 | ours; loaded by name by the factory SPL **[V, #318]** | the same file |
+| 4 | Boot core | card, p1 | none | loaded by U-Boot, with a hash check; a failed load still boots Linux |
+| 5 | Linux | card | `Image` + DTB on p1; the root is `linux/linux.img` on the exFAT p2, as on the DE10 **[V, #318]** | the same |
+| 6 | Cores at runtime | card, exFAT | `de25-fpga-load` is packaged, not yet run | a host program picks a core; the loader loads it |
 
-## 3. The card
-
-Today's card (interim, chosen so the first boot has the fewest moving parts) **[V, `de25-sdcard.md`]**:
-
-| Partition | Type | Holds |
-|---|---|---|
-| p1, 256 MiB | FAT32 `DE25BOOT` | `u-boot.itb`, `Image`, the `.dtb`, `extlinux/extlinux.conf` |
-| p2 | ext4 | the Buildroot root filesystem, written directly |
-
-Target card (decided, [ADR 0029](decisions/0029-de25-implementation-path.md) D11): p1 stays FAT
-with the boot files; **p2 becomes the exFAT data partition, the `/media/fat` equivalent, holding
-`linux/linux.img`**, loop-mounted as root by the same two-stage initramfs the DE10 uses. That
-initramfs already builds for aarch64 and passes its QEMU tests (`scripts/test-initramfs.sh
---board de25nano`) **[V]**. The switch is deliberately deferred until a board has answered the
-loader, DTS, and SD-controller questions with the simpler card.
-
-`make de25` builds the whole thing into `output-de25/images/sdcard-de25.img`, and a fail-closed
-checker rejects any image that looks like DE10 layout lore transplanted (a `0xA2` partition, a
-`uboot.img`) **[V]**.
-
----
+Detail: [`de25-boot-chain.md`](de25-boot-chain.md) §0, [`de25-uboot.md`](de25-uboot.md),
+[`de25-sdcard.md`](de25-sdcard.md).
 
 ## 4. Where things stand
 
-| Piece | State |
+**Tester's board** = one remote DE25-Nano, issue #318. **Owner's board** = on order.
+
+| Piece | Desk / QEMU | Tester's board | Owner's board |
+|---|---|---|---|
+| TF-A and U-Boot under the factory SPL | built, FIT checked | **boots, 10/10 cold boots** | — |
+| Kernel, DTS, SD at high speed, OCRAM node | built | **boots to a login; full-card read clean** | — |
+| Two-stage card and first-boot installer | QEMU, with a power cut | **installs and reboots once (ADR 0035 B0 a–c)** | Windows view (d) owed |
+| Core load over an HPS-first flash | — | **once from U-Boot; from Linux 20 in a row, and one after each of 10 warm reboots** — with the tester's own Quartus 25.1.1 pair and a bench module | — |
+| TF-A patch `0002` (the FPGA service path, [ADR 0034](decisions/0034-de25-fpga-service-path.md)) | host harness | implied by the Linux loads; the tester's confirmation is owed | — |
+| `de25-fpga-load` (our loader) | builds | not run | — |
+| Base generation 1 (candidate): Altera's baseline on Quartus 26.3 | **hash test 1 passes [V 2026-11-28]**; test 2 not run | — | — |
+| HDMI block `de25_hdmi` (splash, framebuffer) | simulated | not run | — |
+| U-Boot loads a boot core | not written | (one manual `fpga load` worked) | — |
+| First-boot flash write | not written; nothing in the tree writes QSPI | — | — |
+| RTL pipeline; core template; Menu core; a basic UI | not started | — | — |
+| User documentation | drafted 2026-11-28, times unmeasured | — | — |
+
+**What the hardware results do not yet show.** Every core loaded so far was split from the
+*same compile* as its phase-1. That a separately compiled core keeps the hash is hash test 2,
+and it decides whether cores can be built independently
+([`de25-quartus.md`](de25-quartus.md) §5).
+
+## 5. Gates and open work
+
+The bench gates for the flash image, in [ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) §4–§5:
+
+| Gate | Question | State |
+|---|---|---|
+| B0 | the two-stage card boots on the factory flash | **pass** (a–c); (d) owed |
+| B1 | fuse status | not read |
+| B2 | cores load over an HPS-first image; warm reboots | **pass** |
+| B2b | the hash holds across separate compiles | test 1 **pass**; test 2 not run |
+| B3 | Linux writes the flash while the SDM owns it | desk only; three accounts to reconcile |
+| B4 | write time, write order, the exposed window | not run |
+| B5 | an RSU layout fits and builds | fits by size; not built |
+| B6 | our own SPL in the image | not run; due before the first public `.jic` |
+| B7 | redistribution terms of a `.jic` | open |
+| B8 | what a reboot does after the flash is rewritten | not run |
+
+Not on that list, and on the path to the goal: the RTL pipeline (D2.13), a core template and a
+Menu core (D2.14), a basic UI (D2.15), the loader's interface and the quiesce contract (D2.11),
+the video contract between the base design and its users (ADR 0036 §5). Tasks, the critical
+path and the bench order: [`de25-nano-tasks.md`](de25-nano-tasks.md).
+
+**Known anomalies, recorded, not explained:** after a forced warm reset, every core load prints
+`S2F/LWS2F bridge enable: Timeout hdskack` until a power cycle, and still succeeds
+(ADR 0035 §5).
+
+## 6. Two boards
+
+| Board | Role |
 |---|---|
-| Toolchain, kernel, DTS, root filesystem, card image | build green from one defconfig; the DTS is documented node by node against Terasic's, Altera's, and mainline's trees ([`de25-dts-rationale.md`](de25-dts-rationale.md)) |
-| U-Boot + TF-A | built from mainline, pinned by Buildroot; FIT layout matches the factory loader's contract; every flash-writing path compiled out and asserted at build time ([`de25-uboot.md`](de25-uboot.md)) |
-| BL31 console | moved to the header UART (a one-line carried patch, matching what Terasic ships), so secure-firmware messages and crashes are visible at bring-up instead of going to an unwired port |
-| FPGA loading from Linux | fixed in BL31 by a second carried patch so the kernel needs no DE25-specific change; built and harness-checked, not run on hardware ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md)) |
-| Reproducibility | the FIT and BL31 are byte-identical across three clean builds on this machine [V]; the only difference against the incremental tree was the toolchain's git-describe banner |
-| Stage-1 initramfs (two-stage card) | built for aarch64, QEMU-tested [V] |
-| Hardware | none yet; first-boot serial checklist written ([`de25-sdcard.md`](de25-sdcard.md) §6, [`de25-uboot.md`](de25-uboot.md) §11) |
+| The owner's | everything destructive or visual: recovery drills first, then every flash-write experiment, the power-cut campaign, HDMI, the boot core, the first loader runs |
+| The tester's (#318) | the second unit and the Quartus 25.1.1 reference; restored to factory, the "fresh user" for a release-candidate card and the user docs |
 
-The pre-hardware task list and its history are [`de25-nano-tasks.md`](de25-nano-tasks.md); the
-bootloader desk plan is [`uboot-tasks.md`](uboot-tasks.md) (DU-series).
+## 7. Map of the documents
 
----
+**Read in this order.**
 
-## 5. Blockers and unknowns, ranked
+| # | Document | Read it for |
+|---|---|---|
+| 1 | this page | the state and the shape |
+| 2 | [`de25-quartus.md`](de25-quartus.md) | which Quartus, the two licences, the version freeze, what a core build must do |
+| 3 | [`de25-fabric-interface.md`](de25-fabric-interface.md) | what a host program needs: loading, rules around a load, the address map |
+| 4 | [ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md), [ADR 0036](decisions/0036-de25-scope-and-base-generations.md) | the flash image and its gates; the scope and the base generations |
+| 5 | [`de25-base-image.md`](de25-base-image.md) | the base design: the HDMI block, its registers, the build |
+| 6 | [`de25-boot-chain.md`](de25-boot-chain.md) | the chain link by link, and what would brick or strand a board |
+| 7 | [`de25-sdcard.md`](de25-sdcard.md), [`de25-uboot.md`](de25-uboot.md) | the card and its installer; the bootloader build |
+| 8 | [`de25-nano-tasks.md`](de25-nano-tasks.md) | live tasks, the critical path, the bench order |
 
-### 5.1 Closed at the desk
+**For users:** [`user/de25-first-boot.md`](user/de25-first-boot.md),
+[`user/de25-recovery.md`](user/de25-recovery.md).
 
-- **"Will the factory loader reject our unsigned FIT?"** — No. Its config verifies hashes only,
-  its device tree carries no signing key, and Terasic's own shipped `u-boot.itb` (extracted from
-  the factory SD image) is crc32-only with no signature and the same three-image layout and load
-  addresses as ours **[V, `de25-uboot.md` §12]**. This was the sharpest brick-adjacent risk on the
-  list ([`de25-boot-chain.md`](de25-boot-chain.md) §7 row 6) and it is now a structural match.
-- **Where the environment lives.** On the FAT partition only; the flash-resident fallback that
-  mainline compiles in by default is removed and asserted absent **[V]**.
-- **Console UART, memory node, SD controller node, SMMU posture** — all resolved by
-  cross-checking three vendor trees ([`de25-dts-rationale.md`](de25-dts-rationale.md)).
-
-### 5.2 Open, needs the board (in the order the first boot will hit them)
-
-1. **The version pairing.** Terasic ships U-Boot 2025.01 + TF-A 2.12; we ship 2026.07 + v2.15.0
-   under Terasic's 2025.01 SPL. Nobody has run that combination. The SPL→BL31→U-Boot interfaces
-   are stable and generic, but this is the one thing only a serial log can confirm **[U]**.
-2. **SD controller timing.** We run the controller at default speed with Intel dev-kit PHY
-   values; Terasic's own board support uses the same PHY values (and enables faster modes). If
-   `Retrieving file: /Image` stalls, this is the first knob ([`de25-uboot.md`](de25-uboot.md) §5.1) **[U]**.
-3. **DRAM size.** Declared as 1 GiB in our device tree rather than read from the loader's
-   handoff, on purpose; the loader's `DDR:` lines on the console settle it **[U]**.
-4. **The MAC address.** The HPS MAC is not fused and is random on every boot; first-boot
-   provisioning (as the DE10 does through `u-boot.txt`) is needed before networking is
-   deterministic. Learned from another DE25-Nano port **[V there, U here]**.
-
-### 5.3 Open, and project-shaping: programming the fabric from Linux
-
-**Yes, the fabric can be programmed from the HPS — but not the way the DE10 does it, and the
-MiSTer framework will need a new back end for it.** On the DE10, Main_MiSTer writes a
-memory-mapped FPGA manager directly. On Agilex 5 there is no such device: Linux hands the
-bitstream to BL31 with an SMC call, the SDM rewrites the fabric, and the only userspace entry
-point is applying a device-tree overlay against an FPGA region **[V, `de25-fpga-reconfig.md`]**.
-The mainline kernel has the drivers but no Agilex 5 device-tree nodes for them; ours adds them
-**[V]**.
-
-**Updated 2026-11-17.** A source comparison of Terasic's kernel with mainline found why the
-mainline path could not have worked as shipped: the fault is in the firmware (BL31), which
-rejects the buffer addresses a mainline kernel sends. The vendor kernel works around that in
-its driver. We fix it in BL31 instead, so the kernel stays vanilla 7.3.4 with no
-DE25-specific patch that anything depends on. Built and checked off the board; **not yet run
-on hardware**. The full comparison is
-[`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md), and the decision is
-[ADR 0034](decisions/0034-de25-fpga-service-path.md).
-
-What is known from another DE25-Nano port that runs this path on real hardware:
-
-- **Unsigned, locally compiled bitstreams are accepted** by the factory SDM: bitstream
-  authentication is not enforced on shipped boards **[V there]**. This removes the scenario where
-  community cores would need a signing infrastructure.
-- **A full reconfiguration takes about 3 s of SDM time, roughly 8 s end to end**, and repeated
-  switching works only with settle windows before and after — discovered the hard way
-  **[V there, U for us]**. MiSTer switches cores dozens of times a session, so this is the number
-  to beat and the behaviour to harden ([`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §6).
-- **Do not load cores from U-Boot.** `fpga load` from the bootloader wedged the SDM on that
-  port and was retired; load from Linux **[V there]**. That stays the product rule. As a bench
-  diagnostic, though, one `fpga load` at the U-Boot prompt is the first test we will run: it
-  shows whether the configuration manager can read DDR without the SMMU, before Linux is
-  involved ([`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) §8).
-- **A fabric-unconfigured ("HPS-first") flash image is fragile**: it produced a fatal bus error
-  on warm reboots there. A flash image that configures a full design at every reset was stable.
-  Our posture keeps Terasic's factory (fully configured) image in flash, which is the stable
-  shape **[V there]**. *2026-11-26:* it did not reproduce on #318's HPS-first image (10 warm reboots, no
-  SError), and HPS-first is now our image shape ([ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md) D2).
-
-**Answered 2026-11-25 (T1 on #318): it cannot.** A full-image RBF is rejected at runtime, and an
-HPS-first `core.rbf` is rejected because its HPS IO hash differs from the factory phase-1's. The
-hash also changes with the Quartus version. The plan is now our own QSPI image, written once by the
-first boot ([ADR 0035](decisions/0035-de25-own-qspi-image-first-boot-flash.md)). The bullet below
-is kept as the question was posed.
-
-**Answered 2026-11-26/27 (#318) for our own image:** with an HPS-first phase-1 and a `core.rbf` of
-matching hash, cores load from U-Boot and from Linux: 32 loads, including after 10 warm reboots,
-none fatal. An HPS-first image configures no fabric at power-on, so U-Boot must load the boot
-core. A warm reboot keeps the fabric. The factory image uses about 3.3 MiB of the flash, so a
-factory fallback slot fits. Results: [`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §12.
-
-What is still unknown for *our* model specifically:
-
-- **Whether a core compiled by us can be loaded against Terasic's factory phase-1 bitstream.**
-  Altera's doctrine for split configuration is that both halves come from the same compilation.
-  If that holds, MiSTer-style core switching on an untouched factory flash is not possible, and
-  the realistic model becomes what that other port converged on: a **one-time, bench flash of a
-  MiSTer "golden" image** (menu core plus HPS handoff) over JTAG at install time — a PC step users
-  do once, never an update-channel operation — after which cores switch from Linux
-  ([`de25-boot-chain.md`](de25-boot-chain.md) §7 row 15, §4 posture 2) **[U]**.
-- **HPS↔FPGA memory sharing.** The DE10's shared framebuffer rides bridges Linux can see and
-  control; Agilex 5 exposes no bridge devices to Linux at all, and the aperture semantics for a
-  MiSTer-style frame buffer are documented weakly ([`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §7) **[U]**.
-- **Everything above the OS.** Main_MiSTer on aarch64 (or 32-bit under compat), its core-loading
-  back end, the fabric-side `sys/` framework, the HDMI and SDRAM IP — none of that exists for
-  this board, none of it is this repo's to build, and it gates "MiSTer parity" entirely
-  ([`de25-nano-plan.md`](de25-nano-plan.md) §2, layers L0–L2). What this repo delivers first is
-  the **bare developer OS** ([ADR 0027](decisions/0027-de25-nano-multi-board-readiness.md)):
-  the card, the boot chain, a kernel with the reconfiguration path wired, serial, network — the
-  platform someone would port the framework onto.
-
----
-
-## 6. What the first board session looks like
-
-1. Write today's card, attach the serial cable, watch for the SPL's `DDR:` lines (link 2), then
-   the `U-Boot 2026.07` banner (link 4 is proven the moment it prints), then extlinux loading
-   `Image` (link 5), then a login prompt (link 6). Checklist: [`de25-sdcard.md`](de25-sdcard.md) §6.
-2. If the kernel load stalls, lift the SD controller from default to high speed
-   ([`de25-uboot.md`](de25-uboot.md) §5.1).
-3. Switch the card to the two-stage exFAT layout (§3).
-4. Apply a device-tree overlay carrying a bitstream and time it — the first fabric
-   reconfiguration from our Linux, and the measurement the core-switching question needs
-   ([`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) §11).
-5. Only then decide the golden-image question (§5.3), with numbers.
-
----
-
-## 7. Map of the detailed documents
+**Reference, as needed.**
 
 | Document | Read it for |
 |---|---|
-| [`de25-boot-chain.md`](de25-boot-chain.md) | the chain link by link, the flash-writing rules, the brick/strand inventory, the resolved questions |
-| [`de25-uboot.md`](de25-uboot.md) | the bootloader build, the FIT contract, the flash audit, first-boot serial expectations |
-| [`de25-sdcard.md`](de25-sdcard.md) | card layout, building and writing it, first-boot checklist |
+| [`dts-mister-fpga-interface.md`](dts-mister-fpga-interface.md) §7 | the `/dev/mister` nodes and the full memory map |
 | [`de25-dts-rationale.md`](de25-dts-rationale.md) | every device-tree node and why |
-| [`de25-memory-layout-proposal.md`](de25-memory-layout-proposal.md) | a proposal for the HPS-DDR layout: the DE10's map at `+0x8000_0000`, the candidates weighed, and a contract to share with other DE25 ports |
-| [`de25-kernel-config.md`](de25-kernel-config.md) | the kernel configuration and its diet |
-| [`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) | how the fabric is reprogrammed on Agilex 5, latency, the open questions |
-| [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) | what Terasic's and Altera's kernels do that mainline does not, what we carry instead, and the first-bench test order |
-| [`de25-implementation-path.md`](de25-implementation-path.md) | the decisions behind the current shape |
-| [`de25-reference-implementation.md`](de25-reference-implementation.md) | what was learned from another port's working board |
-| [`de25-nano-plan.md`](de25-nano-plan.md) / [`de25-nano-tasks.md`](de25-nano-tasks.md) | the readiness plan and the task history |
-| [`de25-readiness-ledger.md`](de25-readiness-ledger.md) | every place the DE10's assumptions are baked into scripts and CI |
-| [ADR 0027](decisions/0027-de25-nano-multi-board-readiness.md), [ADR 0029](decisions/0029-de25-implementation-path.md), [ADR 0034](decisions/0034-de25-fpga-service-path.md) | the governing decisions |
+| [`de25-kernel-config.md`](de25-kernel-config.md) | the kernel configuration |
+| [`de25-fpga-reconfig.md`](de25-fpga-reconfig.md) | the reconfiguration path through the kernel; §12 is what was measured |
+| [`de25-vendor-kernel-delta.md`](de25-vendor-kernel-delta.md) | vendor kernels against mainline; the test order T0–T5 and its results |
+| [`de25-memory-layout-proposal.md`](de25-memory-layout-proposal.md) | a proposal for the HPS-DDR layout |
+| [ADR 0027](decisions/0027-de25-nano-multi-board-readiness.md), [ADR 0029](decisions/0029-de25-implementation-path.md), [ADR 0034](decisions/0034-de25-fpga-service-path.md) | the earlier decisions, each with its amendments |
+
+**History.** Correct for their dates, superseded in places, kept because other documents cite
+them.
+
+| Document | What it was |
+|---|---|
+| [`de25-history.md`](de25-history.md) | Phases D0 and D1, Waves 1 to 6, the DU7 boot-path record |
+| [`de25-nano-plan.md`](de25-nano-plan.md) | the 2026-08 readiness plan: the board, the layer model, the decision points |
+| [`de25-implementation-path.md`](de25-implementation-path.md) | the desk analysis behind ADR 0029 |
+| [`de25-reference-implementation.md`](de25-reference-implementation.md) | what a third-party port's sources showed |
+| [`de25-patch-portability.md`](de25-patch-portability.md) | the audit of the DE10 patch series |
+| [`de25-readiness-ledger.md`](de25-readiness-ledger.md) | where the DE10's assumptions were baked into scripts and CI |

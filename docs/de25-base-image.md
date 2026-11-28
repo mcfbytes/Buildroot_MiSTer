@@ -258,6 +258,15 @@ clock comes from an IOPLL we generate off the design's 100 MHz reference (`pll_r
 **It needs Quartus 26.3.** The `.ip` files are saved by 26.3, and older versions do not open
 newer IP. The base image's Quartus pin therefore moves from 25.3.1 to 26.3 when this lands.
 
+Altera has published no 26.3 container (the newest Agilex 5 one is `26.1.1-agilex5`).
+`tools/quartus-image.sh <dir>` builds one from Altera's four installer files, downloaded while
+signed in: `QuartusProSetup-26.3.0.114-linux.run`, `QuartusProSetup-part2-26.3.0.114.qdz`,
+`agilex_common-26.3.0.114.qdz` and `agilex5-26.3.0.114.qdz` (16 GB). It checks their SHA-1s
+against `tools/quartus-26.3.0.114.sha1` (Altera's published values), installs Quartus with
+Agilex 5 only into a container laid out like Altera's images, and tags it
+`de25/quartus-pro:26.3.0.114-agilex5` (55 GB on disk). Running it accepts Altera's EULA.
+**[V 2026-11-28: built; `quartus_sh --version` reports 26.3.0 Build 114.]**
+
 **First check after the toolchain is in:** compile the design unmodified and compare its HPS IO
 hash with the published `DF9589F2…`. A match means our build reproduces Altera's, and cores we
 compile will also load over the public `ghrd.hps.jic`.

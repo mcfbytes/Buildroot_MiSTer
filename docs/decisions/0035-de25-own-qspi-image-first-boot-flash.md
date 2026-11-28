@@ -66,7 +66,9 @@ boot-time one, is a `core.rbf` with the phase-1's HPS IO hash. The alternative c
   reproduce.
 
 The boot-time core (the base image's splash, [`de25-base-image.md`](../de25-base-image.md)) is
-loaded by U-Boot or by the SPL; which one is D3's choice. Linux then replaces it with the Menu.
+loaded by U-Boot or by the SPL; which one is D3's choice. An HPS-first image configures no
+fabric by itself, even at power-on (§5), so that load step is always needed. Linux then
+replaces the boot-time core with the Menu.
 
 **D3 — The SPL becomes ours, in two steps.** The first image carries the GHRD's own SPL, to prove
 the image shape. Our mainline U-Boot SPL, which the tree already compiles and never ships
@@ -139,8 +141,9 @@ GHRD's own SPL. Logs are on the bench, not in this repo.
 | — | **The factory image is FPGA-first** (`HPS configuration order: HPS_AFTER_INIT_DONE`; `pfg -o hps=1` refuses it). The HDMI is dark under it: the monitor sees the hot-plug signal but no picture |
 | B2 | **Pass.** An HPS-first pair from one `.sof`: phase-1 `hps.rbf` 847,872 B, `core.rbf` 1,581,056 B, the same HPS IO hash in both (`EA2C2695…`). Three clean default builds reproduced the factory hashes, so 25.1.1 Build 125 is deterministic on that bench. **T1:** `fpga load` at the U-Boot prompt says "FPGA reconfiguration OK!", the first runtime core load on a DE25. **T3:** a bench-only module calling `fpga_mgr_load()` loaded 20 cores in a row in one session, then one after each of 10 warm reboots, with every LW-bridge read stable and no SError |
 | B2 note | After a `reboot -f`, every later load prints `S2F/LWS2F bridge enable: Timeout hdskack` (from BL31). It persists through later warm resets and clears only on a power cycle. Every such load still reached "operating" with working bridges. Record it; do not paper over it |
-| B3 | **Desk result.** Reading the flash from Linux works as `QSPI_OPEN` → `cadence-quadspi` → `QSPI_CLOSE` (as U-Boot's `mailbox_s10.c` does). Never enable the controller without the handover: the SDM and the HPS must not both drive the flash |
-| B5 | **Open.** The bench concluded "does not fit" from the factory `.jic` being 16,777,447 B, but a `.jic` pads to the whole device. What the factory image actually occupies decides it |
+| B3 | **Desk result.** Reading the flash from Linux works as `QSPI_OPEN` → `cadence-quadspi` → `QSPI_CLOSE` (as U-Boot's `mailbox_s10.c` does). Never enable the controller without the handover: the SDM and the HPS must not both drive the flash. The factory image sets "QSPI ownership after HPS bring up: SDM", so the handover is required, not optional |
+| D2 note | **An HPS-first image configures no fabric at power-on** *(2026-11-27, corrects the 2026-11-26 report)*. A cold boot leaves the fabric empty, LEDs dark, even with a core in QSPI; only an explicit `fpga load` (U-Boot or Linux) configures it. **A warm reboot keeps the loaded fabric**, and a power cycle clears it. That is also the `hdskack` latch's mechanism: every load after a warm reset reconfigures a live fabric |
+| B5 | **Fits by size** *(2026-11-27)*. The factory image ends at `0x3450a1`, about 3.3 MiB of 16 MiB, and everything above is `0xFF`. Its layout is four 420 KiB firmware sections (CMF 1–4 at `0x0`/`0x40000`/`0x80000`/`0xC0000`, Altera-signed, "Support firmware upgrade: TRUE (Max 4)", not identical copies) plus a 1.3 MiB configuration payload at `0x200000`. That leaves about 12.7 MiB for an application slot. Not yet shown: that `quartus_pfg` builds an RSU layout from a factory `.sof` we rebuild (whose hashes match the factory's, per B2) plus our HPS-first image, and that the SPL handles it (B6) |
 
 **The runtime loader is still open.** Mainline has no sysfs trigger for `fpga_mgr_load()`.
 The bench module is option (b) of [`de25-fpga-reconfig.md`](../de25-fpga-reconfig.md) §3.2, and is
